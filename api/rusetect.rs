@@ -9,6 +9,7 @@ use vercel_runtime::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    rusetect_server::check_config()?;
     rusetect_server::ensure_root()?;
     let shared = tokio::task::spawn_blocking(rusetect_server::new_shared).await?;
     let app = ServiceBuilder::new().layer(VercelLayer::new()).service(rusetect_server::build_app(shared));

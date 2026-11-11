@@ -322,8 +322,8 @@ def build():
         ["Rate limit keyed on client-supplied X-Forwarded-For", "Verified in code", "Unlimited requests; unbounded memory per spoofed client", "Fixed: header trusted only on Vercel or with RUSETECT_TRUST_PROXY=1; idle clients evicted", "OWASP API4 unrestricted resource consumption"],
         ["Alerts, evidence packs, STR drafts, cases and audit readable without a key", "Verified in code", "Disclosure of suspicion (tipping off) and account identifiers", "Fixed when keys are configured; demo mode stays open by design", "OWASP API1/API2"],
         ["Demo keys enabled whenever RUSETECT_ANALYST_KEYS is unset", "Verified in code", "Fail-open: a misconfigured deployment accepts published keys", "Open. Require RUSETECT_DEMO=1 explicitly for demo keys", "OWASP API8"],
-        ["Hard-coded fallback secrets (consortium HMAC, entity hash salt)", "Verified in code", "Account tokens can be reversed by enumeration when defaults are used", "Open. Refuse to start outside demo mode without both secrets", "NIST AI 100-2 privacy"],
-        ["Ephemeral signing key and in-memory nonce cache per serverless instance", "Verified in design", "Signatures from one instance cannot be checked after restart; nonces can be replayed on another instance", "Open. Set RUSETECT_SIGNING_KEY; move nonces to Redis", "Integrity"],
+        ["Hard-coded fallback secrets (consortium HMAC, entity hash salt)", "Verified in code", "Account tokens can be reversed by enumeration when defaults are used", "Fixed: with analyst keys set the server refuses to start without the consortium secret, hash salt and signing key (test added)", "NIST AI 100-2 privacy"],
+        ["Ephemeral signing key and in-memory nonce cache per serverless instance", "Verified in design", "Signatures from one instance cannot be checked after restart; nonces can be replayed on another instance", "Partly fixed: a signing key is required outside demo mode; nonces still per instance (move to Redis)", "Integrity"],
         ["Unbounded account state from API traffic", "Verified in code", "Memory exhaustion with random account ids", "Open. LRU or TTL on account state; per-tenant caps", "OWASP API4"],
         ["Label poisoning through analyst feedback", "Theoretical", "Released or blocked verdicts would feed retraining", "Plan: two-person rule on labels used for training; audit trail already signed", "NIST AI 100-2 poisoning"],
         ["Model extraction through scores and reasons", "Theoretical", "API returns risk, both halves and SHAP reasons", "Plan: return bands only to payment channels; full reasons to analysts", "NIST AI 100-2 privacy"],
@@ -506,7 +506,8 @@ def build():
     <li><code>research/make_streams.py</code>, <code>research/analyze_slice.py</code>, <code>research/amlgentex_transfer.py</code>, <code>research/build_report.py</code>: reproducible experiments and this page.</li>
     <li>API: <code>payment_format</code> is required and validated; payment and receiving currencies are validated (tests added).</li>
     <li>Rate limiter no longer trusts a client-supplied <code>X-Forwarded-For</code> outside Vercel, and evicts idle clients.</li>
-    <li>With configured analyst keys, alerts, evidence packs, STR drafts, cases and the audit log require a key.</li>
+    <li>With configured analyst keys, alerts, evidence packs, STR drafts, cases and the audit log require a key, and the server refuses to start without its signing key, consortium secret and hash salt.</li>
+    <li>Models and pages are embedded in the server binary, which fixes the Vercel deployment (every page returned 404 because Vercel runs the server binary without the repository files).</li>
   </ul>
   <h3>Reproduce</h3>
   <pre><code>cargo build --release -p rusetect --example research_dump

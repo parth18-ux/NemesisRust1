@@ -419,3 +419,15 @@ fn validation_lists_match_cascade_config() {
     assert_eq!(f, keys("fmt_codes"));
     assert_eq!(c, keys("cur_codes"));
 }
+
+/// With real analyst keys the server must not fall back to demo secrets.
+#[test]
+fn production_mode_requires_secrets() {
+    use rusetect_server::missing_production_secrets as miss;
+    let env = |pairs: &'static [(&'static str, &'static str)]| move |k: &str| pairs.iter().find(|(a, _)| *a == k).map(|(_, v)| v.to_string());
+    assert!(miss(env(&[])).is_empty(), "demo mode needs nothing");
+    assert_eq!(miss(env(&[("RUSETECT_ANALYST_KEYS", "{}")])).len(), 3);
+    assert_eq!(miss(env(&[("RUSETECT_ANALYST_KEYS", "{}"), ("RUSETECT_SIGNING_KEY", "x"), ("RUSETECT_CONSORTIUM_SECRET", " ")])),
+               vec!["RUSETECT_CONSORTIUM_SECRET", "RUSETECT_HASH_SALT"]);
+    assert!(miss(env(&[("RUSETECT_ANALYST_KEYS", "{}"), ("RUSETECT_SIGNING_KEY", "a"), ("RUSETECT_CONSORTIUM_SECRET", "b"), ("RUSETECT_HASH_SALT", "c")])).is_empty());
+}

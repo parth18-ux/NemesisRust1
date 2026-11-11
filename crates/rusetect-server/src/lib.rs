@@ -300,6 +300,28 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/static/research.html", "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
 ];
 
+/// Secrets that must be set once the server runs with real analyst keys (not the public demo).
+pub const PRODUCTION_SECRETS: [&str; 3] = ["RUSETECT_SIGNING_KEY", "RUSETECT_CONSORTIUM_SECRET", "RUSETECT_HASH_SALT"];
+
+/// Fail closed: with RUSETECT_ANALYST_KEYS set the deployment is not a demo, so the hard-coded demo consortium secret,
+/// demo hash salt and per-process signing key must not be used. Returns the names of missing secrets.
+pub fn missing_production_secrets(env: impl Fn(&str) -> Option<String>) -> Vec<&'static str> {
+    if env("RUSETECT_ANALYST_KEYS").is_none() {
+        return vec![];
+    }
+    PRODUCTION_SECRETS.into_iter().filter(|k| env(k).map(|v| v.trim().is_empty()).unwrap_or(true)).collect()
+}
+
+/// Start-up check for [`missing_production_secrets`] against the process environment.
+pub fn check_config() -> std::io::Result<()> {
+    let missing = missing_production_secrets(|k| std::env::var(k).ok());
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(std::io::Error::new(std::io::ErrorKind::InvalidInput,
+        format!("RUSETECT_ANALYST_KEYS is set but {} missing; refusing to start with demo secrets", missing.join(", "))))
+}
+
 /// If no repository root with the models can be found, unpack the embedded copy to a temporary folder and point
 /// RUSETECT_ROOT at it. Call once at start-up, before any other thread reads the environment.
 pub fn ensure_root() -> std::io::Result<()> {
