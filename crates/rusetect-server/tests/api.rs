@@ -382,3 +382,40 @@ fn no_legacy_names_anywhere_in_source() {
     }
     assert!(hits.is_empty(), "{hits:?}");
 }
+
+/// A payment without a format, or with a format or currency the models never saw, is rejected instead of being scored
+/// with a silent default (research/out/slice_results.json section F measures what the old defaults did).
+#[tokio::test]
+async fn payment_format_and_currency_are_validated() {
+    let t = T::new();
+    let base = json!({"timestamp": "2022-09-09 10:00", "from_bank": "070", "from_account": "V1", "to_bank": "011", "to_account": "V2", "amount_paid": 100.0});
+    let (s, v, _) = t.req("POST", "/api/v2/payment", Some(base.clone()), &[]).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(v["detail"][0]["type"], "missing");
+    assert_eq!(v["detail"][0]["loc"], json!(["body", "payment_format"]));
+    let mut p = base.clone();
+    p["payment_format"] = json!("UPI");
+    let (s, v, _) = t.req("POST", "/api/v2/payment", Some(p), &[]).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(v["detail"][0]["type"], "literal_error");
+    let mut p = base.clone();
+    p["payment_format"] = json!("Wire");
+    p["payment_currency"] = json!("INR");
+    let (s, v, _) = t.req("POST", "/api/v2/payment", Some(p.clone()), &[]).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(v["detail"][0]["loc"], json!(["body", "payment_currency"]));
+    p["payment_currency"] = json!("Rupee");
+    let (s, _, _) = t.req("POST", "/api/v2/payment", Some(p), &[]).await;
+    assert_eq!(s, StatusCode::OK);
+}
+
+/// The validation lists must match the served model vocabulary.
+#[test]
+fn validation_lists_match_cascade_config() {
+    let cfg: Value = serde_json::from_str(&std::fs::read_to_string(paths::models_dir().join("cascade_config.json")).unwrap()).unwrap();
+    let keys = |k: &str| { let mut v: Vec<String> = cfg[k].as_object().unwrap().keys().cloned().collect(); v.sort(); v };
+    let mut f: Vec<String> = rusetect_server::inputs::PAYMENT_FORMATS.iter().map(|s| s.to_string()).collect(); f.sort();
+    let mut c: Vec<String> = rusetect_server::inputs::CURRENCIES.iter().map(|s| s.to_string()).collect(); c.sort();
+    assert_eq!(f, keys("fmt_codes"));
+    assert_eq!(c, keys("cur_codes"));
+}

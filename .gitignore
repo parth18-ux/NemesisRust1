@@ -3,3 +3,6 @@ data/
 work/
 .env
 .vercel/
+research/out/streams/
+research/out/*.csv
+research/out/run.log
