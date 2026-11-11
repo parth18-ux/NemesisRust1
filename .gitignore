@@ -6,3 +6,4 @@ work/
 research/out/streams/
 research/out/*.csv
 research/out/run.log
+research/out/*.log

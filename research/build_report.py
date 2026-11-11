@@ -138,7 +138,7 @@ def build():
       {f(D['live_mean_uncalibrated']['observed_rate'], 4)}. Isotonic calibration cuts ECE from {f(D['live_mean_uncalibrated']['ece'], 4)} to
       {f(D['mean_of_isotonic_calibrated_halves']['ece'], 4)} without changing ranking. A 0.9 precision threshold fitted on one half of the window
       gave {f(D['threshold_transfer_precision_0.9_target']['uncalibrated_mean']['second_half']['precision'], 2)} on the next.</p></div>
-    <div class="card"><h3>7. The features carry over to a second generator; the trained model does not</h3>
+    <div class="card"><h3>7. Nothing transfers between generators without retraining</h3>
       <p>{transfer_sentence()}</p></div>
   </div>
 </section>""")
@@ -525,16 +525,18 @@ def transfer_sentence():
     if not T:
         return "Transfer experiment not run."
     d = T["difficult"]
-    return (f"On AMLgentex Sweden (difficult), the served HI-Small model reaches ROC-AUC {f(d['zero_shot_served_model_test']['roc_auc'])} zero-shot, while the same 31 features "
-            f"retrained on AMLgentex reach {f(d['in_domain_xgboost_test']['roc_auc_mean'])}. The feature design transfers; the fitted model and its thresholds do not.")
+    g = T["amlgentex_difficult_trained_on_hi_slice_eval"]
+    return (f"On AMLgentex Sweden (difficult) the served HI-Small model scores ROC-AUC {f(d['zero_shot_served_model_test']['roc_auc'])}, which is chance. "
+            f"The same 31 features retrained on AMLgentex reach only {f(d['in_domain_xgboost_test']['roc_auc_mean'])}, and an AMLgentex-trained model ranks HI-Small "
+            f"laundering below genuine payments (ROC-AUC {f(g['roc_auc'])}). The 0.711 result is specific to one simulator.")
 
 
 def transfer_short():
     if not T:
         return "Not measured."
     d = T["difficult"]
-    return (f"The features do (ROC-AUC {f(d['in_domain_xgboost_test']['roc_auc_mean'])} retrained on AMLgentex); the served model does not "
-            f"({f(d['zero_shot_served_model_test']['roc_auc'])} zero-shot).")
+    return (f"No. The served model is at chance on AMLgentex ({f(d['zero_shot_served_model_test']['roc_auc'])}); retrained, the same features reach "
+            f"{f(d['in_domain_xgboost_test']['roc_auc_mean'])}; trained on AMLgentex and tested on HI-Small, the ranking reverses ({f(T['amlgentex_difficult_trained_on_hi_slice_eval']['roc_auc'])}).")
 
 
 def transfer_section():
@@ -562,7 +564,9 @@ def transfer_section():
   Prevalence differs by more than 10x between the sets, so compare ROC-AUC across rows and read PR-AUC against each row's prevalence.</p>
   {table(["Train → test", "Prevalence", "ROC-AUC [95% CI]", "PR-AUC [95% CI]"], rows, "wrap")}
   <p>SAR rate by transaction type (difficult): {', '.join(f'{k} {pct(v, 1)}' for k, v in d['sar_rate_by_type'].items())}. AMLgentex has its own type shortcut:
-  cash transactions are almost all SAR, mirroring ACH in AMLworld. Strongest features retrained in-domain: {', '.join('<code>'+x+'</code>' for x in d['in_domain_top_features_gain'][:5])}.</p>
+  every cash transaction is SAR, mirroring ACH in AMLworld. The reversed ranking on HI-Small follows from these two shortcuts meeting: AMLgentex teaches that
+  cash is laundering and transfers (mapped to ACH) are normal, while HI-Small laundering is almost all ACH. Training on the easy set and testing on the difficult one
+  ({f(e2d['roc_auc'])}) beats training on difficult itself, so more labels from a related generator help more than matching its difficulty. Strongest features retrained in-domain: {', '.join('<code>'+x+'</code>' for x in d['in_domain_top_features_gain'][:5])}.</p>
 </section>"""
 
 
