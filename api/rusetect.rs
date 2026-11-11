@@ -16,7 +16,7 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/models/l2_xgb.json", "service/models/l2_lgbm.json", "service/models/l0_onboarding_lgbm.json",
     "service/models/message_model.json", "service/models/typing_verifier.json", "service/models/benchmark_results.json",
     "service/models/sample_applications.json", "service/models/demo_stream.csv.gz",
-    "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html",
+    "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html", "service/static/research.html",
     "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
 ];
 

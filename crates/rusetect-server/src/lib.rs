@@ -273,6 +273,7 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/console", get(|s| page(s, "console.html")))
         .route("/investigate", get(|s| page(s, "investigate.html")))
         .route("/report", get(|s| page(s, "report.html")))
+        .route("/research", get(|s| page(s, "research.html")))
         .route("/favicon.svg", get(favicon))
         .route("/openapi.json", get(|| async { PyJson(StatusCode::OK, openapi::spec()) }))
         .route("/docs", get(|| async { axum::response::Html(openapi::DOCS_HTML) }))

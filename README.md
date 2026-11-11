@@ -77,6 +77,16 @@ Details: [model selection](docs/model-selection.md), [retraining with the extra 
 [person, session and network layer](docs/SESSION_AND_NETWORK.md), [context layer](docs/CONTEXT_LAYER.md),
 [scaling](docs/SCALING.md), [datasets](docs/datasets.md), [project audit](docs/project-audit.md).
 
+### Research review (November 2026)
+
+An independent check of [the audit and roadmap](docs/research/) against the served models, at `/research` on the site.
+It runs robustness, evasion, calibration and cross generator experiments through the live Rust feature code
+(`research/`, results in `research/out/`). Main findings: the served model leans on payment format (92% of laundering in
+the bundled HI-Small slice is ACH, and re-sending laundering as Cheque takes block recall from 37% to 0%); splitting
+payments in four removes the block band; the LightGBM half adds no measurable PR-AUC; scores are uncalibrated; and the
+31 features transfer to AMLgentex when retrained while the HI-Small model does not. The API no longer fills a missing
+`payment_format` with ACH.
+
 ## Quick start
 
 Install Rust from [rustup.rs](https://rustup.rs), then:

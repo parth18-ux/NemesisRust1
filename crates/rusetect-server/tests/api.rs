@@ -71,7 +71,7 @@ fn pay() -> Value {
 async fn health_and_pages() {
     let t = T::new();
     assert_eq!(t.get("/api/health").await["engine_loaded"], true);
-    for p in ["/", "/console", "/report", "/docs"] {
+    for p in ["/", "/console", "/report", "/research", "/docs"] {
         assert_eq!(t.req("GET", p, None, &[]).await.0, StatusCode::OK, "{p}");
     }
 }
@@ -278,7 +278,7 @@ async fn typing_check_endpoint_uses_the_verifier() {
 #[tokio::test]
 async fn pages_use_the_name_and_api_identity() {
     let t = T::new();
-    for (path, title) in [("/", "<title>RuseTect</title>"), ("/console", "<title>RuseTect Live Console</title>"), ("/report", "<title>RuseTect Benchmark</title>")] {
+    for (path, title) in [("/", "<title>RuseTect</title>"), ("/console", "<title>RuseTect Live Console</title>"), ("/report", "<title>RuseTect Benchmark</title>"), ("/research", "<title>RuseTect Research Review</title>")] {
         let html = t.req("GET", path, None, &[]).await.2;
         assert!(html.contains(title) && html.contains("href=\"/favicon.svg\""), "{path}");
     }
