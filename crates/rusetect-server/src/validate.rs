@@ -99,6 +99,21 @@ impl<'a> Obj<'a> {
         }
     }
 
+    /// Reject a string that is not one of `allowed` (pydantic `Literal` error shape). Skipped when the field is absent
+    /// or already failed type validation.
+    pub fn one_of(&self, errs: &mut Errors, f: &str, s: &str, allowed: &[&str]) {
+        if let Some(v @ Value::String(_)) = self.m.get(f) {
+            if !allowed.contains(&s) {
+                let opts: Vec<String> = allowed.iter().map(|a| format!("'{a}'")).collect();
+                let msg = match opts.split_last() {
+                    Some((last, rest)) if !rest.is_empty() => format!("Input should be {} or {last}", rest.join(", ")),
+                    _ => format!("Input should be {}", opts.join("")),
+                };
+                self.err(errs, "literal_error", f, &msg, v);
+            }
+        }
+    }
+
     pub fn check_len(&self, errs: &mut Errors, f: &str, s: &str, min: Option<usize>, max: Option<usize>) {
         let n = s.chars().count();
         let input = self.m.get(f).unwrap_or(&MISSING);

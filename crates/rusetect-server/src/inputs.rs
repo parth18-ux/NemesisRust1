@@ -4,6 +4,12 @@ use rusetect::payment::Payment;
 use rusetect::session_signals::{Event, SessionSignals};
 use serde_json::{json, Map, Value};
 
+/// Payment formats and currencies the served models were trained on (service/models/cascade_config.json fmt_codes and
+/// cur_codes; a test checks the two stay in sync).
+pub const PAYMENT_FORMATS: [&str; 7] = ["ACH", "Bitcoin", "Cash", "Cheque", "Credit Card", "Reinvestment", "Wire"];
+pub const CURRENCIES: [&str; 15] = ["Australian Dollar", "Bitcoin", "Brazil Real", "Canadian Dollar", "Euro", "Mexican Peso",
+    "Ruble", "Rupee", "Saudi Riyal", "Shekel", "Swiss Franc", "UK Pound", "US Dollar", "Yen", "Yuan"];
+
 #[derive(Debug, Clone)]
 pub struct PaymentIn {
     pub timestamp: String,
@@ -28,8 +34,18 @@ impl PaymentIn {
             amount_paid: o.req_float(e, "amount_paid"),
             payment_currency: o.str_or(e, "payment_currency", "US Dollar"),
             receiving_currency: o.opt_str(e, "receiving_currency"),
-            payment_format: o.str_or(e, "payment_format", "ACH"),
+            // Required: the served models lean on payment format more than on any other feature. The previous default
+            // ("ACH", the format of 92% of laundering in AMLworld) escalated 7,037 genuine payments in a three hour test
+            // window, and a missing or unknown format (NaN) lets the model approve almost everything (PR-AUC 0.408 ->
+            // 0.015). See research/out/slice_results.json, section F.
+            payment_format: o.req_str(e, "payment_format"),
         };
+        o.one_of(e, "payment_format", &p.payment_format, &PAYMENT_FORMATS);
+        // An unknown currency used to be converted to USD at rate 1.0 and given a missing currency code.
+        o.one_of(e, "payment_currency", &p.payment_currency, &CURRENCIES);
+        if let Some(rc) = &p.receiving_currency {
+            o.one_of(e, "receiving_currency", rc, &CURRENCIES);
+        }
         if o.get("amount_paid").is_some() {
             o.gt(e, "amount_paid", p.amount_paid, 0.0);
         }

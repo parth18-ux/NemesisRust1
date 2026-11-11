@@ -273,6 +273,7 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/console", get(|s| page(s, "console.html")))
         .route("/investigate", get(|s| page(s, "investigate.html")))
         .route("/report", get(|s| page(s, "report.html")))
+        .route("/research", get(|s| page(s, "research.html")))
         .route("/favicon.svg", get(favicon))
         .route("/openapi.json", get(|| async { PyJson(StatusCode::OK, openapi::spec()) }))
         .route("/docs", get(|| async { axum::response::Html(openapi::DOCS_HTML) }))
@@ -284,16 +285,81 @@ pub fn build_app(app: AppRef) -> Router {
         .with_state(app)
 }
 
+macro_rules! assets {
+    ($($p:literal),* $(,)?) => { &[$(($p, include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../", $p)) as &[u8])),*] };
+}
+
+/// Models, pages and fixtures compiled into the binary, so the server runs where only the binary is shipped
+/// (Vercel's Rust framework mode builds and runs this binary without the repository files).
+const ASSETS: &[(&str, &[u8])] = assets![
+    "service/models/cascade_config.json", "service/models/l0_config.json", "service/models/l1_gatekeeper.json",
+    "service/models/l2_xgb.json", "service/models/l2_lgbm.json", "service/models/l0_onboarding_lgbm.json",
+    "service/models/message_model.json", "service/models/typing_verifier.json", "service/models/benchmark_results.json",
+    "service/models/sample_applications.json", "service/models/demo_stream.csv.gz",
+    "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html",
+    "service/static/research.html", "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
+];
+
+/// Secrets that must be set once the server runs with real analyst keys (not the public demo).
+pub const PRODUCTION_SECRETS: [&str; 3] = ["RUSETECT_SIGNING_KEY", "RUSETECT_CONSORTIUM_SECRET", "RUSETECT_HASH_SALT"];
+
+/// Fail closed: with RUSETECT_ANALYST_KEYS set the deployment is not a demo, so the hard-coded demo consortium secret,
+/// demo hash salt and per-process signing key must not be used. Returns the names of missing secrets.
+pub fn missing_production_secrets(env: impl Fn(&str) -> Option<String>) -> Vec<&'static str> {
+    if env("RUSETECT_ANALYST_KEYS").is_none() {
+        return vec![];
+    }
+    PRODUCTION_SECRETS.into_iter().filter(|k| env(k).map(|v| v.trim().is_empty()).unwrap_or(true)).collect()
+}
+
+/// Start-up check for [`missing_production_secrets`] against the process environment.
+pub fn check_config() -> std::io::Result<()> {
+    let missing = missing_production_secrets(|k| std::env::var(k).ok());
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(std::io::Error::new(std::io::ErrorKind::InvalidInput,
+        format!("RUSETECT_ANALYST_KEYS is set but {} missing; refusing to start with demo secrets", missing.join(", "))))
+}
+
+/// If no repository root with the models can be found, unpack the embedded copy to a temporary folder and point
+/// RUSETECT_ROOT at it. Call once at start-up, before any other thread reads the environment.
+pub fn ensure_root() -> std::io::Result<()> {
+    if paths::repo_root().join("service/models/cascade_config.json").exists() {
+        return Ok(());
+    }
+    let root = std::env::temp_dir().join("rusetect");
+    for (path, bytes) in ASSETS {
+        let dst = root.join(path);
+        if dst.metadata().map(|m| m.len() == bytes.len() as u64).unwrap_or(false) {
+            continue;
+        }
+        std::fs::create_dir_all(dst.parent().unwrap())?;
+        std::fs::write(dst, bytes)?;
+    }
+    std::env::set_var("RUSETECT_ROOT", &root);
+    Ok(())
+}
+
 pub fn new_shared() -> AppRef {
     let limit = std::env::var("RUSETECT_RATE_LIMIT").ok().and_then(|v| v.parse().ok()).unwrap_or(240);
     Arc::new(Shared { state: Mutex::new(AppState::load()), rate: Mutex::new(RateLimiter::new(limit, 10.0)) })
 }
 
+/// Use X-Forwarded-For for client identity only behind a proxy that sets it: Vercel (VERCEL is set by the platform and
+/// its edge overwrites the header) or RUSETECT_TRUST_PROXY=1.
+static TRUST_PROXY: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
+    std::env::var("RUSETECT_TRUST_PROXY").map(|v| v == "1").unwrap_or(false) || std::env::var("VERCEL").is_ok()
+});
+
 /// Requests per 10 s per client on POST /api.
 async fn rate_limit(State(app): State<AppRef>, req: Request, next: Next) -> Response {
     if req.method() == Method::POST && req.uri().path().starts_with("/api/") {
         let peer = req.extensions().get::<ConnectInfo<SocketAddr>>().map(|c| c.0.ip().to_string()).unwrap_or_else(|| "?".into());
-        let client = req.headers().get("x-forwarded-for").and_then(|v| v.to_str().ok()).map(String::from).unwrap_or(peer);
+        // X-Forwarded-For is client controlled unless a proxy we trust overwrites it; trusting it unconditionally let any
+        // caller pick a fresh identity per request and bypass the limit.
+        let forwarded = if *TRUST_PROXY { req.headers().get("x-forwarded-for").and_then(|v| v.to_str().ok()) } else { None };
+        let client = forwarded.map(String::from).unwrap_or(peer);
         let client = client.split(',').next().unwrap_or("").trim().to_string();
         if !app.rate.lock().unwrap_or_else(|p| p.into_inner()).allow(&client) {
             return PyJson(StatusCode::TOO_MANY_REQUESTS, json!({"detail": "rate limit: too many requests, slow down"})).into_response();
@@ -431,11 +497,22 @@ struct StatusQ {
 }
 
 /// Alerts awaiting or after human review, newest first.
-async fn v2_alerts(State(app): State<AppRef>, Query(q): Query<StatusQ>) -> ApiResult {
+async fn v2_alerts(State(app): State<AppRef>, h: HeaderMap, Query(q): Query<StatusQ>) -> ApiResult {
+    require_reader(&h)?;
     with_state(app, move |s| {
         let al: Vec<Value> = s.desk.alerts.values().filter(|a| q.status.as_deref().map(|st| a["status"] == st).unwrap_or(true)).rev().cloned().collect();
         ok(Value::Array(al))
     }).await
+}
+
+/// Alerts, evidence packs, STR drafts, cases and the audit log name accounts and suspicions (sharing an STR is tipping
+/// off). With configured keys they need a valid X-Analyst-Key of any role; demo mode keeps them open for the public demo.
+fn require_reader(h: &HeaderMap) -> Result<(), ApiError> {
+    if KEYS.demo_mode || analyst_for(header(h, "x-analyst-key").as_deref()).is_some() {
+        Ok(())
+    } else {
+        Err(ApiError::new(401, "missing or unknown X-Analyst-Key"))
+    }
 }
 
 fn header(h: &HeaderMap, k: &str) -> Option<String> {
@@ -481,7 +558,8 @@ async fn v2_review(State(app): State<AppRef>, Path(alert_id): Path<String>, h: H
     }).await
 }
 
-async fn v2_evidence(State(app): State<AppRef>, Path(alert_id): Path<String>) -> ApiResult {
+async fn v2_evidence(State(app): State<AppRef>, h: HeaderMap, Path(alert_id): Path<String>) -> ApiResult {
+    require_reader(&h)?;
     with_state(app, move |s| {
         let mut pack = s.desk.evidence(&alert_id).ok_or_else(|| ApiError::new(404, "unknown alert"))?;
         pack["signature"] = s.signer.sign(&json!({"pack_hash": pack["pack_hash"], "alert_id": alert_id}));
@@ -490,7 +568,8 @@ async fn v2_evidence(State(app): State<AppRef>, Path(alert_id): Path<String>) ->
 }
 
 /// STR draft built from the evidence pack (template, not a language model). For analyst review; never filed automatically.
-async fn v2_str(State(app): State<AppRef>, Path(alert_id): Path<String>) -> ApiResult {
+async fn v2_str(State(app): State<AppRef>, h: HeaderMap, Path(alert_id): Path<String>) -> ApiResult {
+    require_reader(&h)?;
     with_state(app, move |s| {
         let pack = s.desk.evidence(&alert_id).ok_or_else(|| ApiError::new(404, "unknown alert"))?;
         let all: Vec<&Value> = s.desk.alerts.values().collect();
@@ -653,7 +732,8 @@ async fn v2_fixture_mule(State(app): State<AppRef>) -> ApiResult {
     with_state(app, |s| ok(read_json(s.root.join("fixtures/mule_replay.json"))?)).await
 }
 
-async fn v2_audit(State(app): State<AppRef>) -> ApiResult {
+async fn v2_audit(State(app): State<AppRef>, h: HeaderMap) -> ApiResult {
+    require_reader(&h)?;
     with_state(app, |s| ok(json!({"entries": s.desk.log, "chain_valid": s.desk.verify_chain()}))).await
 }
 
@@ -741,7 +821,8 @@ fn int_query(v: &Option<String>, name: &str, default: i64) -> Result<i64, ApiErr
     }
 }
 
-async fn v2_cases(State(app): State<AppRef>, Query(q): Query<LimitQ>) -> ApiResult {
+async fn v2_cases(State(app): State<AppRef>, h: HeaderMap, Query(q): Query<LimitQ>) -> ApiResult {
+    require_reader(&h)?;
     let limit = int_query(&q.limit, "limit", 50)?.clamp(1, 500) as usize;
     with_state(app, move |s| ok(Value::Array(s.need_engine()?.cases(limit)))).await
 }

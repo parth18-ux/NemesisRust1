@@ -5,6 +5,8 @@ use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    rusetect_server::check_config()?;
+    rusetect_server::ensure_root()?;
     let args: Vec<String> = std::env::args().collect();
     let arg = |k: &str| args.iter().position(|a| a == k).and_then(|i| args.get(i + 1)).cloned();
     let host = arg("--host").or_else(|| std::env::var("HOST").ok()).unwrap_or_else(|| "0.0.0.0".into());

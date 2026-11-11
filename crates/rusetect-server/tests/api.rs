@@ -71,7 +71,7 @@ fn pay() -> Value {
 async fn health_and_pages() {
     let t = T::new();
     assert_eq!(t.get("/api/health").await["engine_loaded"], true);
-    for p in ["/", "/console", "/report", "/docs"] {
+    for p in ["/", "/console", "/report", "/research", "/docs"] {
         assert_eq!(t.req("GET", p, None, &[]).await.0, StatusCode::OK, "{p}");
     }
 }
@@ -278,7 +278,7 @@ async fn typing_check_endpoint_uses_the_verifier() {
 #[tokio::test]
 async fn pages_use_the_name_and_api_identity() {
     let t = T::new();
-    for (path, title) in [("/", "<title>RuseTect</title>"), ("/console", "<title>RuseTect Live Console</title>"), ("/report", "<title>RuseTect Benchmark</title>")] {
+    for (path, title) in [("/", "<title>RuseTect</title>"), ("/console", "<title>RuseTect Live Console</title>"), ("/report", "<title>RuseTect Benchmark</title>"), ("/research", "<title>RuseTect Research Review</title>")] {
         let html = t.req("GET", path, None, &[]).await.2;
         assert!(html.contains(title) && html.contains("href=\"/favicon.svg\""), "{path}");
     }
@@ -381,4 +381,53 @@ fn no_legacy_names_anywhere_in_source() {
         }
     }
     assert!(hits.is_empty(), "{hits:?}");
+}
+
+/// A payment without a format, or with a format or currency the models never saw, is rejected instead of being scored
+/// with a silent default (research/out/slice_results.json section F measures what the old defaults did).
+#[tokio::test]
+async fn payment_format_and_currency_are_validated() {
+    let t = T::new();
+    let base = json!({"timestamp": "2022-09-09 10:00", "from_bank": "070", "from_account": "V1", "to_bank": "011", "to_account": "V2", "amount_paid": 100.0});
+    let (s, v, _) = t.req("POST", "/api/v2/payment", Some(base.clone()), &[]).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(v["detail"][0]["type"], "missing");
+    assert_eq!(v["detail"][0]["loc"], json!(["body", "payment_format"]));
+    let mut p = base.clone();
+    p["payment_format"] = json!("UPI");
+    let (s, v, _) = t.req("POST", "/api/v2/payment", Some(p), &[]).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(v["detail"][0]["type"], "literal_error");
+    let mut p = base.clone();
+    p["payment_format"] = json!("Wire");
+    p["payment_currency"] = json!("INR");
+    let (s, v, _) = t.req("POST", "/api/v2/payment", Some(p.clone()), &[]).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(v["detail"][0]["loc"], json!(["body", "payment_currency"]));
+    p["payment_currency"] = json!("Rupee");
+    let (s, _, _) = t.req("POST", "/api/v2/payment", Some(p), &[]).await;
+    assert_eq!(s, StatusCode::OK);
+}
+
+/// The validation lists must match the served model vocabulary.
+#[test]
+fn validation_lists_match_cascade_config() {
+    let cfg: Value = serde_json::from_str(&std::fs::read_to_string(paths::models_dir().join("cascade_config.json")).unwrap()).unwrap();
+    let keys = |k: &str| { let mut v: Vec<String> = cfg[k].as_object().unwrap().keys().cloned().collect(); v.sort(); v };
+    let mut f: Vec<String> = rusetect_server::inputs::PAYMENT_FORMATS.iter().map(|s| s.to_string()).collect(); f.sort();
+    let mut c: Vec<String> = rusetect_server::inputs::CURRENCIES.iter().map(|s| s.to_string()).collect(); c.sort();
+    assert_eq!(f, keys("fmt_codes"));
+    assert_eq!(c, keys("cur_codes"));
+}
+
+/// With real analyst keys the server must not fall back to demo secrets.
+#[test]
+fn production_mode_requires_secrets() {
+    use rusetect_server::missing_production_secrets as miss;
+    let env = |pairs: &'static [(&'static str, &'static str)]| move |k: &str| pairs.iter().find(|(a, _)| *a == k).map(|(_, v)| v.to_string());
+    assert!(miss(env(&[])).is_empty(), "demo mode needs nothing");
+    assert_eq!(miss(env(&[("RUSETECT_ANALYST_KEYS", "{}")])).len(), 3);
+    assert_eq!(miss(env(&[("RUSETECT_ANALYST_KEYS", "{}"), ("RUSETECT_SIGNING_KEY", "x"), ("RUSETECT_CONSORTIUM_SECRET", " ")])),
+               vec!["RUSETECT_CONSORTIUM_SECRET", "RUSETECT_HASH_SALT"]);
+    assert!(miss(env(&[("RUSETECT_ANALYST_KEYS", "{}"), ("RUSETECT_SIGNING_KEY", "a"), ("RUSETECT_CONSORTIUM_SECRET", "b"), ("RUSETECT_HASH_SALT", "c")])).is_empty());
 }

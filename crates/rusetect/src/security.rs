@@ -110,6 +110,11 @@ impl RateLimiter {
 
     pub fn allow(&mut self, client: &str) -> bool {
         let now = time_time();
+        if self.hits.len() > 50_000 {
+            // bound memory: forget clients with no hit inside the window
+            let per = self.per;
+            self.hits.retain(|_, q| q.back().map(|t| *t > now - per).unwrap_or(false));
+        }
         let q = self.hits.entry(client.to_string()).or_default();
         while q.front().map(|t| *t <= now - self.per).unwrap_or(false) {
             q.pop_front();
