@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RuseTect Live Console</title>
+<meta name="description" content="RuseTect live console: replay recorded synthetic IBM AMLworld payments through the live L1 + L2 payment path.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: control bar, then funnel strip, then two columns (alert feed | cases + onboarding). */
+:root{
+  --paper:#ffffff; --wash:#f5f4ef; --olive:#3c4a14; --olive-ink:#f3f5ea; --sage:#8e9b74; --sage-deep:#6f7c57;
+  --bg:#f5f4ef; --panel:#ffffff; --ink:#111111; --ink-2:#5f5f5c; --ink-3:#8d8d88; --rule:#e7e6e1;
+  --accent:#3c4a14; --accent-soft:#e8ecda; --bad:#b3261e; --bad-soft:#f6e1de; --warn:#8a5a00; --warn-soft:#f3e9d4; --ok:#4d6b1f; --ok-soft:#e5edd5;
+  --f-boost:#3c4a14; --f-classic:#6f7c57; --f-deep:#8a6d3b; --f-graph:#a8641c; --f-unsup:#b5b4ad;
+  --serif:"Instrument Serif","Iowan Old Style","Palatino Linotype",Georgia,serif;
+  --sans:"Geist",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --display:var(--serif); --body:var(--sans); --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--body);padding-inline:16px;padding-block:20px 40px}
+.wrap{max-width:1360px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+h1{font:700 24px/1.1 var(--display);margin:0;letter-spacing:-.01em}
+h1 small{display:block;font:500 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:500 13px var(--body);border:1px solid var(--rule);background:var(--panel);color:var(--ink);border-radius:6px;padding:8px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.status{font:12px var(--mono);color:var(--ink-3)}
+.panel{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:14px 16px;min-width:0}
+.label{font:500 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.funnel{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0;padding:0;overflow:hidden}
+.fstep{padding:14px 16px;border-left:1px solid var(--rule);display:flex;flex-direction:column;gap:4px}
+.fstep:first-child{border-left:0}
+.fstep .v{font:500 24px var(--mono);font-variant-numeric:tabular-nums}
+.fstep .s{font-size:12px;color:var(--ink-2)}
+.fstep.l1 .v{color:var(--ok)} .fstep.hold .v{color:var(--warn)} .fstep.block .v{color:var(--bad)}
+.meter{height:4px;background:var(--rule);border-radius:2px;overflow:hidden;margin-top:4px}
+.meter div{height:100%;background:currentColor;transition:width .3s}
+@media (max-width:900px){.funnel{grid-template-columns:repeat(3,minmax(0,1fr))}.fstep:nth-child(4){border-left:0}.fstep:nth-child(n+4){border-top:1px solid var(--rule)}}
+.truth{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.truth .t{display:flex;flex-direction:column;gap:2px;border-left:2px solid var(--accent);padding-left:12px}
+.truth .t b{font:500 20px var(--mono);font-variant-numeric:tabular-nums}
+.truth .t span{font-size:12px;color:var(--ink-2)}
+@media (max-width:900px){.truth{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.progress{height:6px;background:var(--rule);border-radius:3px;overflow:hidden}
+.progress div{height:100%;background:var(--accent);width:0;transition:width .3s}
+.cols{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:1000px){.cols{grid-template-columns:1fr}}
+.side{display:flex;flex-direction:column;gap:16px;min-width:0}
+.feed{display:flex;flex-direction:column;gap:0;max-height:640px;overflow-y:auto}
+.alert{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--rule)}
+.alert:first-child{border-top:0}
+.alert .route{font:12.5px var(--mono);color:var(--ink);overflow-wrap:anywhere}
+.alert .meta{font-size:12px;color:var(--ink-3)}
+.pill{font:500 11.5px var(--mono);padding:2px 8px;border-radius:999px;white-space:nowrap;justify-self:end}
+.pill.block{background:var(--bad-soft);color:var(--bad)} .pill.hold{background:var(--warn-soft);color:var(--warn)} .pill.verify{background:var(--accent-soft);color:var(--accent)}
+.reasons{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:11.5px;background:var(--bg);border:1px solid var(--rule);border-radius:4px;padding:1px 7px;color:var(--ink-2)}
+.verdict{font:500 11.5px var(--mono);justify-self:end}
+.verdict.y{color:var(--ok)} .verdict.n{color:var(--ink-3)}
+.empty{color:var(--ink-3);font-size:13px;padding:18px 0}
+.case{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--rule)}
+.case:first-of-type{border-top:0}
+.case svg{width:120px;height:84px;background:var(--bg);border-radius:6px}
+.case b{font:500 13px var(--mono)}
+.case span{display:block;font-size:12px;color:var(--ink-2)}
+.ob{display:flex;flex-direction:column;gap:10px}
+.ob .row{display:flex;gap:8px;flex-wrap:wrap}
+.obres{font-size:13px;border-radius:8px;padding:10px 12px;background:var(--bg);min-height:62px}
+.obres b{font-family:var(--mono)}
+.num{font-variant-numeric:tabular-nums}
+.lure{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media (max-width:1000px){.lure{grid-template-columns:1fr}}
+.lure textarea{width:100%;min-height:96px;font:13px/1.45 var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--rule);border-radius:8px;padding:10px 12px;resize:vertical}
+.lure textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.lure .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.lure .row button.s{padding:4px 10px;font-size:12px}
+.lres{display:flex;flex-direction:column;gap:8px;font-size:13px;background:var(--bg);border-radius:8px;padding:12px 14px;min-height:150px}
+.lres .head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.lres .wf{font-weight:600}
+.lres .desc{color:var(--ink-2)}
+.pill.safe{background:var(--ok-soft);color:var(--ok)}
+.chip.hard{border-color:var(--bad);color:var(--bad)}
+.note{font-size:12.5px;border-left:3px solid var(--accent);padding:4px 10px;color:var(--ink-2)}
+.note.warn{border-color:var(--warn)} .note.bad{border-color:var(--bad)}
+.fatigue{font:12px var(--mono);color:var(--ink-3)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+
+/* shared site nav, in the home page style */
+nav.site{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px 16px;padding-block:6px 10px}
+nav.site .brand{font:600 19px/1 var(--sans);letter-spacing:-.03em;text-decoration:none;color:var(--ink)}
+nav.site .links{display:flex;flex-wrap:wrap;gap:6px 24px;font:500 13.5px var(--sans)}
+nav.site .links a{text-decoration:none;color:var(--ink)}
+nav.site .links a:hover{color:var(--olive)}
+nav.site .links a[aria-current]{text-decoration:underline;text-underline-offset:6px;text-decoration-thickness:1.5px}
+nav.site .cta{justify-self:end;display:inline-flex;align-items:center;gap:6px;background:var(--olive);color:var(--olive-ink);text-decoration:none;font:500 13.5px var(--sans);padding:10px 18px;border-radius:999px}
+nav.site .cta:hover{background:#2d380d}
+@media (max-width:780px){nav.site{grid-template-columns:1fr auto}nav.site .links{grid-column:1/-1;order:3}}
+
+/* home page look applied to the app pages */
+h1{font:400 clamp(36px,4.8vw,56px)/1 var(--serif);letter-spacing:-.02em}
+h1 small{font:500 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px}
+h2{font-family:var(--serif);font-weight:400;letter-spacing:-.015em}
+button,.btn{border-radius:999px!important;font-family:var(--sans)}
+button.primary{background:var(--olive);border-color:var(--olive);color:var(--olive-ink)}
+.panel{border-radius:16px}
+:focus-visible{outline:2px solid var(--olive);outline-offset:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="site" aria-label="Pages"><a class="brand" href="/">RuseTect</a><div class="links"><a href="/">Home</a><a href="/investigate">Investigator</a><a href="/report">Benchmark report</a><a href="/docs">API docs</a></div><a class="cta" href="/investigate">Open investigator ↗</a></nav>
+  <header>
+    <h1><small>RuseTect · live payment path (L1 + L2)</small>Live Console</h1>
+    <div class="controls">
+      <button id="btnReset">1 · Load account history</button>
+      <button id="btnRun" class="primary" disabled>2 · Stream payments</button>
+      <button id="btnPause" disabled>Pause</button>
+      <span class="status" id="status">Engine: checking…</span>
+    </div>
+  </header>
+
+  <div class="panel" style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span class="label">Replay of recorded IBM AMLworld test period payments (synthetic dataset)</span><span class="status" id="simtime">sim time: waiting</span></div>
+    <div class="progress"><div id="prog"></div></div>
+  </div>
+
+  <div class="panel funnel">
+    <div class="fstep"><span class="label">Scored</span><span class="v" id="fScored">0</span><span class="s">payments through the cascade</span></div>
+    <div class="fstep l1"><span class="label">L1 cleared</span><span class="v" id="fL1">0</span><span class="s" id="fL1p">approved by gatekeeper</span><div class="meter"><div id="mL1" style="width:0"></div></div></div>
+    <div class="fstep"><span class="label">L2 escalated</span><span class="v" id="fL2">0</span><span class="s">sent to XGBoost + LightGBM</span></div>
+    <div class="fstep hold"><span class="label">Verify / hold</span><span class="v" id="fMed">0</span><span class="s">OTP recheck or analyst hold</span></div>
+    <div class="fstep block"><span class="label">Block + STR</span><span class="v" id="fBlock">0</span><span class="s">auto blocked, STR drafted</span></div>
+    <div class="fstep"><span class="label">L4 cases</span><span class="v" id="fCases">0</span><span class="s">mule clusters to review</span></div>
+  </div>
+
+  <div class="panel truth">
+    <div class="t"><b id="tPrec">n/a</b><span>precision of blocks vs. ground truth</span></div>
+    <div class="t"><b id="tRec">n/a</b><span>laundering payments blocked</span></div>
+    <div class="t"><b id="tTP">0 / 0</b><span>caught / laundering seen</span></div>
+    <div class="t"><b id="tFP">0</b><span>false blocks</span></div>
+    <div class="t"><b id="tLat">n/a</b><span>median latency per payment</span></div>
+  </div>
+
+  <div class="panel lure">
+    <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+      <span class="label">L-1 lure detector · scam message or call transcript</span>
+      <textarea id="msgText" aria-label="Message text">Sir, this is Inspector Sharma from CBI. Your Aadhaar is linked to a money laundering case. You are under digital arrest, stay on the video call and transfer Rs 2,50,000 to the RBI verification account rbi.verify@paytm. Do not tell anyone.</textarea>
+      <div class="row" id="msgSamples"></div>
+      <div class="row"><button class="primary" id="msgCheck">Check message</button><button id="msgPay" disabled>Then pay a new payee</button><button id="msgPayScam" disabled>Pay the UPI ID in the message</button></div>
+      <span class="fatigue" id="fatigue">Alert budget: nothing scored yet</span>
+    </div>
+    <div class="lres" id="msgRes"><span class="empty" style="padding:0">Paste an SMS, WhatsApp message or call transcript. The model scores it, names the scam workflow and tactics, and decides whether the user should be interrupted. A payment that follows a risky message is escalated.</span></div>
+  </div>
+
+  <div class="cols">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px"><span class="label">Alert feed · newest first</span><span class="status">ground truth label shown for the demo only</span></div>
+      <div class="feed" id="feed"><div class="empty">Load account history, then stream payments. Blocks and holds appear here with the reasons the model gave.</div></div>
+    </div>
+    <div class="side">
+      <div class="panel">
+        <span class="label">L4 ring linker · largest cases</span>
+        <div id="cases"><div class="empty">Cases form when blocked payments share accounts.</div></div>
+      </div>
+      <div class="panel ob">
+        <span class="label">L0 onboarding gate · new account applications (Feedzai BAF, test months)</span>
+        <div class="row"><button id="obMule">Score application A</button><button id="obGen">Score application B</button></div>
+        <div class="obres" id="obres">Two held out applications from the synthetic Feedzai BAF dataset. One is labelled fraud, one genuine. The model sees neither label.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SAMPLES = {"mule": {"income": 0.9, "name_email_similarity": 0.0452381698427012, "prev_address_months_count": -1, "current_address_months_count": 84, "customer_age": 40, "days_since_request": 0.0076979065840055, "intended_balcon_amount": -0.5697656791958139, "payment_type": "AC", "zip_count_4w": 2539, "velocity_6h": 3655.14740343208, "velocity_24h": 3798.573074800848, "velocity_4w": 3107.0505436563453, "bank_branch_count_8w": 0, "date_of_birth_distinct_emails_4w": 1, "employment_status": "CA", "credit_risk_score": 249, "email_is_free": 1, "housing_status": "BA", "phone_home_valid": 0, "phone_mobile_valid": 1, "bank_months_count": -1, "has_other_cards": 0, "proposed_credit_limit": 2000.0, "foreign_request": 0, "source": "INTERNET", "session_length_in_minutes": 3.102063265364043, "device_os": "windows", "keep_alive_session": 0, "device_distinct_emails_8w": 1, "device_fraud_count": 0}, "genuine": {"income": 0.4, "name_email_similarity": 0.8707952377237682, "prev_address_months_count": 46, "current_address_months_count": 11, "customer_age": 40, "days_since_request": 0.007769235283125, "intended_balcon_amount": -1.1096952670520477, "payment_type": "AB", "zip_count_4w": 717, "velocity_6h": 2969.442803950711, "velocity_24h": 3663.957943681082, "velocity_4w": 3039.0498465342584, "bank_branch_count_8w": 1, "date_of_birth_distinct_emails_4w": 9, "employment_status": "CD", "credit_risk_score": 77, "email_is_free": 0, "housing_status": "BC", "phone_home_valid": 1, "phone_mobile_valid": 0, "bank_months_count": 2, "has_other_cards": 1, "proposed_credit_limit": 200.0, "foreign_request": 0, "source": "INTERNET", "session_length_in_minutes": 4.513869524714286, "device_os": "linux", "keep_alive_session": 1, "device_distinct_emails_8w": 1, "device_fraud_count": 0}};
+const $ = id => document.getElementById(id);
+const nf = n => Number(n).toLocaleString("en-US");
+const pct = (a, b) => b ? (100 * a / b).toFixed(1) + "%" : "n/a";
+let running = false, totals = {scored: 0, L1: 0, L2: 0, med: 0, high: 0};
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, {method: opts.method || "GET", headers: {"Content-Type": "application/json"}, body: opts.body ? JSON.stringify(opts.body) : undefined});
+  if (!r.ok) throw new Error(`${path} returned ${r.status}`);
+  return r.json();
+}
+
+async function boot() {
+  try { const h = await api("/api/"); $("status").textContent = h.engine_loaded ? "Engine: models loaded" : "Engine: models missing"; }
+  catch (e) { $("status").textContent = "Engine: API not reachable"; }
+}
+
+$("btnReset").onclick = async () => {
+  $("btnReset").disabled = true; $("status").textContent = "Ingesting earlier payments as account history (up to ~2 min for the full history)…";
+  const r = await api("/api/v2/demo/reset", {method: "POST"});
+  totals = {scored: 0, L1: 0, L2: 0, med: 0, high: 0}; render({truth: {tp: 0, fp: 0, pos: 0}, feed: [], cases: [], position: 0, total: r.remaining});
+  $("status").textContent = `History loaded: ${nf(r.history_ingested)} payments (${r.source}) in ${r.seconds}s`;
+  $("btnRun").disabled = false; $("btnReset").disabled = false;
+};
+$("btnRun").onclick = () => { running = true; $("btnRun").disabled = true; $("btnPause").disabled = false; $("btnReset").disabled = true; loop(); };
+$("btnPause").onclick = () => { running = false; $("btnPause").disabled = true; $("btnRun").disabled = false; $("btnReset").disabled = false; };
+
+async function loop() {
+  while (running) {
+    const r = await api("/api/v2/demo/next?n=1500", {method: "POST"});
+    totals.scored += r.scored; totals.L1 += r.exits.L1; totals.L2 += r.exits.L2; totals.med += r.bands.med; totals.high += r.bands.high;
+    render(r);
+    if (r.done) { running = false; $("btnPause").disabled = true; $("btnReset").disabled = false; $("status").textContent = "Replay finished"; }
+  }
+}
+
+function render(r) {
+  $("fScored").textContent = nf(totals.scored); $("fL1").textContent = nf(totals.L1); $("fL2").textContent = nf(totals.L2);
+  $("fMed").textContent = nf(totals.med); $("fBlock").textContent = nf(totals.high);
+  $("fL1p").textContent = totals.scored ? `${pct(totals.L1, totals.scored)} approved by gatekeeper` : "approved by gatekeeper";
+  $("mL1").style.width = totals.scored ? (100 * totals.L1 / totals.scored) + "%" : 0;
+  $("fCases").textContent = nf(r.open_cases || 0);
+  const T = r.truth; $("tPrec").textContent = pct(T.tp, T.tp + T.fp); $("tRec").textContent = pct(T.tp, T.pos);
+  $("tTP").textContent = `${nf(T.tp)} / ${nf(T.pos)}`; $("tFP").textContent = nf(T.fp);
+  $("tLat").textContent = r.latency_p50_ms != null ? r.latency_p50_ms.toFixed(2) + " ms" : "n/a";
+  $("prog").style.width = r.total ? (100 * r.position / r.total) + "%" : 0;
+  if (r.sim_time) $("simtime").textContent = `sim time ${r.sim_time} UTC · ${nf(r.position)} of ${nf(r.total)}`;
+  renderFeed(r.feed || []); renderCases(r.cases || []);
+}
+
+function renderFeed(feed) {
+  if (!feed.length) return;
+  $("feed").innerHTML = feed.map(a => {
+    const cls = a.decision.startsWith("Block") ? "block" : a.decision.startsWith("Hold") ? "hold" : "verify";
+    return `<div class="alert"><div><div class="route">${a.from} → ${a.to}</div><div class="meta">${a.ts} · ${nf(a.amount)} ${a.currency} · ${a.format} · risk ${a.risk.toFixed(3)}${a.case_id ? " · " + a.case_id.replace("CASE-", "Case ") : ""}</div></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><span class="pill ${cls}">${a.decision === "Step-up verification" ? "Verify customer" : a.decision}</span><span class="verdict ${a.truth ? "y" : "n"}">${a.truth ? "laundering ✓" : "not laundering"}</span></div>
+      <div class="reasons">${a.reasons.map(x => `<span class="chip">${x.feature}: ${x.display}</span>`).join("")}</div></div>`;
+  }).join("");
+}
+
+function renderCases(cases) {
+  if (!cases.length) return;
+  $("cases").innerHTML = cases.slice(0, 5).map(c => `<div class="case">${miniGraph(c.edges)}<div><b>${c.case_id.replace("CASE-", "Case ")}</b><span>${c.alerts} blocked payments · ${c.accounts} accounts</span><span>${nf(c.total_amount)} moved · ${c.formats.join(", ")}</span></div></div>`).join("");
+}
+
+function miniGraph(edges) {
+  const ids = [...new Set(edges.flatMap(e => [e.from, e.to]))].slice(0, 14), W = 120, H = 84, R = 30;
+  const pos = Object.fromEntries(ids.map((id, i) => { const a = 2 * Math.PI * i / ids.length - Math.PI / 2; return [id, [W / 2 + R * 1.45 * Math.cos(a), H / 2 + R * Math.sin(a)]]; }));
+  const ink = getComputedStyle(document.documentElement).getPropertyValue("--ink-3").trim(), bad = getComputedStyle(document.documentElement).getPropertyValue("--bad").trim();
+  const ls = edges.filter(e => pos[e.from] && pos[e.to]).map(e => `<line x1="${pos[e.from][0]}" y1="${pos[e.from][1]}" x2="${pos[e.to][0]}" y2="${pos[e.to][1]}" stroke="${ink}" stroke-width="1"/>`).join("");
+  const ns = ids.map(id => `<circle cx="${pos[id][0]}" cy="${pos[id][1]}" r="3.6" fill="${bad}"/>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="accounts in case">${ls}${ns}</svg>`;
+}
+
+async function onboard(kind) {
+  const r = await api("/api/v2/onboard", {method: "POST", body: SAMPLES[kind]});
+  const s = SAMPLES[kind];
+  $("obres").innerHTML = `<b>${r.decision}</b><br>Risk ${r.risk.toFixed(4)} vs. threshold ${r.threshold.toFixed(4)} for age ${s.customer_age >= 50 ? "50+" : "under 50"} · device ${s.device_os} · housing ${s.housing_status} · name/email similarity ${s.name_email_similarity.toFixed(2)}<br><span style="color:var(--ink-3)">Dataset label: ${kind === "mule" ? "fraud" : "genuine"}</span>`;
+}
+// ---- L-1 lure detector
+const MSG_SAMPLES = {
+  "KYC block": "Dear SBI customer your account will be blocked today. Please update your PAN card immediately click http://sbi-kyc-update.in/verify",
+  "Task job": "Hi, I am Neha from a recruitment team. Part time job: like YouTube videos and earn Rs 3,000 to Rs 8,000 daily from home. Join our Telegram task group.",
+  "Voice clone": "Papa main police station mein hoon, mujhe pakad liya hai. Jaldi Rs 50,000 bhejo is number par 9876501234, mummy ko mat batana.",
+  "Screen share": "Sir I am from your bank, to cancel the fraud transaction install AnyDesk and read out the OTP you just received.",
+  "Genuine OTP": "482913 is your OTP for transaction of Rs 2,300 at MYNTRA on HDFC Bank card XX1234. Valid for 5 mins. Do not share this OTP with anyone.",
+  "Genuine family": "Papa please send Rs 4,500 for the hostel fee, the last date is Friday. I will send the receipt.",
+};
+let lastMsg = null, payClock = 0;
+$("msgSamples").innerHTML = Object.keys(MSG_SAMPLES).map(k => `<button class="s" data-k="${k}">${k}</button>`).join("");
+$("msgSamples").onclick = e => { const k = e.target.dataset && e.target.dataset.k; if (k) { $("msgText").value = MSG_SAMPLES[k]; $("msgCheck").click(); } };
+const esc = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+async function refreshFatigue() {
+  const s = await api("/api/v2/alerts/summary");
+  const sup = (s.suppressed_caution || 0) + (s.suppressed_duplicate || 0) + (s.suppressed_daily_cap || 0) + (s.suppressed_no_account || 0);
+  $("fatigue").textContent = `Alert budget: ${s.messages || 0} messages scored · ${s.notified || 0} pushed · ${sup} held back (caution ${s.suppressed_caution || 0}, duplicate ${s.suppressed_duplicate || 0}, daily cap ${s.suppressed_daily_cap || 0}) · ${s.payments_escalated || 0} payments escalated`;
+}
+
+$("msgCheck").onclick = async () => {
+  const text = $("msgText").value.trim(); if (!text) return;
+  $("msgCheck").disabled = true;
+  try {
+    const r = await api("/api/v2/message", {method: "POST", body: {text, channel: "sms", timestamp: "2022-09-09 09:00", bank: "070", account: "DEMO-USER"}});
+    lastMsg = r;
+    const cls = r.band === "high" ? "block" : r.band === "caution" ? "hold" : "safe";
+    const wf = r.workflow ? `<div><span class="wf">${esc(r.workflow.label)}</span><div class="desc">${esc(r.workflow.description)}</div></div>` : `<div class="desc">No scam workflow matched.</div>`;
+    const chips = [...r.hard_signals.map(h => `<span class="chip hard">${esc(h.label)}</span>`), ...r.tactics.map(t => `<span class="chip">${esc(t.label)}</span>`)].join("");
+    const ents = [...r.entities.upi_ids, ...r.entities.phones, ...r.entities.links].map(x => `<span class="chip">${esc(x)}</span>`).join("");
+    const al = r.alert.notify ? `<div class="note bad"><b>Push warning sent:</b> ${esc(r.alert.message)}</div>` : `<div class="note">No push: ${esc(r.alert.reason)}</div>`;
+    $("msgRes").innerHTML = `<div class="head"><span class="pill ${cls}">${r.band === "high" ? "High risk" : r.band === "caution" ? "Caution" : "Looks safe"}</span><span class="num">risk ${r.risk.toFixed(3)}</span><span class="status">model ${r.model_risk.toFixed(3)}</span></div>
+      ${wf}${chips ? `<div class="reasons">${chips}</div>` : ""}${r.key_phrases.length ? `<div class="desc">Key phrases: ${r.key_phrases.map(esc).join(" · ")}</div>` : ""}
+      ${ents ? `<div class="reasons"><span class="status">entities →</span>${ents}</div>` : ""}${al}`;
+    $("msgPay").disabled = false; $("msgPayScam").disabled = !r.entities.upi_ids.length;
+    refreshFatigue();
+  } catch (e) { $("msgRes").textContent = "Message check failed: " + e.message; }
+  $("msgCheck").disabled = false;
+};
+
+async function payAfter(toBank, toAcct) {
+  payClock += 1;
+  const t = `2022-09-09 ${String(10 + Math.floor(payClock / 60) % 12).padStart(2, "0")}:${String(payClock % 60).padStart(2, "0")}`;
+  const r = await api("/api/v2/payment", {method: "POST", body: {timestamp: t, from_bank: "070", from_account: "DEMO-USER", to_bank: toBank, to_account: toAcct, amount_paid: 2500, payment_format: "ACH"}});
+  const cls = r.band === "high" ? "bad" : r.band === "med" ? "warn" : "";
+  const was = r.decision_before_lure ? ` (payment model alone: ${esc(r.decision_before_lure)})` : "";
+  const lure = r.reasons.filter(x => /message/.test(x.feature)).map(x => `${esc(x.feature)}: ${esc(x.display)}`).join(" · ");
+  $("msgRes").insertAdjacentHTML("beforeend", `<div class="note ${cls}"><b>Payment to ${esc(toAcct)} → ${esc(r.decision)}</b>${was}${lure ? "<br>" + lure : ""}${r.payer_prompt ? "<br><i>" + esc(r.payer_prompt) + "</i>" : ""}</div>`);
+  refreshFatigue();
+}
+$("msgPay").onclick = () => payAfter("011", "NEW-PAYEE-" + Math.floor(Math.random() * 1e6));
+$("msgPayScam").onclick = () => lastMsg && payAfter("upi", lastMsg.entities.upi_ids[0]);
+
+$("obMule").onclick = () => onboard("mule"); $("obGen").onclick = () => onboard("genuine");
+boot();
+</script>
+</body>
+</html>

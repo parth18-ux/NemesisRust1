@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- Source of truth for the benchmark page. Edit here, then run: python ml/build_report.py -->
+<title>RuseTect Benchmark</title>
+<meta name="description" content="RuseTect model benchmark on synthetic IBM AMLworld and Feedzai BAF data: committed results and a fresh comparison.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a single reading column (max 980px) with full-width data blocks; funnel diagram leads, evidence follows. */
+:root{
+  --paper:#ffffff; --wash:#f5f4ef; --olive:#3c4a14; --olive-ink:#f3f5ea; --sage:#8e9b74; --sage-deep:#6f7c57;
+  --bg:#f5f4ef; --panel:#ffffff; --ink:#111111; --ink-2:#5f5f5c; --ink-3:#8d8d88; --rule:#e7e6e1;
+  --accent:#3c4a14; --accent-soft:#e8ecda; --bad:#b3261e; --bad-soft:#f6e1de; --warn:#8a5a00; --warn-soft:#f3e9d4; --ok:#4d6b1f; --ok-soft:#e5edd5;
+  --f-boost:#3c4a14; --f-classic:#6f7c57; --f-deep:#8a6d3b; --f-graph:#a8641c; --f-unsup:#b5b4ad;
+  --serif:"Instrument Serif","Iowan Old Style","Palatino Linotype",Georgia,serif;
+  --sans:"Geist",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --display:var(--serif); --body:var(--sans); --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 var(--body);padding-inline:16px;padding-block:20px 80px}
+nav.site{max-width:980px;margin:0 auto 32px}
+main{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:56px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;letter-spacing:-.01em}
+h1{font-size:clamp(28px,4.4vw,40px);line-height:1.1;font-weight:700;letter-spacing:-.02em}
+h2{font-size:26px;font-weight:700}
+h3{font-size:17px;font-weight:600;font-family:var(--body)}
+p{margin:0;max-width:68ch;color:var(--ink-2)}
+.eyebrow{font:500 11.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+section{display:flex;flex-direction:column;gap:18px;min-width:0}
+.lede{font-size:17px;color:var(--ink)}
+.meta{display:flex;flex-wrap:wrap;gap:8px 22px;font:13px var(--mono);color:var(--ink-3)}
+.num{font-variant-numeric:tabular-nums;font-family:var(--mono)}
+/* funnel */
+.funnel{display:flex;flex-direction:column;gap:0;background:var(--panel);border:1px solid var(--rule);border-radius:10px;overflow:hidden}
+.stage{display:grid;grid-template-columns:78px minmax(0,1fr) 170px;gap:18px;align-items:center;padding:16px 20px;border-top:1px solid var(--rule)}
+.stage:first-child{border-top:0}
+.tag{font:600 13px var(--mono);color:var(--accent);background:var(--accent-soft);border-radius:4px;padding:4px 0;text-align:center}
+.stage .what{display:flex;flex-direction:column;gap:3px;min-width:0}
+.stage .what b{font-weight:600}
+.stage .what span{color:var(--ink-2);font-size:13.5px}
+.vol{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.vol .n{font:500 16px var(--mono);font-variant-numeric:tabular-nums}
+.vol .n small{color:var(--ink-3);font-size:11.5px;margin-left:4px}
+.bar{height:6px;border-radius:3px;background:var(--accent);min-width:3px}
+.vol .l{font:12px var(--mono);color:var(--bad)}
+.stage.offline{background:repeating-linear-gradient(135deg,transparent 0 8px,color-mix(in srgb,var(--rule) 45%,transparent) 8px 9px)}
+@media (max-width:640px){.stage{grid-template-columns:56px minmax(0,1fr)}.vol{grid-column:1/-1;align-items:flex-start}}
+/* kpis */
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:720px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{border-left:2px solid var(--accent);padding:4px 0 4px 14px;display:flex;flex-direction:column;gap:2px}
+.kpi .v{font:500 26px var(--mono);font-variant-numeric:tabular-nums}
+.kpi .k{font-size:12.5px;color:var(--ink-2);line-height:1.35}
+/* chart */
+.chart{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:18px 16px 10px;overflow-x:auto}
+.chart svg{display:block;min-width:620px;width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12.5px;color:var(--ink-2);padding:0 4px 10px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+/* tables */
+.tbl{overflow-x:auto;border:1px solid var(--rule);border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--rule);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font:500 11.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);background:color-mix(in srgb,var(--bg) 60%,var(--panel))}
+td{font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:0}
+tr.win td{background:var(--accent-soft)}
+td .fam{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:8px}
+/* findings */
+.find{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:720px){.find{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.card p{font-size:14px}
+.fix{border-color:color-mix(in srgb,var(--bad) 45%,var(--rule));background:var(--bad-soft)}
+.fix h3{color:var(--bad)}
+ul.plain{margin:0;padding-left:18px;color:var(--ink-2);max-width:72ch;display:flex;flex-direction:column;gap:6px}
+code{font:13px var(--mono);background:var(--accent-soft);padding:1px 5px;border-radius:3px;color:var(--ink)}
+.rings{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:720px){.rings{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.ring{background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.ring .t{font:500 12px var(--mono);letter-spacing:.04em;color:var(--ink-2)}
+.ring .p{font:500 20px var(--mono)}
+.track{height:5px;border-radius:3px;background:var(--rule);overflow:hidden}
+.track div{height:100%;background:var(--accent)}
+.foot{font-size:12.5px;color:var(--ink-3);max-width:80ch}
+
+
+/* shared site nav, in the home page style */
+nav.site{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px 16px;padding-block:6px 10px}
+nav.site .brand{font:600 19px/1 var(--sans);letter-spacing:-.03em;text-decoration:none;color:var(--ink)}
+nav.site .links{display:flex;flex-wrap:wrap;gap:6px 24px;font:500 13.5px var(--sans)}
+nav.site .links a{text-decoration:none;color:var(--ink)}
+nav.site .links a:hover{color:var(--olive)}
+nav.site .links a[aria-current]{text-decoration:underline;text-underline-offset:6px;text-decoration-thickness:1.5px}
+nav.site .cta{justify-self:end;display:inline-flex;align-items:center;gap:6px;background:var(--olive);color:var(--olive-ink);text-decoration:none;font:500 13.5px var(--sans);padding:10px 18px;border-radius:999px}
+nav.site .cta:hover{background:#2d380d}
+@media (max-width:780px){nav.site{grid-template-columns:1fr auto}nav.site .links{grid-column:1/-1;order:3}}
+
+/* home page look applied to the app pages */
+h1{font:400 clamp(36px,4.8vw,56px)/1 var(--serif);letter-spacing:-.02em}
+h1 small{font:500 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px}
+h2{font-family:var(--serif);font-weight:400;letter-spacing:-.015em}
+button,.btn{border-radius:999px!important;font-family:var(--sans)}
+button.primary{background:var(--olive);border-color:var(--olive);color:var(--olive-ink)}
+.panel{border-radius:16px}
+:focus-visible{outline:2px solid var(--olive);outline-offset:3px}
+</style>
+</head>
+<body>
+<nav class="site" aria-label="Pages"><a class="brand" href="/">RuseTect</a><div class="links"><a href="/">Home</a><a href="/investigate">Investigator</a><a href="/report" aria-current="page">Benchmark report</a><a href="/docs">API docs</a></div><a class="cta" href="/console">Open live console ↗</a></nav>
+<main>
+<header style="display:flex;flex-direction:column;gap:16px">
+  <div class="eyebrow">RuseTect · model benchmark · synthetic data</div>
+  <h1>How the layered filter performed on a million synthetic test payments</h1>
+  <p class="lede">These are committed results from this repository's benchmark scripts on synthetic data; they do not show performance on real banking traffic. 21 model variants across boosting, classical ML, deep learning (MLP, CNN, LSTM, Transformer, GAN) and a graph neural network, tested on 5.08 million IBM AMLworld payments and 1 million Feedzai BAF account applications. The best models are stacked into a cascade: each layer approves what it is sure is clean and passes the rest to a heavier model.</p>
+  <div class="meta"><span>AML test period: 1,015,669 payments · 1,797 laundering</span><span>BAF test: 205,011 applications · 2,878 fraud</span><span>All metrics on held out, later in time data</span></div>
+</header>
+
+<section>
+  <div class="eyebrow">Offline cascade on the test period (not the live API)</div>
+  <h2>What reaches an analyst</h2>
+  <p>Volumes are what each layer passes on during the 10 day test window. The red figure under each bar is how many true laundering payments are still in the stream at that point.</p>
+  <div class="funnel" id="funnel"></div>
+  <p class="foot">L0 runs at account opening on a different population (BAF), so it has its own test set and is not chained numerically into the payment funnel. L3 sequence models run in batch; the online API path is L1 → L2 → decision band → L4.</p>
+</section>
+
+<section>
+  <div class="kpis">
+    <div class="kpi"><span class="v">79.5%</span><span class="k">of payments approved by L1 (0.3 ms each), keeping 99.2% of laundering</span></div>
+    <div class="kpi"><span class="v">0.921</span><span class="k">precision of offline blend blocks (1,018 of 1,105 are labelled laundering)</span></div>
+    <div class="kpi"><span class="v">3.5×</span><span class="k">fewer items to review once alerts are grouped into ring cases</span></div>
+    <div class="kpi"><span class="v">82 to 89%</span><span class="k">of the 192 ground truth rings in the test period get at least one block alert</span></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">AML layer · IBM AMLworld HI-Small</div>
+  <h2>21 models, one split, one scoreboard</h2>
+  <p>Every model trains on the same rows (all 2,298 training positives plus a fixed 10% of training negatives), picks its threshold on the validation period, and is scored once on the test period. PR-AUC is the headline because only 0.18% of test payments are laundering; ROC-AUC looks excellent for almost everything at that imbalance.</p>
+  <div class="chart">
+    <div class="legend" id="legend"></div>
+    <svg id="bars" role="img" aria-label="PR-AUC by model"></svg>
+  </div>
+  <div class="tbl"><table id="amlTable"></table></div>
+  <p class="foot">"+graph" means the 22 causal account features (fan-in/fan-out in 24h, pass-through ratio, minutes since money came in, reciprocity, new counterparties…), each computed only from payments before the one being scored. "Core" PR-AUC drops the Sep 11 to 18 tail, where the generator emits almost nothing but laundering. KNN and RBF-SVM were trained on a 40K subsample and scored on a reweighted test sample because they cannot score a million rows on this hardware; F1 is not reported for them.</p>
+</section>
+
+<section>
+  <div class="eyebrow">What the benchmark shows</div>
+  <div class="find">
+    <div class="card"><h3>Account history does the work, not the algorithm</h3><p>XGBoost on raw payment fields scores 0.172 PR-AUC. The same model with causal graph features scores 0.715. Every strong model uses those features; the algorithm choice moves results by a few points.</p></div>
+    <div class="card"><h3>Gradient boosting wins on this data</h3><p>XGBoost, LightGBM, CatBoost and Random Forest are within 0.02 PR-AUC of each other. They are also the fastest to train (6 to 70 s on 2 CPUs) and the easiest to explain with SHAP.</p></div>
+    <div class="card"><h3>Sequence models add a small, real gain</h3><p>LSTM and Transformer over each sender's and receiver's last 12 events reach 0.66 alone. Blended at 10% weight into the tree ensemble they lift PR-AUC from 0.720 to 0.725 and F1 from 0.691 to 0.702.</p></div>
+    <div class="card"><h3>The GNN loses under a strict time split</h3><p>With embeddings built only from the past graph, the GNN reaches 0.516. It cannot represent accounts that first appear during the test period. Published GNN results on this dataset use a test graph that includes future edges.</p></div>
+    <div class="card"><h3>GAN augmentation does not help</h3><p>Adding 3× GAN generated positives to XGBoost gives 0.711, versus 0.715 without. Real positives are rare, but the synthetic ones add no new signal.</p></div>
+    <div class="card"><h3>No ACH shortcut</h3><p>ACH carries 87% of laundering. Removing payment format entirely costs XGBoost only 0.025 PR-AUC (0.715 → 0.690), so the model is learning behaviour, not the format label. Unsupervised Isolation Forest is near random (0.004): here laundering looks normal row by row and only stands out in context.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">L4 ring linker</div>
+  <h2>Rings caught, by laundering typology</h2>
+  <p>Share of the 192 ground truth rings from the IBM Patterns file (test period) that have at least one payment blocked. Bipartite rings are the weak spot: each payment in them looks like an ordinary one to one transfer.</p>
+  <div class="rings" id="rings"></div>
+</section>
+
+<section>
+  <div class="eyebrow">L0 onboarding gate · Feedzai BAF Base</div>
+  <h2>Stopping mule accounts at opening</h2>
+  <p>Protocol from the BAF paper: train on months 0 to 4, set the threshold on month 5 at a 5% false positive rate, test on months 6 to 7. LightGBM has the highest recall at 5% FPR here, narrowly ahead of AdaBoost and XGBoost. These onboarding scores are a different task and dataset from the payment scores above and must not be compared with them.</p>
+  <div class="tbl"><table id="bafTable"></table></div>
+  <div class="find">
+    <div class="card"><h3>Fairness fix: one threshold per age group</h3><p>With a single threshold, applicants aged 50+ get a 12.8% false positive rate versus 3.9% for younger applicants (ratio 0.31). Separate thresholds set on validation bring the ratio to 0.88 (6.0% vs 5.3%), costing 2.5 points of recall (0.559 → 0.534).</p></div>
+    <div class="card"><h3>What drives the score</h3><p>Housing status, device OS, credit risk score, name and email similarity and time at current address are the five largest contributors to LightGBM's gain. Mule applicants tend to come from fresh addresses, recycled devices and emails that don't match the name.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Production check</div>
+  <h2>The streaming engine matches the trained model</h2>
+  <p id="online"></p>
+</section>
+
+<!--FULL_EVAL-->
+
+<section>
+  <div class="card fix">
+    <h3>Live API vs offline benchmark</h3>
+    <ul class="plain">
+      <li>The live payment path loads three models: the 30 tree XGBoost gatekeeper (L1), then an XGBoost and a LightGBM model whose scores are averaged (L2). Random Forest and LSTM/Transformer appear only in the offline L3 blend above.</li>
+      <li>The offline L3 blend reaches about 0.725 PR-AUC. The live path does not reproduce that blend, so its scores are not the same as the blend's.</li>
+      <li>The live block and hold thresholds were tuned on the offline blend score, not on the live L2 average. <code>docs/project-audit.md</code> measures the effect and how to retune.</li>
+      <li>Reasons shown by the API are XGBoost TreeSHAP contributions (<code>pred_contribs</code>) from the L2 XGBoost model only; LightGBM's half of the score has no per feature explanation.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="why">
+  <div class="eyebrow">Model selection</div>
+  <h2>Why gradient boosted trees</h2>
+  <p>The payment features are 31 numeric and low cardinality columns about each account's past behaviour, with missing values wherever an account has no history yet, and laundering is under 0.2% of payments. Boosted trees learn the interactions that matter here (money in, then straight out to many new payees) without hand built crosses, handle missing values natively, train in seconds on two CPUs, score a payment in well under a millisecond, and give per feature reasons. The committed benchmark shows the feature engineering matters far more than the choice among the leading tree models: XGBoost goes from 0.172 PR-AUC on raw payment fields to 0.715 with account history features, while XGBoost, Random Forest, CatBoost and LightGBM all land between 0.699 and 0.715.</p>
+  <p><b>PR-AUC</b> (average precision) summarises precision across all recall levels. With 0.18% positives, a model that flags nothing is 99.8% "accurate", so accuracy says nothing; ROC-AUC is also flattering because it rewards ranking millions of easy negatives. PR-AUC drops fast when alerts fill with false alarms, which is the cost analysts feel.</p>
+  <div class="tbl"><table id="fresh"></table></div>
+  <p class="foot" id="freshNote"></p>
+</section>
+
+<section>
+  <div class="eyebrow">Limits</div>
+  <ul class="plain">
+    <li>Both datasets are synthetic (IBM's agent based simulator, Feedzai's privacy preserving generator). Real UPI/IMPS data will shift thresholds; the pipeline is built to be retrained, not to transfer as is.</li>
+    <li>The lure and pressure stages of a scam (calls, chats) are not in either dataset. The message model and context layer are built and tested on synthetic message templates; real reported messages are needed before trusting their rates.</li>
+    <li>Ring recall varied between 82% and 89% across two retrains with different category encodings. Treat the range, not a point, as the result.</li>
+    <li>The prototype engine keeps account state in memory. <code>service/scale/</code> moves it to Redis with stateless workers; a deployment still needs a replay of history at startup, because without history recall collapses.</li>
+  </ul>
+  <p class="foot">Code: <code>ml/aml_features.py</code>, <code>ml/bench_tabular.py</code>, <code>ml/bench_deep.py</code>, <code>ml/bench_gnn.py</code>, <code>ml/bench_baf.py</code>, <code>ml/cascade.py</code>, <code>ml/l0_onboarding.py</code>, <code>service/rusetect_engine.py</code>, <code>ml/compare_models.py</code>. Hardware: 2 CPUs, 7 GB RAM.</p>
+</section>
+</main>
+
+<script>
+const DATA = __BENCHMARK_DATA__;
+const FRESH = __FRESH_DATA__;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const famVar = f => f.startsWith("boosting") ? "--f-boost" : f.startsWith("classical") ? "--f-classic" : f.startsWith("deep") ? "--f-deep" : f.startsWith("graph") ? "--f-graph" : "--f-unsup";
+const famName = {"--f-boost":"Boosting","--f-classic":"Classical ML","--f-deep":"Deep learning","--f-graph":"Graph neural network","--f-unsup":"Unsupervised"};
+const fmt = (v, d = 3) => v == null || Number.isNaN(v) ? "n/a" : v.toFixed(d);
+const nf = n => n.toLocaleString("en-US");
+
+// funnel
+const F = DATA.cascade.funnel, total = F.test_txns;
+const stages = [
+  ["L0", "Onboarding gate", "LightGBM on the account application (BAF) with age group thresholds. Suspicious openings go to enhanced KYC before the account can transact.", null, null, true],
+  ["IN", "All payments in the test period", "Time ordered stream; every feature uses only earlier payments.", total, F.laundering_txns],
+  ["L1", "Gatekeeper", "30 tree XGBoost on account history features; approves 79.5% of traffic in 0.3 ms.", F.after_L1, F.laundering_after_L1],
+  ["L2+L3", "Graph boost + behaviour", "XGBoost + LightGBM + Random Forest, blended with LSTM/Transformer sequence scores. Top band = Block + STR draft.", F.alerts_after_L3, F.laundering_alerted],
+  ["L4", "Ring linker", "Blocked payments that share accounts are merged into one case per mule cluster.", F.cases_after_L4, null],
+];
+const fEl = document.getElementById("funnel");
+stages.forEach(([tag, name, desc, n, l, off]) => {
+  const w = n ? Math.max(0.4, Math.log10(n) / Math.log10(total) * 100) : 0;
+  const unit = tag === "L4" ? "cases" : tag === "L2+L3" ? "alerts" : "payments";
+  fEl.insertAdjacentHTML("beforeend", `<div class="stage${off ? " offline" : ""}"><div class="tag">${tag}</div>
+    <div class="what"><b>${name}</b><span>${desc}</span></div>
+    <div class="vol">${n ? `<div class="n">${nf(n)}<small>${unit}</small></div><div class="bar" style="width:${w}%"></div>` : `<div class="n" style="font-size:13px;color:var(--ink-3)">separate test set</div>`}
+    ${l != null ? `<div class="l">${nf(l)} laundering</div>` : tag === "L4" ? `<div class="l">${DATA.cascade.L4.rings_caught} of ${DATA.cascade.L4.rings_in_test} rings</div>` : ""}</div></div>`);
+});
+document.querySelectorAll(".bar").forEach(b => b.title = "bar length on a log scale");
+
+// AML table + chart
+const rows = Object.entries(DATA.aml).sort((a, b) => b[1].pr_auc - a[1].pr_auc);
+const best = rows[0][0];
+const T = document.getElementById("amlTable");
+T.innerHTML = `<thead><tr><th>Model</th><th>PR-AUC</th><th>Core PR-AUC</th><th>ROC-AUC</th><th>F1</th><th>Precision</th><th>Recall</th><th>Recall @ top 0.2%</th><th>Train s</th></tr></thead><tbody>` +
+  rows.map(([k, v]) => `<tr${k === best ? ' class="win"' : ""}><td><span class="fam" style="background:var(${famVar(v.family)})"></span>${k}</td><td>${fmt(v.pr_auc)}</td><td>${fmt(v.pr_auc_core)}</td><td>${fmt(v.roc_auc)}</td><td>${fmt(v.f1)}</td><td>${fmt(v.precision)}</td><td>${fmt(v.recall)}</td><td>${fmt(v.recall_at_budget)}</td><td>${v.train_secs ?? "n/a"}</td></tr>`).join("") + "</tbody>";
+const used = [...new Set(rows.map(([, v]) => famVar(v.family)))];
+document.getElementById("legend").innerHTML = used.map(f => `<span><i style="background:var(${f})"></i>${famName[f]}</span>`).join("");
+
+function drawBars() {
+  const svg = document.getElementById("bars"), W = 900, rowH = 22, top = 8, left = 230, right = 60, H = top + rows.length * rowH + 30;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const x = v => left + v * (W - left - right), ink2 = css("--ink-2"), ink3 = css("--ink-3"), rule = css("--rule");
+  let s = "";
+  [0, .2, .4, .6, .8].forEach(t => s += `<line x1="${x(t)}" x2="${x(t)}" y1="${top}" y2="${H - 24}" stroke="${rule}" stroke-width="1"/><text x="${x(t)}" y="${H - 8}" fill="${ink3}" font-size="11" font-family="IBM Plex Mono, monospace" text-anchor="middle">${t.toFixed(1)}</text>`);
+  rows.forEach(([k, v], i) => {
+    const y = top + i * rowH, c = css(famVar(v.family));
+    s += `<text x="${left - 10}" y="${y + 15}" fill="${ink2}" font-size="12.5" font-family="IBM Plex Sans, sans-serif" text-anchor="end">${k}</text>`;
+    s += `<rect x="${x(0)}" y="${y + 4}" width="${Math.max(1.5, x(v.pr_auc) - x(0))}" height="14" rx="2" fill="${c}"/>`;
+    s += `<text x="${x(v.pr_auc) + 6}" y="${y + 15}" fill="${ink2}" font-size="11.5" font-family="IBM Plex Mono, monospace">${v.pr_auc.toFixed(3)}</text>`;
+  });
+  s += `<text x="${x(.4)}" y="${H - 8}" dy="0" fill="${ink3}" font-size="11" font-family="IBM Plex Mono, monospace" text-anchor="middle" opacity="0">.</text>`;
+  svg.innerHTML = s;
+}
+drawBars();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawBars);
+new MutationObserver(drawBars).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+
+// rings
+const R = DATA.cascade.L4.ring_recall_by_type;
+document.getElementById("rings").innerHTML = Object.entries(R).sort((a, b) => b[1] - a[1]).map(([t, v]) =>
+  `<div class="ring"><span class="t">${t}</span><span class="p">${Math.round(v * 100)}%</span><div class="track"><div style="width:${v * 100}%"></div></div></div>`).join("");
+
+// BAF
+const B = Object.entries(DATA.baf).sort((a, b) => b[1].recall_at_5fpr - a[1].recall_at_5fpr);
+document.getElementById("bafTable").innerHTML = `<thead><tr><th>Model</th><th>Recall @ 5% FPR</th><th>ROC-AUC</th><th>PR-AUC</th><th>FPR ratio (age)</th><th>Train s</th></tr></thead><tbody>` +
+  B.map(([k, v], i) => `<tr${i === 0 ? ' class="win"' : ""}><td><span class="fam" style="background:var(${famVar(v.family)})"></span>${k}</td><td>${fmt(v.recall_at_5fpr)}</td><td>${fmt(v.roc_auc)}</td><td>${fmt(v.pr_auc)}</td><td>${fmt(v.fpr_ratio_age, 2)}</td><td>${v.train_secs}</td></tr>`).join("") +
+  `<tr><td><span class="fam" style="background:var(--f-boost)"></span>LightGBM + age group thresholds (L0 final)</td><td>${fmt(DATA.l0.group_thresholds.recall)}</td><td>${fmt(DATA.l0.roc_auc)}</td><td>n/a</td><td>${fmt(DATA.l0.group_thresholds.fpr_ratio, 2)}</td><td>n/a</td></tr></tbody>`;
+
+// fresh comparison (results/*.json, if present at build time)
+(function () {
+  const T = document.getElementById("fresh"), N = document.getElementById("freshNote");
+  if (!FRESH || !FRESH.models) { T.outerHTML = ""; N.textContent = "Fresh comparison: not evaluated in this build."; return; }
+  const rows = Object.entries(FRESH.models).sort((a, b) => b[1].test.average_precision - a[1].test.average_precision);
+  const f = (v, d = 3) => v == null ? "n/a" : Number(v).toFixed(d);
+  T.innerHTML = `<thead><tr><th>Model (fresh run)</th><th>PR-AUC</th><th>ROC-AUC</th><th>Precision</th><th>Recall</th><th>F1</th><th>False alarms</th><th>Missed</th><th>Train s</th><th>ms / payment</th><th>Size MB</th></tr></thead><tbody>` +
+    rows.map(([k, v]) => `<tr${k === rows[0][0] ? ' class="win"' : ""}><td>${k}${v.evaluation && v.evaluation.startsWith("subsampled") ? " *" : ""}${v.served ? " · live" : ""}</td><td>${f(v.test.average_precision)}</td><td>${f(v.test.roc_auc)}</td><td>${f(v.test.precision)}</td><td>${f(v.test.recall)}</td><td>${f(v.test.f1)}</td><td>${v.test.fp != null ? v.test.fp.toLocaleString("en-US") : "n/a"}</td><td>${v.test.fn != null ? v.test.fn.toLocaleString("en-US") : "n/a"}</td><td>${f(v.train_seconds, 1)}</td><td>${f(v.latency_ms_p50, 2)}</td><td>${v.model_size_bytes != null ? f(v.model_size_bytes / 1e6, 2) : "n/a"}</td></tr>`).join("") + "</tbody>";
+  N.textContent = FRESH.note || "";
+})();
+
+// online
+const O = DATA.online;
+document.getElementById("online").textContent = O ?
+  `The API engine was warmed with all ${nf(4062676)} earlier payments and then scored the next ${nf(O.test_payments_scored)} payments live. Its risk scores differ from the offline model by at most ${O.max_abs_risk_diff.toFixed(4)} (mean ${O.mean_abs_risk_diff.toExponential(1)}), the block decision agrees on ${(O.same_decision_rate * 100).toFixed(2)}% of payments, and PR-AUC is ${O.pr_auc_live.toFixed(3)} live vs ${O.pr_auc_offline.toFixed(3)} offline on that slice. Median latency is ${O.latency_ms_p50.toFixed(2)} ms per payment (p99 ${O.latency_ms_p99.toFixed(1)} ms), including feature computation, on one CPU core.` :
+  "Live parity check not available.";
+</script>
+</body></html>

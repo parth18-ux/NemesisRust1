@@ -1,0 +1,42 @@
+[workspace]
+resolver = "2"
+members = ["crates/rusetect", "crates/rusetect-server"]
+
+[workspace.package]
+version = "2.2.0"
+edition = "2021"
+license = "MIT"
+authors = ["Parth Sharma"]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+indexmap = { version = "2", features = ["serde"] }
+fancy-regex = "0.14"
+unicode-normalization = "0.1"
+crc32fast = "1"
+sha2 = "0.10"
+hmac = "0.12"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+hex = "0.4"
+base64 = "0.22"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+subtle = "2"
+num-bigint = "0.4"
+num-integer = "0.1"
+num-traits = "0.2"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+flate2 = "1"
+csv = "1"
+glob = "0.3"
+anyhow = "1"
+thiserror = "1"
+
+# Model loading and key derivation (PBKDF2, 120k rounds) are slow without optimisation; keep deps fast in debug builds.
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
