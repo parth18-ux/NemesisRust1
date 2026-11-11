@@ -117,10 +117,8 @@ def build():
       {pct(max(v['rate'] for k, v in fx.items() if k != 'ACH'), 2)} on any other format). If launderers send the same payments as Cheque,
       verify-band recall falls from {pct(G['baseline']['verify'], 0)} to {pct(sw['Cheque']['verify'], 0)} and block recall from
       {pct(G['baseline']['block'], 0)} to {pct(sw['Cheque']['block'], 0)}. The payer chooses the rail, so this is a one-step evasion.</p></div>
-    <div class="card fix"><h3>2. A third of the 0.711 test positives may come from an end-of-simulation tail</h3>
-      <p>An independent audit of the same HI-Small file reports that September 11 to 18 holds 1,108 payments, 655 of them laundering
-      (59%). The repo's test window holds {FH['scored_laundering']:,} laundering payments, so about {pct(655 / FH['scored_laundering'], 0)} of them
-      sit in that tail. The headline must be re-measured without it.</p></div>
+    <div class="card fix"><h3>2. The 0.711 headline is inflated by an end-of-simulation tail</h3>
+      <p>{tail_sentence()}</p></div>
     <div class="card fix"><h3>3. A missing format silently changed decisions</h3>
       <p>The API filled a missing <code>payment_format</code> with ACH. In a three hour window that sends
       {F['format_missing_defaulted_to_ACH (current API)']['escalated_non_ach_legit']:,} genuine payments to a higher band. Treating it as
@@ -312,7 +310,12 @@ def build():
 </section>""")
 
     # ---------------- transfer
+    add(full_section())
     add(transfer_section())
+    add(samld_section())
+    add(unified_section())
+    add(other_section())
+    add(message_section())
 
     # ---------------- security
     sec = [
@@ -540,6 +543,65 @@ def transfer_short():
             f"{f(d['in_domain_xgboost_test']['roc_auc_mean'])}; trained on AMLgentex and tested on HI-Small, the ranking reverses ({f(T['amlgentex_difficult_trained_on_hi_slice_eval']['roc_auc'])}).")
 
 
+FULL = J("research", "out", "full_hi_eval.json") if os.path.exists(os.path.join(ROOT, "research", "out", "full_hi_eval.json")) else None
+TS = J("research", "out", "transfer_samld.json") if os.path.exists(os.path.join(ROOT, "research", "out", "transfer_samld.json")) else None
+TM = J("research", "out", "transfer_himed.json") if os.path.exists(os.path.join(ROOT, "research", "out", "transfer_himed.json")) else None
+
+
+def tail_sentence():
+    if not FULL:
+        return ("An independent audit of the same HI-Small file reports that September 11 to 18 holds 1,108 payments, 655 of them laundering. "
+                "The headline must be re-measured without it.")
+    T = FULL["test"]; s = T["served_live"]
+    return (f"Counted on the full file: September 11 to 18 holds {T['tail']['rows']:,} payments, {T['tail']['laundering']} of them laundering, "
+            f"{pct(T['tail']['share_of_test_laundering'], 0)} of all test laundering. The served model scores PR-AUC {f(s['all_test']['pr_auc'])} on the whole "
+            f"test window but {f(s['without_sep11_18_tail']['pr_auc'])} {ci(s['without_sep11_18_tail']['ci95'])} without the tail.")
+
+
+def full_section():
+    if not FULL:
+        return ""
+    T, D = FULL["test"], FULL["decision"]
+    rows = []
+    for k, lab in (("served_live", "Served cascade (XGBoost + LightGBM mean)"), ("control_31_features", "Retrained XGBoost, 31 features (control)"),
+                   ("candidate_no_format", "Retrained XGBoost without payment format, calibrated")):
+        v = T[k]
+        rows.append([lab, f"{f(v['all_test']['pr_auc'])} <small>{ci(v['all_test']['ci95'])}</small>",
+                     f"{f(v['without_sep11_18_tail']['pr_auc'])} <small>{ci(v['without_sep11_18_tail']['ci95'])}</small>",
+                     f"{f(v['sep09_10_only']['pr_auc'])} <small>{ci(v['sep09_10_only']['ci95'])}</small>"])
+    sa, ca = T["served_attack"], T["candidate_attack"]
+    bands = []
+    for b in ("verify", "hold", "block"):
+        sv, cv = T["served_bands"][b], T["candidate_bands"][b]
+        sq, cq = T["bands_under_cheque_attack"]["served"][b], T["bands_under_cheque_attack"]["candidate"][b]
+        bands.append([b.capitalize(), f"{pct(sv['recall'])} / {pct(sv['precision'])}", f"{pct(cv['recall'])} / {pct(cv['precision'])}",
+                      pct(sq['recall']), pct(cq['recall'])])
+    typ = [[k, v["laundering"], pct(v["served_block"], 0), pct(v["candidate_block"], 0)] for k, v in T["typology_recall"].items()]
+    vals = D["values"]
+    chk = ", ".join(f"{k} {'passed' if v else 'failed'}" for k, v in D["checks"].items())
+    return f"""
+<section id="full">
+  <span class="eyebrow">Full dataset, executed</span>
+  <h2>Full HI-Small: the tail, the shortcut and a format-free model</h2>
+  <p>The full HI-Small file (Hugging Face mirror, CDLA-Sharing-1.0) was checked against the repository: {FULL['splits']['train_rows'] + FULL['splits']['validation_rows'] + FULL['splits']['test_rows']:,} payments,
+  5,177 laundering, and the bundled demo slice matches it row for row. Every payment was streamed through the served Rust engine. The served model reproduces the repository's
+  test PR-AUC ({f(T['served_live']['all_test']['pr_auc'])} against 0.7107 in <code>results/full_eval_HI.json</code>).</p>
+  {table(["Model", "Test PR-AUC [95% CI]", "Without Sep 11 to 18 tail", "Sep 9 to 10 only"], rows, "wrap")}
+  <p>The tail holds {T['tail']['rows']:,} payments with {T['tail']['laundering']} laundering ({pct(T['tail']['share_of_test_laundering'], 0)} of test laundering). Without it every model loses about
+  0.13 PR-AUC; the honest headline for the served model is {f(T['served_live']['without_sep11_18_tail']['pr_auc'])}.</p>
+  <h3>The payment format attack on the full test window</h3>
+  <p>Every laundering payment re-sent in another format, PR-AUC: served {', '.join(f'{k} {f(v)}' for k, v in sa.items())}; format-free model {f(min(ca.values()))} in every case.</p>
+  {table(["Band (recall / precision)", "Served", "Format-free", "Served, Cheque attack (recall)", "Format-free, Cheque attack (recall)"], bands)}
+  <h3>Block recall by laundering typology (patterns file)</h3>
+  {table(["Typology", "Laundering in test", "Served", "Format-free"], typ)}
+  <h3>Adoption decision</h3>
+  <p>The rule was written into <code>research/full_hi_eval.py</code> before test was read: the format-free model must stay within 0.03 validation PR-AUC of the served model (R1),
+  keep 80% of its PR-AUC under the attack (R2), and the attack must really hurt the served model (R3). Validation: served {f(vals['served_clean'])} ({f(vals['served_worst_attack'])} under attack),
+  format-free {f(vals['candidate_clean'])} ({f(vals['candidate_worst_attack'])} under attack). Result: {chk}. <b>{'Adopted.' if D['adopt'] else 'Not adopted: the served models stay live.'}</b>
+  The trade is a product decision: about {f(T['served_live']['all_test']['pr_auc'] - T['candidate_no_format']['all_test']['pr_auc'], 3)} test PR-AUC for immunity to a one-step evasion that removes almost all detection.</p>
+</section>"""
+
+
 def transfer_section():
     if not T:
         return ""
@@ -568,6 +630,150 @@ def transfer_section():
   every cash transaction is SAR, mirroring ACH in AMLworld. The reversed ranking on HI-Small follows from these two shortcuts meeting: AMLgentex teaches that
   cash is laundering and transfers (mapped to ACH) are normal, while HI-Small laundering is almost all ACH. Training on the easy set and testing on the difficult one
   ({f(e2d['roc_auc'])}) beats training on difficult itself, so more labels from a related generator help more than matching its difficulty. Strongest features retrained in-domain: {', '.join('<code>'+x+'</code>' for x in d['in_domain_top_features_gain'][:5])}.</p>
+</section>"""
+
+
+def _opt(name):
+    q = os.path.join(ROOT, "research", "out", name)
+    return J("research", "out", name) if os.path.exists(q) else None
+
+
+def samld_section():
+    if not TS:
+        return ""
+    rows = [[lab, f(TS[k]['roc_auc']), f(TS[k]['pr_auc']), pct(TS[k]['recall_at_0.5pct_alerts'])] for k, lab in (
+        ("served_zero_shot", "Served cascade, zero-shot"), ("hi_small_control_zero_shot", "HI-Small retrained, 31 features, zero-shot"),
+        ("hi_small_no_format_zero_shot", "HI-Small retrained without format, zero-shot"), ("in_domain_control", "Trained on SAML-D (31 features)"),
+        ("in_domain_no_format", "Trained on SAML-D without format"))]
+    a = TS["account_reuse_check"]
+    fm = ", ".join(f"{k} {pct(v['rate'], 2)}" for k, v in TS["laundering_rate_by_format"].items())
+    return f"""
+<section id="samld">
+  <span class="eyebrow">Second generator, full file</span>
+  <h2>SAML-D: the format-free model transfers, the served one does not</h2>
+  <p>SAML-D (Oztas et al. 2023, UK typologies) has {TS['rows']:,} payments. It was mapped to the AMLworld schema and streamed through the same Rust feature code.
+  The test part is the last 20% in time ({TS['served_zero_shot']['rows']:,} payments, {TS['served_zero_shot']['positives']:,} laundering).</p>
+  {table(["Model", "Test ROC-AUC", "Test PR-AUC", "Recall at 0.5% alerts"], rows)}
+  <p>Dropping the format feature raises zero-shot ROC-AUC from {f(TS['hi_small_control_zero_shot']['roc_auc'])} to {f(TS['hi_small_no_format_zero_shot']['roc_auc'])}: the format shortcut
+  learnt on AMLworld does not hold elsewhere (laundering rate by format here: {fm}). The in-domain scores near 1.0 are not a real result.
+  {pct(a['test_laundering_touching_train_laundering_accounts'], 0)} of test laundering touches an account already seen laundering in train, against
+  {pct(a['test_genuine_touching_train_laundering_accounts'], 0)} of genuine payments, so the model can learn account identity. The unified pipeline below removes those payments and tests again.</p>
+</section>"""
+
+
+def unified_section():
+    U = _opt("unified_train.json")
+    if not U:
+        return ""
+    rows = []
+    for n, v in U["test"].items():
+        d = U["datasets"][n]
+        rows.append([n, f"{d['rows']:,}", d["test_positives"], f(v['served_cascade']['roc_auc']), f(v['pooled_base']['roc_auc']), f(v['pooled_base_new']['roc_auc']),
+                     f(v['leave_dataset_out']['roc_auc']), f(v['pooled_base_new']['pr_auc'])])
+    un = [[n, v["unseen_accounts"]["test_positives_kept"], f(v["unseen_accounts"]["served_cascade"]["roc_auc"]), f(v["unseen_accounts"]["pooled_base_new"]["roc_auc"]),
+           f(v["unseen_accounts"]["pooled_base_new"]["pr_auc"])] if v["unseen_accounts"]["test_positives_kept"] else [n, 0, "none left", "none left", "none left"]
+          for n, v in U["test"].items() if "unseen_accounts" in v]
+    T_ = U["test"]
+    none_left = [n for n, v in T_.items() if "unseen_accounts" in v and not v["unseen_accounts"]["test_positives_kept"]]
+    su = T_.get("samld", {}).get("unseen_accounts")
+    lift = [n for n in T_ if T_[n]["pooled_base_new"]["roc_auc"] > T_[n]["pooled_base"]["roc_auc"]]
+    drop = [n for n in T_ if T_[n]["pooled_base_new"]["roc_auc"] < T_[n]["pooled_base"]["roc_auc"]]
+    roc_win = [n for n in T_ if T_[n]["pooled_base"]["roc_auc"] > T_[n]["served_cascade"]["roc_auc"]]
+    pr_lose = [n for n in T_ if T_[n]["pooled_base"]["pr_auc"] < T_[n]["served_cascade"]["pr_auc"]]
+    loo_bad = [n for n in T_ if T_[n]["leave_dataset_out"]["roc_auc"] < 0.75]
+    N = U["new_indicators_test"]; S = U["structuring_attack"]
+    st = [[k, pct(v["clean_recall"], 0), pct(v["split4_recall_any_part"], 0), pct(v["split4_spread_recall_any_part"], 0)] for k, v in S.items() if isinstance(v, dict)]
+    return f"""
+<section id="unified">
+  <span class="eyebrow">Unified training, executed</span>
+  <h2>One format-free model over bank AML, cards and wallets</h2>
+  <p>Every transaction-shaped dataset was streamed through the served Rust feature code with 13 new causal indicators (bursts, mule collection, same-pair structuring,
+  amount and hour anomaly, payee age, new-payee velocity; <code>crates/rusetect/examples/research_dump.rs</code>, with a test that they read no future payment).
+  Each dataset is split by time 60/20/20; payment format and currency codes are left out, and so are label-adjacent columns (PaySim balances and flag).
+  Each dataset gets the same total training weight. Leave-one-out is the model trained on all other datasets: the honest test of a new institution.</p>
+  {table(["Dataset", "Payments", "Test positives", "Served ROC", "Pooled, 29 base ROC", "Pooled + 13 new ROC", "Leave-one-out ROC", "Pooled + new PR-AUC"], rows, "wrap")}
+  <p>Rule fixed before test was read: adopt the new indicators if the mean ROC-AUC gain across datasets has a paired bootstrap 95% interval above zero.
+  Gain {f(N['mean_roc_gain'], 4)} {ci(N['ci95'], 4)}. <b>{'Adopted.' if N['adopt'] else 'Not adopted.'}</b> The new indicators raise ROC-AUC on {', '.join(lift)} and lower it on {', '.join(drop)}.
+  Some rank among the strongest features ({', '.join('<code>'+x+'</code>' for x in U['top_features_gain'][:8])}), but they mostly re-express what the 29 base features already carry, so they stay research-only.</p>
+  <p>Pooling works in-domain: the pooled format-free model has higher ROC-AUC than the served cascade on {len(roc_win)} of {len(T_)} datasets
+  ({'served PR-AUC stays higher on ' + ', '.join(pr_lose) + ', where the format shortcut is real in the generator' if pr_lose else 'and higher PR-AUC on all'}).
+  Generalisation does not: trained without a dataset, the model stays below 0.75 ROC-AUC on {', '.join(loo_bad)}. Each generator and fraud type needs some of its own labels,
+  so a new institution must label data before it trusts the score.</p>
+  <h3>Unseen accounts</h3>
+  {table(["Dataset", "Test positives kept", "Served ROC", "Pooled + new ROC", "Pooled + new PR-AUC"], un) if un else ""}
+  <p>Test payments touching any account seen in a positive training payment were removed. This is the check against learning account identity (SAML-D above).
+  {('No positives remain in ' + ', '.join(none_left) + ': every test fraud there involves an account or merchant already seen in training fraud, so these sets cannot test unseen accounts. ') if none_left else ''}
+  {f"SAML-D stays at ROC-AUC {f(su['pooled_base_new']['roc_auc'])} on unseen accounts, so account reuse does not explain its easy separation: the generator itself makes laundering easy to tell apart, and SAML-D scores should not be read as real-world performance." if su else ''}</p>
+  <h3>Structuring attack, HI-Small demo window</h3>
+  {table(["Model", "Clean recall", "Split in 4, same minute", "Split in 4, 30 min apart"], st)}
+  <p>{S['note']}. A laundering payment counts as caught if any part is flagged. Spreading the parts 30 minutes apart defeats every model
+  ({', '.join(f"{k} {pct(v['split4_spread_recall_any_part'], 0)}" for k, v in S.items() if isinstance(v, dict))}), including the one with same-pair structuring indicators.
+  Each part is scored alone, so the fix is to sum evidence per account over the window and alert on the account, not to add more per-payment features.</p>
+</section>"""
+
+
+def other_section():
+    rows = []
+    E = _opt("other_elliptic.json")
+    if E:
+        rows.append(["Elliptic (Bitcoin, real labels)", "Crypto", f"{E['rows']:,} / {E['illicit']:,}", f"{f(E['local_features']['pr_auc'])} → {f(E['local_plus_neighbour_aggregates']['pr_auc'])}",
+                     f"{f(E['local_features']['roc_auc'])} → {f(E['local_plus_neighbour_aggregates']['roc_auc'])}",
+                     f"After time step 43 (dark market shutdown) PR-AUC falls to {f(E['local_plus_neighbour_aggregates']['test_after_dark_market_shutdown_ts43plus']['pr_auc'])}"])
+    E2 = _opt("other_ellipticpp.json")
+    if E2:
+        rows.append(["Elliptic++ wallets", "Crypto", f"{E2['rows']:,} / {E2['illicit_rows']:,}", f(E2['xgboost']['pr_auc']), f(E2['xgboost']['roc_auc']), E2["note"]])
+    G = _opt("other_dgraph.json")
+    if G:
+        rows.append(["DGraph-Fin (loan default fraud graph)", "Credit", f"{G['nodes']:,} nodes", f"{f(G['node_features']['pr_auc'])} → {f(G['node_plus_graph_aggregates']['pr_auc'])}",
+                     f"{f(G['node_features']['roc_auc'])} → {f(G['node_plus_graph_aggregates']['roc_auc'])}", G["heldout"] + "; " + G["reference"]])
+    U = _opt("other_ulb.json")
+    if U:
+        rows.append(["ULB credit card", "Card", f"{U['rows']:,} / {U['fraud']}", f"{f(U['xgboost']['pr_auc'])} <small>{ci(U['xgboost']['pr_auc_ci95'])}</small>", f(U['xgboost']['roc_auc']), U["split"]])
+    I = _opt("other_ieee.json")
+    if I:
+        rows.append(["IEEE-CIS (Vesta)", "Card not present", f"{I['rows']:,} / {I['fraud']:,}", f"{f(I['transaction_features']['pr_auc'])} → {f(I['plus_identity_device_features']['pr_auc'])}",
+                     f"{f(I['transaction_features']['roc_auc'])} → {f(I['plus_identity_device_features']['roc_auc'])}", I["split"] + "; device and identity columns added"])
+    R = _opt("other_rba.json")
+    if R:
+        rows.append(["RBA logins (account takeover)", "Login", f"{R['logins_streamed']:,} / {R['account_takeovers']}", f(R['xgboost']['pr_auc_weighted']), f(R['xgboost']['roc_auc_weighted']),
+                     f"{R['test_takeovers']} takeovers in test; " + R["note"]])
+    B = _opt("other_berka.json")
+    if B:
+        rows.append(["Berka (real Czech bank)", "Credit default", f"{B['loans']} loans / {B['bad_loans']} bad", f(B['test']['pr_auc']), f(B['test']['roc_auc']), f"{B['test']['bad']} bad loans in test; " + B["note"]])
+    Y = _opt("other_gad.json")
+    if Y:
+        for k in ("YelpChi", "InstrumentReviews"):
+            v = Y[k]
+            rows.append([k + " (review graph)", "Not payments", f"{v['nodes']:,} / {v['positives']:,}", f"{f(v['node_features']['pr_auc_mean'])} → {f(v['plus_neighbour_aggregates']['pr_auc_mean'])}",
+                         f"{f(v['node_features']['roc_auc_mean'])} → {f(v['plus_neighbour_aggregates']['roc_auc_mean'])}", Y["note"]])
+    if not rows:
+        return ""
+    return f"""
+<section id="other">
+  <span class="eyebrow">Other fraud types, executed</span>
+  <h2>Crypto, credit, cards, logins and graphs</h2>
+  <p>Datasets whose schema does not fit a payment stream were tested on their own, with a time split wherever the data has time, and XGBoost as the common learner.
+  An arrow shows the gain from adding graph or neighbour aggregates, the architecture question the audit raises. These are capability checks, not served models.</p>
+  {table(["Dataset", "Fraud type", "Rows / positives", "Test PR-AUC", "Test ROC-AUC", "Notes"], rows, "wrap")}
+  <p>Neighbour aggregates help on every graph (Elliptic, DGraph and both review graphs), which supports adding graph features before a graph neural network.
+  Elliptic shows the limit of any static model: after the dark market shutdown the illicit pattern changes and recall collapses, so drift monitoring must trigger retraining.</p>
+</section>"""
+
+
+def message_section():
+    M = _opt("message_external_eval.json")
+    if not M:
+        return ""
+    a, h = M["all_external"], M["hinglish_subset"]
+    rows = [["All new messages", a["messages"], a["scam"], pct(a["caution_or_above"]["recall"]), pct(a["high_or_above"]["recall"]), a["caution_or_above"]["false_alarms"]],
+            ["Hinglish subset", h["messages"], h["scam"], pct(h["caution_or_above"]["recall"]), pct(h["high_or_above"]["recall"]), h["caution_or_above"]["false_alarms"]]]
+    return f"""
+<section id="messages">
+  <span class="eyebrow">Scam message screen, external test</span>
+  <h2>Messages the screen has never seen</h2>
+  <p>Source: {M['source']}. Only messages absent from the training corpus were kept.</p>
+  {table(["Set", "Messages", "Scam", "Recall, caution or above", "Recall, high or above", "False alarms"], rows)}
+  <p>Missed Hinglish scams are a recharge offer and an instant loan offer: types the rule set does not cover yet.</p>
 </section>"""
 
 
