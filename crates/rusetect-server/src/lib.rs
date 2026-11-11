@@ -285,6 +285,40 @@ pub fn build_app(app: AppRef) -> Router {
         .with_state(app)
 }
 
+macro_rules! assets {
+    ($($p:literal),* $(,)?) => { &[$(($p, include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../", $p)) as &[u8])),*] };
+}
+
+/// Models, pages and fixtures compiled into the binary, so the server runs where only the binary is shipped
+/// (Vercel's Rust framework mode builds and runs this binary without the repository files).
+const ASSETS: &[(&str, &[u8])] = assets![
+    "service/models/cascade_config.json", "service/models/l0_config.json", "service/models/l1_gatekeeper.json",
+    "service/models/l2_xgb.json", "service/models/l2_lgbm.json", "service/models/l0_onboarding_lgbm.json",
+    "service/models/message_model.json", "service/models/typing_verifier.json", "service/models/benchmark_results.json",
+    "service/models/sample_applications.json", "service/models/demo_stream.csv.gz",
+    "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html",
+    "service/static/research.html", "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
+];
+
+/// If no repository root with the models can be found, unpack the embedded copy to a temporary folder and point
+/// RUSETECT_ROOT at it. Call once at start-up, before any other thread reads the environment.
+pub fn ensure_root() -> std::io::Result<()> {
+    if paths::repo_root().join("service/models/cascade_config.json").exists() {
+        return Ok(());
+    }
+    let root = std::env::temp_dir().join("rusetect");
+    for (path, bytes) in ASSETS {
+        let dst = root.join(path);
+        if dst.metadata().map(|m| m.len() == bytes.len() as u64).unwrap_or(false) {
+            continue;
+        }
+        std::fs::create_dir_all(dst.parent().unwrap())?;
+        std::fs::write(dst, bytes)?;
+    }
+    std::env::set_var("RUSETECT_ROOT", &root);
+    Ok(())
+}
+
 pub fn new_shared() -> AppRef {
     let limit = std::env::var("RUSETECT_RATE_LIMIT").ok().and_then(|v| v.parse().ok()).unwrap_or(240);
     Arc::new(Shared { state: Mutex::new(AppState::load()), rate: Mutex::new(RateLimiter::new(limit, 10.0)) })
