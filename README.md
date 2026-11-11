@@ -4,7 +4,7 @@ RuseTect detects scam payments and money mule activity in digital banking. It fo
 victim receives to the accounts that launder the money, and it answers with the lightest intervention that fits the
 evidence: a question to the customer, a short pause, an analyst review, or a block approved by two analysts.
 
-Live demo: [rusetect.vercel.app](https://rusetect.vercel.app) · Author: Parth Sharma
+Live demo: [nemesis-rust1.vercel.app](https://nemesis-rust1.vercel.app) (research review at [/research](https://nemesis-rust1.vercel.app/research)) · Author: Parth Sharma
 
 > RuseTect is a research project. Its models are trained and evaluated on public datasets that are synthetic or
 > collected outside banking (IBM AMLworld, Feedzai BAF, PaySim, Aalto keystrokes, Balabit mouse data). The results below show
