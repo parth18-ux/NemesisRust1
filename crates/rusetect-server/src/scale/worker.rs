@@ -29,13 +29,16 @@ impl Scorer {
             let sf = self.state.last_sender_fan_in;
             let x = self.eng.vec(&f);
             let s1 = m.l1.predict(&x) as f64;
-            let esc = s1 >= cfg.l1_threshold;
-            let mut rank = 0;
-            let mut risk = 0.0;
-            if esc {
-                risk = (m.l2x.predict(&x) as f64 + m.l2l.predict_f32(&x)) / 2.0;
-                rank = if risk >= cfg.block_threshold { 3 } else if risk >= cfg.hold_threshold { 2 } else if risk >= cfg.verify_threshold { 1 } else { 0 };
+            let mut esc = s1 >= cfg.l1_threshold;
+            let mut risk = if esc { (m.l2x.predict(&x) as f64 + m.l2l.predict_f32(&x)) / 2.0 } else { s1 };
+            // same format hardening as Engine::score_payment; shortcut: no pair (structuring) aggregation here, its
+            // 24 h pair window would need to live in Redis next to the account state
+            if let Some(h) = m.hardening.as_ref() {
+                risk = h.risk(&x, risk).0;
+                esc = true;
             }
+            let (vt, ht, bt) = self.eng.thresholds();
+            let rank = if !esc { 0 } else if risk >= bt { 3 } else if risk >= ht { 2 } else if risk >= vt { 1 } else { 0 };
             let ctx = assess(None, &from_engine_features(&f, sf), true, None, true, None, None);
             let c = combine(DECISIONS[rank], &ctx);
             out.push(json!({"eid": p.eid, "payment_decision": DECISIONS[rank], "risk": if esc { json!(py_round(risk, 5)) } else { Value::Null },

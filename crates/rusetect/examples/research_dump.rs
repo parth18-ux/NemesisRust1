@@ -3,7 +3,7 @@
 //! L2 XGBoost and L2 LightGBM scores and the label. Every payment is scored by both L2 halves (not only those that pass
 //! L1) so that offline analysis can study the gate and the halves separately.
 //!
-//! cargo run --release -p rusetect --example research_dump -- <in.csv[.gz]> <out.csv>
+//! cargo run --release -p rusetect --example research_dump -- <in.csv[.gz]> <out.csv[.gz]> [genuine keep rate]
 //!
 //! The analysis scripts in research/ read the output. State starts empty, exactly as in the console demo.
 use rusetect::{paths, payment, Engine, Payment};
@@ -110,6 +110,11 @@ fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
     let inp = args.next().map(std::path::PathBuf::from).unwrap_or_else(|| paths::models_dir().join("demo_stream.csv.gz"));
     let out = args.next().unwrap_or_else(|| "research_dump.csv".into());
+    // optional share of genuine payments to keep (every positive is kept). State is still updated for every payment;
+    // dropped rows skip scoring and formatting, which is most of the time on the Large files. Totals go to <out>.json.
+    let neg_rate: f64 = args.next().map(|r| r.parse()).transpose()?.unwrap_or(1.0);
+    let mut rng = 0x9E37_79B9_7F4A_7C15u64; // xorshift64: deterministic, no extra dependency
+    let (mut kept, mut pos) = (0usize, 0usize);
     // stream rows one at a time so files larger than memory (HI-Medium, 32M payments) work
     let f = std::fs::File::open(&inp)?;
     let reader: Box<dyn std::io::Read> = if inp.extension().map(|e| e == "gz").unwrap_or(false) {
@@ -135,6 +140,13 @@ fn main() -> anyhow::Result<()> {
         let usd = eng.cfg.usd(p.amount_paid, &p.payment_currency);
         let ex = extra.row(&p, usd);
         let f = eng.features(&p);
+        let y1 = r.y == "1";
+        pos += y1 as usize;
+        if !y1 && neg_rate < 1.0 {
+            rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17;
+            if (rng >> 11) as f64 / (1u64 << 53) as f64 >= neg_rate { continue; }
+        }
+        kept += 1;
         let x = eng.vec(&f);
         let m = eng.models.as_ref().unwrap();
         let (s1, sx, sl) = (m.l1.predict(&x), m.l2x.predict(&x), m.l2l.predict_f32(&x));
@@ -144,7 +156,10 @@ fn main() -> anyhow::Result<()> {
     }
     w.flush()?;
     drop(w);
-    eprintln!("dumped {n} payments in {:?} to {out}", t.elapsed());
+    if neg_rate < 1.0 {
+        std::fs::write(format!("{out}.json"), format!("{{\"rows\": {n}, \"positives\": {pos}, \"kept\": {kept}, \"neg_rate\": {neg_rate}}}"))?;
+    }
+    eprintln!("dumped {n} payments ({kept} kept) in {:?} to {out}", t.elapsed());
     Ok(())
 }
 

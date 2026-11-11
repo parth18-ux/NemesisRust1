@@ -348,7 +348,7 @@ fn no_legacy_names_anywhere_in_source() {
             let p = e.path();
             let name = p.file_name().unwrap().to_string_lossy().to_string();
             if p.is_dir() {
-                if ![".git", "target", "work", "data"].contains(&name.as_str()) {
+                if ![".git", "target", "work", "data", "graphify-out"].contains(&name.as_str()) { // graphify-out: local, git-ignored graph cache
                     walk(&p, out);
                 }
             } else {
@@ -420,14 +420,37 @@ fn validation_lists_match_cascade_config() {
     assert_eq!(c, keys("cur_codes"));
 }
 
-/// With real analyst keys the server must not fall back to demo secrets.
+/// Demo keys only on request; with real analyst keys the server must not fall back to demo secrets.
 #[test]
 fn production_mode_requires_secrets() {
     use rusetect_server::missing_production_secrets as miss;
     let env = |pairs: &'static [(&'static str, &'static str)]| move |k: &str| pairs.iter().find(|(a, _)| *a == k).map(|(_, v)| v.to_string());
-    assert!(miss(env(&[])).is_empty(), "demo mode needs nothing");
+    assert_eq!(miss(env(&[])).len(), 1, "no keys and no explicit demo flag: refuse to start");
+    assert_eq!(miss(env(&[("RUSETECT_DEMO", "true")])).len(), 1, "only the exact flag opens demo mode");
+    assert!(miss(env(&[("RUSETECT_DEMO", "1")])).is_empty(), "explicit demo mode needs nothing");
     assert_eq!(miss(env(&[("RUSETECT_ANALYST_KEYS", "{}")])).len(), 3);
     assert_eq!(miss(env(&[("RUSETECT_ANALYST_KEYS", "{}"), ("RUSETECT_SIGNING_KEY", "x"), ("RUSETECT_CONSORTIUM_SECRET", " ")])),
                vec!["RUSETECT_CONSORTIUM_SECRET", "RUSETECT_HASH_SALT"]);
     assert!(miss(env(&[("RUSETECT_ANALYST_KEYS", "{}"), ("RUSETECT_SIGNING_KEY", "a"), ("RUSETECT_CONSORTIUM_SECRET", "b"), ("RUSETECT_HASH_SALT", "c")])).is_empty());
+}
+
+/// Format hardening and the structuring defence (research/hardened_eval.py, research/structuring_defence.py).
+#[test]
+fn hardened_risk_ignores_format_and_pairs_add_up() {
+    use rusetect::engine::interp;
+    use rusetect::{Engine, Payment};
+    let m = (vec![0.0, 1.0, 2.0], vec![0.0, 0.5, 0.5]);
+    assert_eq!((interp(&m, -1.0), interp(&m, 0.5), interp(&m, 3.0)), (0.0, 0.25, 0.5), "np.interp semantics");
+    let pay = |fmt: &str, t: i64, amt: f64| Payment { from_bank: "070".into(), from_account: "S1".into(), to_bank: "011".into(), to_account: "D1".into(),
+        amount_paid: amt, payment_currency: "US Dollar".into(), receiving_currency: "US Dollar".into(), payment_format: fmt.into(), tmin: t, eid: None };
+    let score = |fmt: &str| Engine::new(&paths::models_dir(), true).unwrap().score_payment(&pay(fmt, 0, 9000.0));
+    let (a, c) = (score("ACH"), score("Cheque"));
+    assert!(a.contains_key("cascade_risk"), "hardening.json is loaded");
+    assert_eq!(a["format_free_risk"], c["format_free_risk"], "the second opinion does not see the format");
+    assert!(c["risk"].as_f64().unwrap() >= c["format_free_risk"].as_f64().unwrap());
+    let mut e = Engine::new(&paths::models_dir(), true).unwrap();
+    let parts: Vec<_> = (0..4).map(|i| e.score_payment(&pay("ACH", i * 30, 2250.0))).collect();
+    assert!(!parts[0].contains_key("pair_risk") && parts[3].contains_key("pair_risk"));
+    let r = |v: &serde_json::Map<String, Value>, k: &str| v[k].as_f64().unwrap();
+    assert!(r(&parts[3], "pair_risk") >= r(&parts[3], "cascade_risk"), "noisy-OR never lowers the cascade risk");
 }

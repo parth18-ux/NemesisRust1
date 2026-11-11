@@ -11,6 +11,7 @@ services:
   api:
     build: {context: .., dockerfile: deploy/Dockerfile}
     ports: ["8000:8000"]
+    environment: {RUSETECT_DEMO: "1"}  # local demo; for real use set RUSETECT_ANALYST_KEYS and the production secrets
   worker-0:
     build: {context: .., dockerfile: deploy/Dockerfile}
     command: ["rusetect-worker", "--partition", "0"]

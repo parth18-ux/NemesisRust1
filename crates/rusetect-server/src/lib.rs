@@ -296,6 +296,7 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/models/l2_xgb.json", "service/models/l2_lgbm.json", "service/models/l0_onboarding_lgbm.json",
     "service/models/message_model.json", "service/models/typing_verifier.json", "service/models/benchmark_results.json",
     "service/models/sample_applications.json", "service/models/demo_stream.csv.gz",
+    "service/models/hardening.json", "service/models/hardening_xgb.json",
     "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html",
     "service/static/research.html", "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
 ];
@@ -303,11 +304,12 @@ const ASSETS: &[(&str, &[u8])] = assets![
 /// Secrets that must be set once the server runs with real analyst keys (not the public demo).
 pub const PRODUCTION_SECRETS: [&str; 3] = ["RUSETECT_SIGNING_KEY", "RUSETECT_CONSORTIUM_SECRET", "RUSETECT_HASH_SALT"];
 
-/// Fail closed: with RUSETECT_ANALYST_KEYS set the deployment is not a demo, so the hard-coded demo consortium secret,
-/// demo hash salt and per-process signing key must not be used. Returns the names of missing secrets.
+/// Fail closed. Without RUSETECT_ANALYST_KEYS the server would hand out the published demo keys, so that mode must be
+/// asked for explicitly with RUSETECT_DEMO=1. With analyst keys the deployment is not a demo, so the hard-coded demo
+/// consortium secret, demo hash salt and per-process signing key must not be used. Returns what is missing.
 pub fn missing_production_secrets(env: impl Fn(&str) -> Option<String>) -> Vec<&'static str> {
     if env("RUSETECT_ANALYST_KEYS").is_none() {
-        return vec![];
+        return if env("RUSETECT_DEMO").as_deref() == Some("1") { vec![] } else { vec!["RUSETECT_ANALYST_KEYS (or RUSETECT_DEMO=1 for the public demo)"] };
     }
     PRODUCTION_SECRETS.into_iter().filter(|k| env(k).map(|v| v.trim().is_empty()).unwrap_or(true)).collect()
 }
@@ -319,7 +321,7 @@ pub fn check_config() -> std::io::Result<()> {
         return Ok(());
     }
     Err(std::io::Error::new(std::io::ErrorKind::InvalidInput,
-        format!("RUSETECT_ANALYST_KEYS is set but {} missing; refusing to start with demo secrets", missing.join(", "))))
+        format!("refusing to start: {} not set", missing.join(", "))))
 }
 
 /// If no repository root with the models can be found, unpack the embedded copy to a temporary folder and point
@@ -389,6 +391,7 @@ async fn favicon(State(app): State<AppRef>) -> Response {
 async fn health(State(app): State<AppRef>) -> ApiResult {
     with_state(app, |s| {
         ok(json!({"service": format!("{NAME} API"), "name": NAME, "id": SLUG, "version": VERSION, "status": "ok", "engine_loaded": s.engine.is_some(),
+                  "hardened": s.engine.as_ref().and_then(|e| e.models.as_ref()).map(|m| m.hardening.is_some()).unwrap_or(false),
                   "ruleset": ctx::RULESET_VERSION, "auth": if KEYS.demo_mode { "demo keys (set RUSETECT_ANALYST_KEYS)" } else { "configured keys" },
                   "signing": {"alg": "Ed25519", "key_id": s.signer.key_id, "ephemeral": s.signer.ephemeral}}))
     }).await
@@ -396,8 +399,17 @@ async fn health(State(app): State<AppRef>) -> ApiResult {
 
 // ---------------------------------------------------------------- scoring
 
+/// Account state is kept in memory, so random account ids could exhaust it. Past this many accounts a payment that
+/// would add a new account is refused (503); known accounts still score. RUSETECT_MAX_ACCOUNTS overrides the default.
+pub static MAX_ACCOUNTS: std::sync::LazyLock<usize> =
+    std::sync::LazyLock::new(|| std::env::var("RUSETECT_MAX_ACCOUNTS").ok().and_then(|v| v.parse().ok()).unwrap_or(2_000_000));
+
 fn score_with_context(s: &mut AppState, p: &Payment) -> Result<Map<String, Value>, ApiError> {
-    let mut res = s.need_engine()?.score_payment(p);
+    let eng = s.need_engine()?;
+    if eng.n_accounts() >= *MAX_ACCOUNTS && !(eng.knows(&p.from_bank, &p.from_account) && eng.knows(&p.to_bank, &p.to_account)) {
+        return Err(ApiError::new(503, "account state is full; reset the demo or raise RUSETECT_MAX_ACCOUNTS"));
+    }
+    let mut res = eng.score_payment(p);
     s.lures.apply_to_payment(p, &mut res);
     Ok(res)
 }

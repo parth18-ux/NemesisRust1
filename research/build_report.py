@@ -116,7 +116,8 @@ def build():
       <p>{pct(A['ach_share_of_laundering'], 0)} of laundering in the slice is ACH (laundering rate {pct(fx['ACH']['rate'], 2)} on ACH, at most
       {pct(max(v['rate'] for k, v in fx.items() if k != 'ACH'), 2)} on any other format). If launderers send the same payments as Cheque,
       verify-band recall falls from {pct(G['baseline']['verify'], 0)} to {pct(sw['Cheque']['verify'], 0)} and block recall from
-      {pct(G['baseline']['block'], 0)} to {pct(sw['Cheque']['block'], 0)}. The payer chooses the rail, so this is a one-step evasion.</p></div>
+      {pct(G['baseline']['block'], 0)} to {pct(sw['Cheque']['block'], 0)}. The payer chooses the rail, so this is a one-step evasion.
+      {f"Fixed: the served risk now adds a format-free second opinion and keeps test PR-AUC {f(min(HD['test']['attack']['hardened'].values()))} under the attack (<a href='#hardening'>below</a>)." if HD and HD['decision']['adopt'] else ""}</p></div>
     <div class="card fix"><h3>2. The 0.711 headline is inflated by an end-of-simulation tail</h3>
       <p>{tail_sentence()}</p></div>
     <div class="card fix"><h3>3. A missing format silently changed decisions</h3>
@@ -126,7 +127,8 @@ def build():
     <div class="card"><h3>4. Splitting a payment in four defeats the block band</h3>
       <p>Re-simulated through the engine, structuring each laundering payment into four parts leaves
       {pct(G['structuring_split4']['block_any_part'], 0)} blocked (was {pct(G['baseline']['block'], 0)}); the verify band still catches
-      {pct(G['structuring_split4']['verify_any_part'], 0)} of payments on at least one part.</p></div>
+      {pct(G['structuring_split4']['verify_any_part'], 0)} of payments on at least one part.
+      {f"Partly fixed: 24 h pair aggregation raises four-part block recall to {pct(SD['scales']['hardened_pre_calibration']['variants']['split4']['pair_aggregated']['block']['laundering_recall_any_part'], 0)}." if SD else ""}</p></div>
     <div class="card"><h3>5. The LightGBM half adds nothing measurable</h3>
       <p>XGBoost alone minus the served average: PR-AUC {f(pa['xgb_half_only']['minus_live_mean']['point'])}, 95% interval
       {ci(pa['xgb_half_only']['minus_live_mean']['ci95'])}. LightGBM alone is worse with an interval that excludes zero. The average costs
@@ -311,6 +313,7 @@ def build():
 
     # ---------------- transfer
     add(full_section())
+    add(hardening_section())
     add(transfer_section())
     add(samld_section())
     add(unified_section())
@@ -319,15 +322,15 @@ def build():
 
     # ---------------- security
     sec = [
-        ["Evasion: payer switches payment format", "Experimentally demonstrated", f"Block recall {pct(G['baseline']['block'], 0)} to 0%", "Open. Retrain without <code>fmt_code</code> or cap its contribution; report the 0.728 to 0.701 trade", "NIST AI 100-2 evasion; MITRE ATLAS AML.T0015"],
-        ["Evasion: structuring into smaller payments", "Experimentally demonstrated", f"Block recall to {pct(G['structuring_split4']['block_any_part'], 0)}", "Open. Add per-payee and per-sender sum features over 1 h and 24 h windows; aggregate alerts per account", "NIST AI 100-2 evasion"],
+        ["Evasion: payer switches payment format", "Experimentally demonstrated", f"Block recall {pct(G['baseline']['block'], 0)} to 0%", (f"Fixed: hardened risk adds a format-free second opinion; test PR-AUC under the attack {f(min(HD['test']['attack']['hardened'].values()))} (was {f(min(HD['test']['attack']['served'].values()))}), clean {f(HD['test']['hardened']['pr_auc'])}" if HD else "Open"), "NIST AI 100-2 evasion; MITRE ATLAS AML.T0015"],
+        ["Evasion: structuring into smaller payments", "Experimentally demonstrated", f"Block recall to {pct(G['structuring_split4']['block_any_part'], 0)}", (f"Partly fixed: 24 h pair aggregation before calibration; four-part split block recall {pct(SD['scales']['hardened_pre_calibration']['variants']['split4']['pair_aggregated']['block']['laundering_recall_any_part'], 0)} (was {pct(SD['scales']['hardened_pre_calibration']['variants']['split4']['per_payment']['block']['laundering_recall_any_part'], 0)}); clean recall unchanged" if SD else "Open"), "NIST AI 100-2 evasion"],
         ["Missing or unknown format and currency silently imputed", "Experimentally demonstrated", f"{Fa['escalated_non_ach_legit']:,} genuine payments escalated in 3 h", "Fixed: 422 on missing or unknown values; test added", "OWASP API8 misconfiguration"],
         ["Rate limit keyed on client-supplied X-Forwarded-For", "Verified in code", "Unlimited requests; unbounded memory per spoofed client", "Fixed: header trusted only on Vercel or with RUSETECT_TRUST_PROXY=1; idle clients evicted", "OWASP API4 unrestricted resource consumption"],
         ["Alerts, evidence packs, STR drafts, cases and audit readable without a key", "Verified in code", "Disclosure of suspicion (tipping off) and account identifiers", "Fixed when keys are configured; demo mode stays open by design", "OWASP API1/API2"],
-        ["Demo keys enabled whenever RUSETECT_ANALYST_KEYS is unset", "Verified in code", "Fail-open: a misconfigured deployment accepts published keys", "Open. Require RUSETECT_DEMO=1 explicitly for demo keys", "OWASP API8"],
+        ["Demo keys enabled whenever RUSETECT_ANALYST_KEYS is unset", "Verified in code", "Fail-open: a misconfigured deployment accepts published keys", "Fixed: the server refuses to start without RUSETECT_ANALYST_KEYS or an explicit RUSETECT_DEMO=1 (test added)", "OWASP API8"],
         ["Hard-coded fallback secrets (consortium HMAC, entity hash salt)", "Verified in code", "Account tokens can be reversed by enumeration when defaults are used", "Fixed: with analyst keys set the server refuses to start without the consortium secret, hash salt and signing key (test added)", "NIST AI 100-2 privacy"],
         ["Ephemeral signing key and in-memory nonce cache per serverless instance", "Verified in design", "Signatures from one instance cannot be checked after restart; nonces can be replayed on another instance", "Partly fixed: a signing key is required outside demo mode; nonces still per instance (move to Redis)", "Integrity"],
-        ["Unbounded account state from API traffic", "Verified in code", "Memory exhaustion with random account ids", "Open. LRU or TTL on account state; per-tenant caps", "OWASP API4"],
+        ["Unbounded account state from API traffic", "Verified in code", "Memory exhaustion with random account ids", "Fixed: a cap on accounts (RUSETECT_MAX_ACCOUNTS, default 2,000,000); past it, payments that would add accounts get 503 and known accounts still score", "OWASP API4"],
         ["Label poisoning through analyst feedback", "Theoretical", "Released or blocked verdicts would feed retraining", "Plan: two-person rule on labels used for training; audit trail already signed", "NIST AI 100-2 poisoning"],
         ["Model extraction through scores and reasons", "Theoretical", "API returns risk, both halves and SHAP reasons", "Plan: return bands only to payment channels; full reasons to analysts", "NIST AI 100-2 privacy"],
         ["Dependency vulnerabilities", "Checked", "cargo audit: 0 advisories in 199 crates (RustSec, 1,453 advisories)", "Keep cargo audit in CI", "Supply chain"],
@@ -437,8 +440,8 @@ def build():
           "Report seeds and confidence intervals for every model comparison; 0.7107 versus 0.7108 is not a result."]),
         ("Cybersecurity specialist", "Not deployable as is",
          ["A payer-controlled field dominates the score and a one-step change defeats the block band.",
-          "Structuring to four parts removes the block band; there is no aggregation defence.",
-          "Fail-open defaults (demo keys, secrets, silent imputation) must fail closed outside demo mode. Three are fixed in this branch."]),
+          "Structuring to four parts removed the block band; pair aggregation now recovers part of it, account-level alerts are still needed.",
+          "Fail-open defaults (demo keys, secrets, silent imputation) must fail closed outside demo mode. All three now do."]),
         ("Dataset and statistics expert", "Concerns about validity",
          ["97 positives in the slice and 1,797 in the full test are too few for three-decimal claims without intervals.",
           "Prevalence differs 100x between AMLworld and AMLgentex; compare ROC-AUC or prevalence-adjusted metrics across generators.",
@@ -543,6 +546,8 @@ def transfer_short():
             f"{f(d['in_domain_xgboost_test']['roc_auc_mean'])}; trained on AMLgentex and tested on HI-Small, the ranking reverses ({f(T['amlgentex_difficult_trained_on_hi_slice_eval']['roc_auc'])}).")
 
 
+HD = J("research", "out", "hardened_eval.json") if os.path.exists(os.path.join(ROOT, "research", "out", "hardened_eval.json")) else None
+SD = J("research", "out", "structuring_defence.json") if os.path.exists(os.path.join(ROOT, "research", "out", "structuring_defence.json")) else None
 FULL = J("research", "out", "full_hi_eval.json") if os.path.exists(os.path.join(ROOT, "research", "out", "full_hi_eval.json")) else None
 TS = J("research", "out", "transfer_samld.json") if os.path.exists(os.path.join(ROOT, "research", "out", "transfer_samld.json")) else None
 TM = J("research", "out", "transfer_himed.json") if os.path.exists(os.path.join(ROOT, "research", "out", "transfer_himed.json")) else None
@@ -631,6 +636,123 @@ def transfer_section():
   cash is laundering and transfers (mapped to ACH) are normal, while HI-Small laundering is almost all ACH. Training on the easy set and testing on the difficult one
   ({f(e2d['roc_auc'])}) beats training on difficult itself, so more labels from a related generator help more than matching its difficulty. Strongest features retrained in-domain: {', '.join('<code>'+x+'</code>' for x in d['in_domain_top_features_gain'][:5])}.</p>
 </section>"""
+
+
+def hardening_section():
+    if not (HD and SD):
+        return ""
+    V, T, D = HD["validation"], HD["test"], HD["decision"]
+    att = lambda m, k: f(min(HD[k]["attack"][m].values()) if k == "test" else min(HD["validation_attack"][m].values()))
+    rows = [["Served cascade", f(V['served']['pr_auc']), f(min(HD['validation_attack']['served'].values())), f"{f(T['served']['pr_auc'])} <small>{ci(T['served']['ci95'])}</small>",
+             f(T['without_sep11_18_tail']['served']['pr_auc']), f(min(T['attack']['served'].values()))],
+            ["Hardened (served now)", f(V['hardened']['pr_auc']), f(min(HD['validation_attack']['hardened'].values())), f"{f(T['hardened']['pr_auc'])} <small>{ci(T['hardened']['ci95'])}</small>",
+             f(T['without_sep11_18_tail']['hardened']['pr_auc']), f(min(T['attack']['hardened'].values()))]]
+    bands = []
+    for b in ("verify", "hold", "block"):
+        sv, hv = T["bands"]["served"][b], T["bands"]["hardened"][b]
+        sa, ha = T["bands_under_cheque_attack"]["served"][b], T["bands_under_cheque_attack"]["hardened"][b]
+        bands.append([b.capitalize(), f"{pct(sv['recall'])} / {pct(sv['precision'])}", f"{pct(hv['recall'])} / {pct(hv['precision'])}", pct(sa['recall']), pct(ha['recall'])])
+    sc = SD["scales"]
+    st = []
+    for lab, key in (("Cascade, per payment", ("cascade", "per_payment")), ("Cascade + pair aggregation", ("cascade", "pair_aggregated")),
+                     ("Hardened, per payment", ("hardened", "per_payment")), ("Hardened, aggregating calibrated risks (pre-registered)", ("hardened", "pair_aggregated")),
+                     ("Hardened, aggregating before calibration (served now; chosen post hoc)", ("hardened_pre_calibration", "pair_aggregated"))):
+        v = sc[key[0]]["variants"]
+        st.append([lab] + [pct(v[n][key[1]]["block"]["laundering_recall_any_part"], 0) for n in ("base", "split2", "split4", "split4_spread")] + [v["base"][key[1]]["block"]["payments_flagged"]])
+    chk = ", ".join(f"{k} {'passed' if v else 'failed'}" for k, v in D["checks"].items())
+    return f"""
+<section id="hardening">
+  <span class="eyebrow">Fixes, executed and served</span>
+  <h2>Closing the two evasions</h2>
+  <p>The engine now serves a hardened risk: the cascade, plus a format-free XGBoost as a second opinion, each calibrated on validation,
+  combined by taking the larger (<code>research/hardened_eval.py</code>, <code>service/models/hardening.json</code>). Rule fixed before test:
+  keep validation PR-AUC within 0.03 of the cascade and keep 80% of it when every laundering payment switches format. Result: {chk}.
+  <b>{'Adopted and served.' if D['adopt'] else 'Not adopted.'}</b> The Rust engine reproduces the Python scores to rounding.</p>
+  {table(["Score", "Validation PR-AUC", "Validation, worst format attack", "Test PR-AUC [95% CI]", "Test without Sep 11 to 18", "Test, worst format attack"], rows, "wrap")}
+  {table(["Band (recall / precision), test", "Cascade", "Hardened", "Cascade, Cheque attack (recall)", "Hardened, Cheque attack (recall)"], bands)}
+  <p>Band thresholds keep the cascade's validation alert rates. The block band trades precision for recall; the format attack no longer works.</p>
+  <h3>Structuring: pair aggregation</h3>
+  <p>Each payer-to-payee pair keeps a 24 hour noisy-OR of its risks, and a payment is decided on the larger of its own risk and the pair's
+  (<code>research/structuring_defence.py</code>). No parameter is fitted. Block recall on the HI-Small demo window, a laundering payment counted as caught if any part is blocked:</p>
+  {table(["Variant", "Clean", "Split in 2", "Split in 4", "Split in 4, 30 min apart", "Block alerts, clean"], st, "wrap")}
+  <p>Aggregating calibrated risks barely helps, because the calibration map sends small risks to near zero; aggregating the cascade risks before
+  calibration recovers part of the split attacks at {pct(sc['hardened_pre_calibration']['decision']['values']['clean_block_increase'], 0)} more block alerts. That variant was chosen after seeing the first result on this slice,
+  so its numbers are exploratory until measured on another window. Spread-out structuring is still the weakest point; the next step is account-level alerts.</p>
+</section>"""
+
+
+def model_card():
+    """docs/MODEL_CARD.md, generated from research/out so every number has a source file."""
+    if not (HD and FULL):
+        return None
+    T, U = HD["test"], _opt("unified_train.json")
+    hb, sb = T["bands"]["hardened"], T["bands"]["served"]
+    ha = T["bands_under_cheque_attack"]["hardened"]["block"]
+    sp = SD["scales"]["hardened_pre_calibration"]["variants"] if SD else None
+    loo = ""
+    if U:
+        loo = ", ".join(f"{n} {f(v['leave_dataset_out']['roc_auc'])}" for n, v in U["test"].items())
+    zs = f"SAML-D {f(TS['served_zero_shot']['roc_auc'])}" if TS else ""
+    lines = [
+        "# RuseTect model card",
+        "",
+        "Generated by `research/build_report.py` from `research/out/*.json`; do not edit by hand.",
+        "",
+        "## What it is",
+        "",
+        "A per-payment money-laundering and mule risk score for bank transfers, served by one Rust binary (`rusetect-server`).",
+        "Risk = max(calibrated cascade risk, calibrated format-free XGBoost risk). The cascade is an XGBoost gate (L1) and the mean of",
+        "XGBoost and LightGBM (L2) on 31 causal account-history features. A 24 hour payer-to-payee aggregation raises the risk of split payments.",
+        "Bands: verify, hold, block (thresholds in `service/models/hardening.json`, set to the cascade's validation alert rates).",
+        "",
+        "## Intended use",
+        "",
+        "- Decision support for analysts: rank payments for review, hold or step-up verification. Not an automatic blocking system.",
+        "- Shadow-mode pilots on a bank's own labelled data before any decision is taken on its output.",
+        "",
+        "## Out of scope",
+        "",
+        "- Automatic account closure, credit or customer-facing decisions.",
+        "- Any population it has not been measured on: performance on another bank's data is unknown until measured there.",
+        "",
+        "## Training data",
+        "",
+        "IBM AMLworld HI-Small (synthetic, CDLA-Sharing-1.0), chronological split: train, validation (calibration and thresholds only), test.",
+        "No real customer data. Research datasets used for evaluation are listed on the research page (`/research`).",
+        "",
+        f"## Performance (HI-Small test, {T['hardened']['rows']:,} payments, {T['hardened']['positives']:,} laundering)",
+        "",
+        "| Measure | Cascade alone | Served (hardened) |",
+        "|---|---|---|",
+        f"| PR-AUC [95% CI] | {f(T['served']['pr_auc'])} {ci(T['served']['ci95'])} | {f(T['hardened']['pr_auc'])} {ci(T['hardened']['ci95'])} |",
+        f"| PR-AUC without the Sep 11 to 18 simulation tail | {f(T['without_sep11_18_tail']['served']['pr_auc'])} | {f(T['without_sep11_18_tail']['hardened']['pr_auc'])} |",
+        f"| Block band recall / precision | {pct(sb['block']['recall'])} / {pct(sb['block']['precision'])} | {pct(hb['block']['recall'])} / {pct(hb['block']['precision'])} |",
+        f"| PR-AUC when laundering switches payment format (worst) | {f(min(T['attack']['served'].values()))} | {f(min(T['attack']['hardened'].values()))} |",
+        f"| Block recall under the Cheque attack | {pct(T['bands_under_cheque_attack']['served']['block']['recall'])} | {pct(ha['recall'])} |",
+        "",
+    ]
+    if sp:
+        lines += [f"Structuring (HI-Small demo window, block recall, any part caught): clean {pct(sp['base']['pair_aggregated']['block']['laundering_recall_any_part'], 0)}, "
+                  f"split in 4 {pct(sp['split4']['pair_aggregated']['block']['laundering_recall_any_part'], 0)} (was {pct(sp['split4']['per_payment']['block']['laundering_recall_any_part'], 0)}), "
+                  f"split in 4 with parts 30 min apart {pct(sp['split4_spread']['pair_aggregated']['block']['laundering_recall_any_part'], 0)}. Exploratory: the variant was chosen on this window.", ""]
+    lines += [
+        "## Known limitations",
+        "",
+        "- All payment training data is synthetic. Scores on real bank data are unmeasured.",
+        f"- Generalisation across generators is weak. The served cascade zero-shot ROC-AUC on {zs}; a model trained on all other datasets, leave-one-out ROC-AUC: {loo}." if U else "- Generalisation across generators is weak.",
+        "- Spread-out structuring still evades most per-payment and pair checks; account-level alerts are the next step.",
+        "- Reasons are TreeSHAP contributions of the model that set the risk (the L2 XGBoost half, or the format-free model); the LightGBM half is not explained.",
+        "- Serverless deployments (Vercel) keep state per instance; use the Redis deployment (`deploy/docker-compose.yml`) for shared state.",
+        "",
+        "## Governance",
+        "",
+        "- Every model change is adopted only under a rule written in the script before test data is read (`research/*.py`).",
+        "- Thresholds and calibration are fitted on validation only; evaluations stay chronological.",
+        "- The Rust engine matches the Python reference: the cascade to within 3e-8 (tests in `crates/rusetect-server/tests`); the hardened risk to rounding and the attack-stream block decisions exactly.",
+        "- Fail-closed configuration: the server refuses to start without analyst keys and production secrets, or an explicit demo flag.",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 def _opt(name):
@@ -884,6 +1006,9 @@ def main():
 </body>
 </html>
 """
+    card = model_card()
+    if card:
+        open(os.path.join(ROOT, "docs", "MODEL_CARD.md"), "w").write(card)
     out = os.path.join(ROOT, "service", "static", "research.html")
     open(out, "w").write(page)
     print("wrote", out, len(page), "bytes")

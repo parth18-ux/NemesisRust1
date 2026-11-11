@@ -64,6 +64,7 @@ pipeline; the Rust port serves the same models, so the live path reproduces them
 | Area | Data | Result |
 |---|---|---|
 | Payment models | IBM AMLworld HI-Small, every payment streamed through the live engine, last 20% of time as test | PR-AUC 0.711, ROC-AUC 0.985 |
+| Payment models, served hardened risk (format-free second opinion) | HI-Small test, same protocol ([research/out/hardened_eval.json](research/out/hardened_eval.json)) | PR-AUC 0.716; 0.681 when every laundering payment switches format (cascade alone: 0.004) |
 | Payment models, lower laundering rate | IBM AMLworld LI-Small, same protocol | PR-AUC 0.345, ROC-AUC 0.967 |
 | Account opening | Feedzai BAF Base and Variants I to V, months 6 to 7 | mean ROC-AUC 0.888 over six populations; false alarm parity between age groups 0.93 on Base |
 | Messages | Synthetic Indian scam messages from templates held out of training | 0.95 precision at 68% recall for push warnings; no false alarms on genuine OTP, bank, bill and delivery messages |
@@ -85,14 +86,21 @@ It runs robustness, evasion, calibration and cross generator experiments through
 the bundled HI-Small slice is ACH, and re-sending laundering as Cheque takes block recall from 37% to 0%); splitting
 payments in four removes the block band; the LightGBM half adds no measurable PR-AUC; scores are uncalibrated; and the
 31 features transfer to AMLgentex when retrained while the HI-Small model does not. The API no longer fills a missing
-`payment_format` with ACH.
+`payment_format` with ACH. Two fixes are now served: a format-free second opinion
+(block recall under the Cheque attack 67%, was 2%)
+and 24 hour payer-to-payee aggregation against split payments (four-part block recall
+22%, was 1%;
+[research/out/structuring_defence.json](research/out/structuring_defence.json)).
+
+The [model card](docs/MODEL_CARD.md) lists intended use, measured performance, robustness and known limits; the
+[pilot protocol](docs/PILOT.md) is how a bank can measure it on its own data in shadow mode.
 
 ## Quick start
 
 Install Rust from [rustup.rs](https://rustup.rs), then:
 
 ```bash
-cargo run --release -p rusetect-server -- --port 8001
+RUSETECT_DEMO=1 cargo run --release -p rusetect-server -- --port 8001
 ```
 
 Open `http://localhost:8001`. The site has four pages: the overview (`/`), the investigator (`/investigate`) where you
@@ -153,15 +161,16 @@ the scripts that produced `results/` are in the Python edition, [Nemesis1](https
 `deploy/Dockerfile` builds an image with the server and the streaming workers, and `deploy/docker-compose.yml` runs
 the API with Redis and two scoring workers (`rusetect-worker`, `rusetect-replay`); see [scaling](docs/SCALING.md).
 **Vercel.** `api/rusetect.rs` wraps the same server for Vercel's Rust runtime (beta), and `vercel.json` routes every
-path to it. Import the repository in Vercel (or run `npx vercel deploy --prod`); no settings are needed. The models and
+path to it. Import the repository in Vercel (or run `npx vercel deploy --prod`) and set `RUSETECT_DEMO=1` for the public demo. The models and
 pages are embedded in the function binary. Serverless instances do not share memory, so demo state such as the console
 replay can reset between requests.
 
 All requests are applied one at a time behind a single lock, the same order the Python event loop gave them, so demo
 state behaves as before; scoring takes microseconds, so this is not the bottleneck.
 
-Demo mode publishes its analyst keys so the review desk can be tried. Set `RUSETECT_ANALYST_KEYS` and
-`RUSETECT_SIGNING_KEY` before using it with anything real.
+The server refuses to start unless it is told which mode it is in. `RUSETECT_DEMO=1` is the public demo, which
+publishes its analyst keys so the review desk can be tried. For anything real set `RUSETECT_ANALYST_KEYS`; the server
+then also requires `RUSETECT_SIGNING_KEY`, `RUSETECT_CONSORTIUM_SECRET` and `RUSETECT_HASH_SALT`.
 
 ## Project layout
 

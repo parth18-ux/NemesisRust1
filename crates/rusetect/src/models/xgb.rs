@@ -160,17 +160,18 @@ impl XgbBooster {
     pub fn contributions(&self, x: &[f32]) -> Vec<f32> {
         let nf = x.len();
         let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1).min(8);
-        let per_tree: Vec<Vec<f32>> = if threads > 1 && self.trees.len() >= 64 {
+        // one accumulator per thread; trees are added in order within each chunk and chunks in order, as before
+        let per_chunk: Vec<Vec<f32>> = if threads > 1 && self.trees.len() >= 64 {
             let chunk = self.trees.len().div_ceil(threads);
             std::thread::scope(|s| {
                 let hs: Vec<_> = self.trees.chunks(chunk).map(|ts| s.spawn(move || tree_contribs(ts, x))).collect();
-                hs.into_iter().flat_map(|h| h.join().unwrap()).collect()
+                hs.into_iter().map(|h| h.join().unwrap()).collect()
             })
         } else {
-            tree_contribs(&self.trees, x)
+            vec![tree_contribs(&self.trees, x)]
         };
         let mut out = vec![0.0f32; nf + 1];
-        for this in &per_tree {
+        for this in &per_chunk {
             for (o, v) in out.iter_mut().zip(this) {
                 *o += *v;
             }
@@ -180,17 +181,22 @@ impl XgbBooster {
     }
 }
 
-/// Per-tree SHAP vectors (features + bias) for a run of trees, reusing one path buffer.
-fn tree_contribs(trees: &[XgbTree], x: &[f32]) -> Vec<Vec<f32>> {
+/// Summed SHAP vector (features + bias) for a run of trees, reusing one path buffer and one per-tree scratch vector.
+fn tree_contribs(trees: &[XgbTree], x: &[f32]) -> Vec<f32> {
     let nf = x.len();
     let maxd = trees.iter().map(|t| t.max_depth).max().unwrap_or(0) + 2;
     let mut path = vec![PathElement::default(); maxd * (maxd + 1) / 2];
-    trees.iter().map(|t| {
-        let mut this = vec![0.0f32; nf + 1];
+    let (mut sum, mut this) = (vec![0.0f32; nf + 1], vec![0.0f32; nf + 1]);
+    for t in trees {
+        this.iter_mut().for_each(|v| *v = 0.0);
         this[nf] += t.mean[0];
         tree_shap(t, x, &mut this, 0, 0, &mut path, 0, 1.0, 1.0, -1);
-        this
-    }).collect()
+        // per-tree vector first, then added: keeps the float summation order of the previous version
+        for (o, v) in sum.iter_mut().zip(&this) {
+            *o += *v;
+        }
+    }
+    sum
 }
 
 #[derive(Clone, Copy, Default, Debug)]
