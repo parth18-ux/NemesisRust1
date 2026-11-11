@@ -142,8 +142,10 @@ the scripts that produced `results/` are in the Python edition, [Nemesis1](https
 `rusetect-server` is a single binary; it reads the models and pages from the repository folder (`RUSETECT_ROOT`).
 `deploy/Dockerfile` builds an image with the server and the streaming workers, and `deploy/docker-compose.yml` runs
 the API with Redis and two scoring workers (`rusetect-worker`, `rusetect-replay`); see [scaling](docs/SCALING.md).
-The Python edition deployed to Vercel's Python runtime; Rust needs a container host (Fly.io, Railway, Cloud Run,
-ECS) or Vercel's community Rust runtime.
+**Vercel.** `api/rusetect.rs` wraps the same server for Vercel's Rust runtime (beta), and `vercel.json` routes every
+path to it. Import the repository in Vercel (or run `npx vercel deploy --prod`); no settings are needed. The models and
+pages are embedded in the function binary. Serverless instances do not share memory, so demo state such as the console
+replay can reset between requests.
 
 All requests are applied one at a time behind a single lock, the same order the Python event loop gave them, so demo
 state behaves as before; scoring takes microseconds, so this is not the bottleneck.

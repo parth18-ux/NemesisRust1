@@ -1,3 +1,20 @@
+# Root package: the Vercel function (api/rusetect.rs). The crates under crates/ are the actual project.
+[package]
+name = "rusetect-vercel"
+version = "2.2.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "rusetect"
+path = "api/rusetect.rs"
+
+[dependencies]
+rusetect-server = { path = "crates/rusetect-server" }
+vercel_runtime = { version = "2.4", features = ["axum"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+
 [workspace]
 resolver = "2"
 members = ["crates/rusetect", "crates/rusetect-server"]
