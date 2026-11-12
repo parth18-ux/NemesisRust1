@@ -111,6 +111,17 @@ workers skipped the window, so the same payment could get a different decision o
 (`RedisState::pair_window`), so it survives restarts and rebalancing, and a redelivered payment is counted once.
 `tests/scale.rs` checks the Redis window equals `PairWindow` and that worker decisions equal the API's.
 
+**8d. More layers for the block band: tested, not adopted.**
+Two pre-registered attempts to raise block-band recall at the same alert count (`research/out/l3_eval.json`,
+`research/out/l3_stack_eval.json`):
+- a third L2 model trained on HI-Small, HI-Medium and HI-Large (about 40 times more laundering): validation block
+  recall moved by under a point (rule: two points). It ranks better overall on test, but the gain sits outside the block band.
+- a learned monotone L3 combiner over the layer scores: the same flat block recall, and it relearned the payment-format
+  shortcut (worst format-attack PR-AUC near zero), because validation holds no attacked payments.
+Three different models land on the same block recall at the same alert count, which points to a limit of the
+features and labels at this budget rather than of the layering. The served max of two calibrated scores stays: it is
+the only combination that keeps the format attack closed.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

@@ -1,0 +1,300 @@
+{
+ "rule": {
+  "S1_min_block_recall_gain": 0.02,
+  "S2_max_pr_auc_drop": 0.005,
+  "S3_max_attack_drop": 0.02
+ },
+ "served_alert_counts_second_half": {
+  "verify": 4904,
+  "hold": 2319,
+  "block": 652
+ },
+ "validation_second_half": {
+  "current": {
+   "pr_auc": 0.6521,
+   "attack_worst": 0.6155,
+   "bands": {
+    "verify": {
+     "flags": 4904,
+     "tp": 436,
+     "precision": 0.0889,
+     "recall": 0.8321
+    },
+    "hold": {
+     "flags": 2319,
+     "tp": 412,
+     "precision": 0.1777,
+     "recall": 0.7863
+    },
+    "block": {
+     "flags": 652,
+     "tp": 336,
+     "precision": 0.5153,
+     "recall": 0.6412
+    }
+   }
+  },
+  "stack": {
+   "pr_auc": 0.6363,
+   "attack_worst": 0.0201,
+   "bands": {
+    "verify": {
+     "flags": 4904,
+     "tp": 433,
+     "precision": 0.0883,
+     "recall": 0.8263
+    },
+    "hold": {
+     "flags": 2319,
+     "tp": 410,
+     "precision": 0.1768,
+     "recall": 0.7824
+    },
+    "block": {
+     "flags": 652,
+     "tp": 331,
+     "precision": 0.5077,
+     "recall": 0.6317
+    }
+   }
+  },
+  "stack_with_l3": {
+   "pr_auc": 0.6626,
+   "attack_worst": 0.0051,
+   "bands": {
+    "verify": {
+     "flags": 4904,
+     "tp": 433,
+     "precision": 0.0883,
+     "recall": 0.8263
+    },
+    "hold": {
+     "flags": 2319,
+     "tp": 410,
+     "precision": 0.1768,
+     "recall": 0.7824
+    },
+    "block": {
+     "flags": 652,
+     "tp": 337,
+     "precision": 0.5169,
+     "recall": 0.6431
+    }
+   }
+  }
+ },
+ "decision": {
+  "candidate": "stack_with_l3",
+  "checks": {
+   "S1": false,
+   "S2": true,
+   "S3": false
+  },
+  "adopt": false,
+  "decided_at_seconds": 179,
+  "note": "decided on the second half of validation only; test scored after this line"
+ },
+ "test": {
+  "current": {
+   "all": {
+    "pr_auc": 0.72,
+    "ci95": [
+     0.6973,
+     0.7373
+    ],
+    "roc_auc": 0.9907,
+    "positives": 1797,
+    "rows": 1015669
+   },
+   "without_sep11_18_tail": {
+    "pr_auc": 0.5798,
+    "ci95": [
+     0.5498,
+     0.6029
+    ],
+    "roc_auc": 0.9858,
+    "positives": 1142,
+    "rows": 1014561
+   },
+   "bands": {
+    "verify": {
+     "flags": 15523,
+     "tp": 1603,
+     "precision": 0.1033,
+     "recall": 0.892
+    },
+    "hold": {
+     "flags": 6649,
+     "tp": 1510,
+     "precision": 0.2271,
+     "recall": 0.8403
+    },
+    "block": {
+     "flags": 2075,
+     "tp": 1253,
+     "precision": 0.6039,
+     "recall": 0.6973
+    }
+   },
+   "bands_under_cheque_attack": {
+    "verify": {
+     "flags": 15484,
+     "tp": 1564,
+     "precision": 0.101,
+     "recall": 0.8703
+    },
+    "hold": {
+     "flags": 6609,
+     "tp": 1470,
+     "precision": 0.2224,
+     "recall": 0.818
+    },
+    "block": {
+     "flags": 2005,
+     "tp": 1183,
+     "precision": 0.59,
+     "recall": 0.6583
+    }
+   },
+   "thresholds": {
+    "verify": 0.010297347791492939,
+    "hold": 0.042735349386930466,
+    "block": 0.13074204946996468
+   }
+  },
+  "stack": {
+   "all": {
+    "pr_auc": 0.7166,
+    "ci95": [
+     0.6934,
+     0.7362
+    ],
+    "roc_auc": 0.9912,
+    "positives": 1797,
+    "rows": 1015669
+   },
+   "without_sep11_18_tail": {
+    "pr_auc": 0.5841,
+    "ci95": [
+     0.5598,
+     0.6082
+    ],
+    "roc_auc": 0.9866,
+    "positives": 1142,
+    "rows": 1014561
+   },
+   "bands": {
+    "verify": {
+     "flags": 12661,
+     "tp": 1583,
+     "precision": 0.125,
+     "recall": 0.8809
+    },
+    "hold": {
+     "flags": 6746,
+     "tp": 1518,
+     "precision": 0.225,
+     "recall": 0.8447
+    },
+    "block": {
+     "flags": 1977,
+     "tp": 1219,
+     "precision": 0.6166,
+     "recall": 0.6784
+    }
+   },
+   "bands_under_cheque_attack": {
+    "verify": {
+     "flags": 11269,
+     "tp": 191,
+     "precision": 0.0169,
+     "recall": 0.1063
+    },
+    "hold": {
+     "flags": 5394,
+     "tp": 166,
+     "precision": 0.0308,
+     "recall": 0.0924
+    },
+    "block": {
+     "flags": 799,
+     "tp": 41,
+     "precision": 0.0513,
+     "recall": 0.0228
+    }
+   },
+   "thresholds": {
+    "verify": 0.016017915681004524,
+    "hold": 0.016434798017144203,
+    "block": 0.0998801738023758
+   }
+  },
+  "stack_with_l3": {
+   "all": {
+    "pr_auc": 0.7544,
+    "ci95": [
+     0.7373,
+     0.7682
+    ],
+    "roc_auc": 0.9921,
+    "positives": 1797,
+    "rows": 1015669
+   },
+   "without_sep11_18_tail": {
+    "pr_auc": 0.6138,
+    "ci95": [
+     0.5875,
+     0.636
+    ],
+    "roc_auc": 0.9877,
+    "positives": 1142,
+    "rows": 1014561
+   },
+   "bands": {
+    "verify": {
+     "flags": 12002,
+     "tp": 1585,
+     "precision": 0.1321,
+     "recall": 0.882
+    },
+    "hold": {
+     "flags": 6475,
+     "tp": 1531,
+     "precision": 0.2364,
+     "recall": 0.852
+    },
+    "block": {
+     "flags": 2264,
+     "tp": 1309,
+     "precision": 0.5782,
+     "recall": 0.7284
+    }
+   },
+   "bands_under_cheque_attack": {
+    "verify": {
+     "flags": 10596,
+     "tp": 179,
+     "precision": 0.0169,
+     "recall": 0.0996
+    },
+    "hold": {
+     "flags": 5105,
+     "tp": 161,
+     "precision": 0.0315,
+     "recall": 0.0896
+    },
+    "block": {
+     "flags": 1022,
+     "tp": 67,
+     "precision": 0.0656,
+     "recall": 0.0373
+    }
+   },
+   "thresholds": {
+    "verify": 0.014629817567765713,
+    "hold": 0.019481457769870758,
+    "block": 0.08841926604509354
+   }
+  }
+ }
+}
