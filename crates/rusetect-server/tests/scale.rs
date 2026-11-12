@@ -160,3 +160,27 @@ fn redelivered_payment_counts_once() {
         assert!(x.0[k] == y.0[k] || (x.0[k].is_nan() && y.0[k].is_nan()), "feature {}", rusetect::engine::FEATURES[k]);
     }
 }
+
+#[test]
+fn claim_and_writes_are_atomic() {
+    let Some(r) = start() else { return };
+    let cfg = Engine::new(&paths::models_dir(), false).unwrap().cfg.clone();
+    let mut con = redis::Client::open(r.url.as_str()).unwrap().get_connection().unwrap();
+    let mut rs = RedisState::new(redis::Client::open(r.url.as_str()).unwrap().get_connection().unwrap(), cfg, "");
+    let p = rows(1)[0].clone();
+    let a = format!("a:{{{}|{}}}", p.from_bank, p.from_account);
+    // claim already present (e.g. left by a crashed worker under the old two-step code): no writes at all
+    redis::cmd("SET").arg("seen:{0}").arg(1).query::<()>(&mut con).unwrap();
+    let mut state = |eid: i64| -> (bool, Option<i64>) {
+        let (s, n): (bool, Option<i64>) = redis::pipe().cmd("EXISTS").arg(format!("seen:{{{eid}}}")).cmd("HGET").arg(&a).arg("out_n").query(&mut con).unwrap();
+        (s, n)
+    };
+    rs.features(&p).unwrap();
+    assert_eq!(state(0), (true, None));
+    // a fresh eid: claim and writes appear together; the redelivery changes neither
+    let q = Payment { eid: Some(7), ..p.clone() };
+    rs.features(&q).unwrap();
+    assert_eq!(state(7), (true, Some(1)));
+    rs.features(&q).unwrap();
+    assert_eq!(state(7), (true, Some(1)));
+}
