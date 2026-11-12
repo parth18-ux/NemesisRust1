@@ -35,6 +35,7 @@ pub mod models;
 pub mod mouse_dynamics;
 pub mod paths;
 pub mod payment;
+pub mod pramaan;
 pub mod pyfmt;
 pub mod pyre;
 pub mod review;

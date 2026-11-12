@@ -80,6 +80,8 @@ pub struct AppState {
     pub nonces: NonceCache,
     pub consortium: Consortium,
     pub profiles: HashMap<String, TypingProfile>,
+    /// PRAMAAN account-takeover authentication (allow / challenge / block); None if its model files are absent
+    pub auth: Option<rusetect::pramaan::AuthEngine>,
     pub demo: Demo,
 }
 
@@ -127,6 +129,13 @@ impl AppState {
             nonces: NonceCache::default(),
             consortium: Consortium::demo(),
             profiles: HashMap::new(),
+            auth: match rusetect::pramaan::AuthModel::load(&models) {
+                Ok(m) => m.map(rusetect::pramaan::AuthEngine::new),
+                Err(e) => {
+                    eprintln!("{NAME} authentication model unavailable: {e:#}");
+                    None
+                }
+            },
             demo: Demo { truth: truth0(), ..Default::default() },
         }
     }
@@ -249,6 +258,8 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/v2/alerts/{alert_id}/reverify", post(v2_reverify))
         .route("/v2/campaigns", get(v2_campaigns))
         .route("/v2/identity/check", post(v2_identity))
+        .route("/v2/authenticate", post(v2_authenticate))
+        .route("/v2/challenge/verify", post(v2_challenge_verify))
         .route("/v2/duress/register", post(v2_duress_register))
         .route("/v2/payments/confirm", post(v2_confirm))
         .route("/v2/behaviour/enrol", post(v2_behaviour_enrol))
@@ -299,7 +310,7 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/models/l2_xgb.json", "service/models/l2_lgbm.json", "service/models/l0_onboarding_lgbm.json",
     "service/models/message_model.json", "service/models/typing_verifier.json", "service/models/benchmark_results.json",
     "service/models/sample_applications.json", "service/models/demo_stream.csv.gz",
-    "service/models/hardening.json", "service/models/hardening_xgb.json",
+    "service/models/hardening.json", "service/models/hardening_xgb.json", "service/models/auth_config.json", "service/models/auth_xgb.json",
     "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html",
     "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
 ];
@@ -667,6 +678,41 @@ async fn v2_identity(b: Bytes) -> ApiResult {
     ok(Value::Object(out))
 }
 
+/// Account-takeover check for a login or payment (PRAMAAN): allow, challenge (and which one) or block, with reasons in
+/// English and Hindi and exact tree-SHAP signals. Body: user_id, ts (epoch seconds) and optional device, network,
+/// behaviour and transaction objects; see crates/rusetect/src/pramaan.rs.
+async fn v2_authenticate(State(app): State<AppRef>, b: Bytes) -> ApiResult {
+    let req: Value = serde_json::from_slice(&b).map_err(|_| ApiError::new(422, "body must be a JSON object"))?;
+    let o = req.as_object().ok_or_else(|| ApiError::new(422, "body must be a JSON object"))?;
+    if !o.get("user_id").and_then(|v| v.as_str()).is_some_and(|u| !u.is_empty() && u.chars().count() <= 128) {
+        return Err(ApiError::new(422, "user_id: a string of 1 to 128 characters is required"));
+    }
+    if !o.get("ts").and_then(|v| v.as_f64()).is_some_and(|t| t.is_finite() && t > 0.0 && t < 4.0e9) {
+        return Err(ApiError::new(422, "ts: epoch seconds are required"));
+    }
+    for k in ["device", "network", "behaviour", "transaction"] {
+        if o.get(k).is_some_and(|v| !v.is_object() && !v.is_null()) {
+            return Err(ApiError::new(422, format!("{k}: must be an object")));
+        }
+    }
+    let id = o.get("request_id").and_then(|v| v.as_str()).filter(|r| !r.is_empty() && r.len() <= 64).map(String::from)
+        .unwrap_or_else(|| (0..16).map(|_| format!("{:x}", rand::random::<u8>() % 16)).collect());
+    with_state(app, move |s| {
+        let a = s.auth.as_mut().ok_or_else(|| ApiError::new(503, "authentication model not loaded"))?;
+        ok(a.authenticate(&req, id))
+    }).await
+}
+
+/// The outcome of the challenge a decision asked for: passed -> allow (a passkey or bank call-back also trusts the
+/// device); failed -> block, and the account's next attempts are blocked for 30 minutes.
+async fn v2_challenge_verify(State(app): State<AppRef>, b: Bytes) -> ApiResult {
+    let (id, passed) = parse_obj(&b, |o, e| (o.req_str(e, "decision_id"), o.bool_or(e, "passed", false)))?;
+    with_state(app, move |s| {
+        let a = s.auth.as_mut().ok_or_else(|| ApiError::new(503, "authentication model not loaded"))?;
+        a.verify_challenge(&id, passed).map(ok).unwrap_or_else(|| Err(ApiError::new(404, "no pending challenge with this decision_id")))
+    }).await
+}
+
 async fn v2_duress_register(State(app): State<AppRef>, b: Bytes) -> ApiResult {
     let (account, normal, duress, contacts) = parse_obj(&b, |o, e| {
         (o.req_str(e, "account"), o.req_str(e, "normal_pin"), o.req_str(e, "duress_pin"), o.str_list(e, "trusted_contacts"))
@@ -980,6 +1026,9 @@ async fn demo_reset(State(app): State<AppRef>, Query(q): Query<WarmQ>) -> ApiRes
         s.duress.reset();
         s.consortium.reset();
         s.profiles.clear();
+        if let Some(a) = s.auth.as_mut() {
+            a.state.clear();
+        }
         let rows = s.demo_rows()?;
         let t = Instant::now();
         let mut source = "bundled sample";

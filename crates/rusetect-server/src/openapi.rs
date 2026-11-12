@@ -74,6 +74,8 @@ const ROUTES: &[(&str, &str, &str, Option<&str>, &[(&str, &str, &str)])] = &[
     ("get", "/api/v2/campaigns", "Alerts linked into scam campaigns by shared payee, payee identifiers in messages, or near identical scripts.", None, &[]),
     ("post", "/api/v2/alerts/{alert_id}/customer", "The customer's answer on the pause screen.", Some("CustomerIn"), &[("alert_id", "path", "string")]),
     ("post", "/api/v2/alerts/{alert_id}/reverify", "Customer recovery: a re-verified customer goes back to an analyst for release.", Some("ReverifyIn"), &[("alert_id", "path", "string")]),
+    ("post", "/api/v2/authenticate", "Account-takeover check for a login or payment (PRAMAAN): allow, challenge (sms_otp, passkey, bank_callback or cool_off) or block, with reasons in English and Hindi and tree-SHAP signals.", None, &[]),
+    ("post", "/api/v2/challenge/verify", "Report whether the requested challenge passed: allow (a strong challenge also trusts the device) or block.", None, &[]),
     ("post", "/api/v2/identity/check", "Run before the OTP is sent: unenrolled device plus a recent SIM swap means no OTP and re-verification.", Some("SessionIn"), &[]),
     ("post", "/api/v2/duress/register", "Register a normal and a duress PIN", Some("DuressRegisterIn"), &[]),
     ("post", "/api/v2/payments/confirm", "Confirm a payment with a PIN. The duress PIN shows success to the customer but holds the money and alerts trusted contacts and the fraud desk.", Some("ConfirmIn"), &[]),

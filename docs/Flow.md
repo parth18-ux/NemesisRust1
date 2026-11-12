@@ -60,6 +60,17 @@ rate_limit (middleware)                       per-client token bucket; X-Forward
 `POST /api/v2/assess` adds the context layer: `context_rules::assess` on the message and payment context, then
 `combine` takes the stricter decision. `POST /api/v2/payments/batch` loops `score_with_context`.
 
+## An account-takeover check: `POST /api/v2/authenticate`
+
+`v2_authenticate` (validates user_id, ts, object parts) → `pramaan::AuthEngine::authenticate`:
+`pramaan::build` (27 features from the request and `AuthState`, read before any write) → `XgbBooster::contributions`
+(monotone XGBoost, exact tree-SHAP) → prior shift to real-world prevalence → `AuthPolicy::decide` (`choose_challenge`
+picks passkey / bank call-back / cool-off / SMS OTP; expected cost of allow, challenge, block; hard rules: recent failed
+challenge, emulator on a hosting IP, new-device binding) → `AuthState::record_attempt`, then `commit` (allowed) or a
+pending challenge → reasons (EN/HI) and signals. `POST /api/v2/challenge/verify` → `AuthEngine::verify_challenge`
+(passed: commit, a strong challenge trusts the device; failed: `record_failure`, which blocks for 30 minutes).
+Ported from PRAMAAN; parity with its Python engine: `examples/pramaan_parity.rs` on `research/pramaan/reference.py` output.
+
 ## Redis scale path
 
 `rusetect-replay` → `producer::publish` (partition by payer hash) → Redis streams →
