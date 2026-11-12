@@ -4,7 +4,7 @@ RuseTect detects scam payments and money mule activity in digital banking. It fo
 victim receives to the accounts that launder the money, and it answers with the lightest intervention that fits the
 evidence: a question to the customer, a short pause, an analyst review, or a block approved by two analysts.
 
-Live demo: [nemesis-rust1.vercel.app](https://nemesis-rust1.vercel.app) (research review at [/research](https://nemesis-rust1.vercel.app/research)) · Author: Parth Sharma
+Live demo: [nemesis-rust1.vercel.app](https://nemesis-rust1.vercel.app) · Author: Parth Sharma
 
 > RuseTect is a research project. Its models are trained and evaluated on public datasets that are synthetic or
 > collected outside banking (IBM AMLworld, Feedzai BAF, PaySim, Aalto keystrokes, Balabit mouse data). The results below show
@@ -80,7 +80,7 @@ Details: [model selection](docs/model-selection.md), [retraining with the extra 
 
 ### Research review (November 2026)
 
-An independent check of [the audit and roadmap](docs/research/) against the served models, at `/research` on the site.
+An independent check of [the audit and roadmap](docs/research/) against the served models ([PDF](docs/research/RuseTect%20research%20review%202026-11.pdf)).
 It runs robustness, evasion, calibration and cross generator experiments through the live Rust feature code
 (`research/`, results in `research/out/`). Main findings: the served model leans on payment format (92% of laundering in
 the bundled HI-Small slice is ACH, and re-sending laundering as Cheque takes block recall from 37% to 0%); splitting

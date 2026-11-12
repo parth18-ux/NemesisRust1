@@ -273,7 +273,6 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/console", get(|s| page(s, "console.html")))
         .route("/investigate", get(|s| page(s, "investigate.html")))
         .route("/report", get(|s| page(s, "report.html")))
-        .route("/research", get(|s| page(s, "research.html")))
         .route("/favicon.svg", get(favicon))
         .route("/openapi.json", get(|| async { PyJson(StatusCode::OK, openapi::spec()) }))
         .route("/docs", get(|| async { axum::response::Html(openapi::DOCS_HTML) }))
@@ -298,7 +297,7 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/models/sample_applications.json", "service/models/demo_stream.csv.gz",
     "service/models/hardening.json", "service/models/hardening_xgb.json",
     "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html",
-    "service/static/research.html", "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
+    "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
 ];
 
 /// Secrets that must be set once the server runs with real analyst keys (not the public demo).

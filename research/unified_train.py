@@ -155,6 +155,9 @@ def main():
     names_all = BASE + NEW
     R["top_features_gain"] = [names_all[int(k[1:])] for k, _ in sorted(imp.items(), key=lambda kv: -kv[1])[:12]]
     models["pooled_base_new"].save_model(os.path.join(OUT, "unified_pooled_xgb.json"))
+    # the 29-feature pooled model uses only engine features, so it can serve as a format-free second opinion
+    models["pooled_base"].save_model(os.path.join(OUT, "unified_pooled_base_xgb.json"))
+    json.dump({n: {"val": [len(D[n]["va"][1]), int(D[n]["va"][1].sum())]} for n in names}, open(os.path.join(OUT, "unified_val_sizes.json"), "w"))
     json.dump(R, open(os.path.join(OUT, "unified_train.json"), "w"), indent=1)
     print(json.dumps(R, indent=1)[:6000])
 

@@ -314,6 +314,9 @@ def build():
     # ---------------- transfer
     add(full_section())
     add(hardening_section())
+    add(evasion_section())
+    add(generalisation_section())
+    add(real_section())
     add(transfer_section())
     add(samld_section())
     add(unified_section())
@@ -755,6 +758,92 @@ def model_card():
     return "\n".join(lines)
 
 
+def evasion_section():
+    EV, AA = _opt("evasion_suite.json"), _opt("account_aggregation.json")
+    if not EV:
+        return ""
+    labs = [("cascade", "Cascade"), ("hardened", "Hardened"), ("hardened_with_pair", "Hardened + pair window")]
+    rows = [[k.replace("_", " ")] + [f"{pct(v[m]['verify'], 0)} / {pct(v[m]['block'], 0)}" for m, _ in labs] for k, v in EV["attacks"].items()]
+    acc = ""
+    if AA:
+        D = AA["decision"]
+        chk = ", ".join(f"{k} {'passed' if v else 'failed'}" for k, v in D["checks"].items())
+        arows = [[k.replace("_", " "), pct(v["pair_served"]["block_recall"], 0), pct(v["payer"]["block_recall"], 0), v["pair_served"]["block_alerts"], v["payer"]["block_alerts"]]
+                 for k, v in AA["demo_window"].items()]
+        acc = f"""
+  <h3>Account window: all of a payer's payments</h3>
+  <p>Splitting over new mule accounts defeats the pair window. Widening it to all of a payer's payments catches those parts but, at the pair
+  thresholds, blocks thousands of genuine payments, so it was given its own thresholds at the same validation alert budget and its own rule
+  (<code>research/account_aggregation.py</code>): validation PR-AUC within 0.03, mean attack block recall at least 1.5 times the pair window,
+  clean block alerts at most 1.5 times. Result: {chk}. <b>{'Adopted and served.' if D['adopt'] else 'Not adopted.'}</b></p>
+  {table(["Stream", "Block recall, pair window", "Block recall, payer window", "Block alerts, pair", "Block alerts, payer"], arows)}"""
+    return f"""
+<section id="evasion">
+  <span class="eyebrow">Robustness, executed</span>
+  <h2>Evasion suite</h2>
+  <p>Every laundering payment in the HI-Small demo window changed by an action the launderer controls, re-simulated through the Rust engine
+  (<code>research/evasion_suite.py</code>). Verify / block recall, a payment counted as caught if any part reaches the band. This window has
+  only 100,000 payments of history, so the format-free model is weaker here than on the full test file.</p>
+  {table(["Stream", *[l for _, l in labs]], rows, "wrap")}
+  <p>The format switch and the same-payee split are now partly caught; small amount changes, delays and new mule accounts still lower block recall,
+  which is why the verify band and analyst review stay in the loop.</p>{acc}
+</section>"""
+
+
+def generalisation_section():
+    HT, PH = _opt("hardened_transfer.json"), _opt("pooled_hardening.json")
+    if not (HT or PH):
+        return ""
+    body = ""
+    if HT:
+        rows = [[v["label"], f"{v['test_rows']:,}", f"{v['test_positives']:,}", f(v['cascade']['roc_auc']), f(v['hardened']['roc_auc']), f(v['cascade']['pr_auc'], 4), f(v['hardened']['pr_auc'], 4)] for v in HT.values()]
+        body += table(["Dataset (test = last 20% in time)", "Test payments", "Positives", "Cascade ROC", "Served ROC", "Cascade PR-AUC", "Served PR-AUC"], rows, "wrap")
+    if PH:
+        D = PH["decision"]
+        chk = ", ".join(f"{k} {'passed' if v else 'failed'}" for k, v in D["checks"].items())
+        body += f"""
+  <p>Pooled second opinion (<code>research/pooled_hardening.py</code>): the format-free model trained on HI-Small only was compared with one trained on
+  every payment dataset, including IEEE-CIS with real fraud labels. Rule: HI-Small validation PR-AUC within 0.03, format robustness kept, and a
+  validation ROC-AUC gain on the other datasets with a bootstrap interval above zero. Mean gain {f(D['mean_other_roc_gain'], 4)} {ci(D['ci95'], 4)}; {chk}.
+  <b>{'Adopted and served.' if D['adopt'] else 'Not adopted.'}</b></p>"""
+        if PH.get("test"):
+            rows = [[n, v["positives"], f(v["cascade"]["roc_auc"]), f(v["current_hardened"]["roc_auc"]), f(v["pooled_hardened"]["roc_auc"])] for n, v in PH["test"].items()]
+            body += table(["Dataset", "Test positives", "Cascade ROC", "HI-Small second opinion ROC", "Pooled second opinion ROC"], rows)
+    return f"""
+<section id="generalisation">
+  <span class="eyebrow">Generalisation, executed</span>
+  <h2>The served score on every dataset</h2>
+  <p>The served models were trained on HI-Small. Each other dataset's last 20% in time is scored as is (<code>research/hardened_transfer.py</code>);
+  pre-sampled files are reweighted to their true prevalence. IEEE-CIS is the one set with real fraud labels on real payments.</p>
+  {body}
+</section>"""
+
+
+def real_section():
+    RV = _opt("real_vs_synthetic.json")
+    if not RV or "test" not in RV:
+        return ""
+    T, D = RV["test"], RV["decision"]
+    rows = []
+    for a in RV["arms"]:
+        for n, v in T[a].items():
+            rows.append([a.replace("_", " "), n.replace("_", " "), f(v["pr_auc"]), f(v["roc_auc"]), pct(v["precision"]), pct(v["recall"]), f(v["f1"]), f(v["fpr"], 5)])
+    z = T.get("served_cascade_zero_shot_on_ieee", {})
+    return f"""
+<section id="real">
+  <span class="eyebrow">Real against synthetic data, executed</span>
+  <h2>Training on real card fraud, synthetic card fraud, or both</h2>
+  <p>IEEE-CIS (real card-not-present payments, real fraud labels) against the three synthetic card sets, all through the same engine features,
+  learner and time splits (<code>research/real_vs_synthetic.py</code>; audit in <code>docs/DATASET_AUDIT.md</code>). The arm was chosen on
+  IEEE-CIS validation before test was read: <b>{D['selected'].replace('_', ' ')}</b>. Validation PR-AUC on the real data:
+  {', '.join(f"{k.replace('_', ' ')} {f(v)}" for k, v in D['ieee_validation_pr_auc'].items())}.
+  Thresholds maximise F1 on each set's validation part; FPR is the share of genuine payments flagged.</p>
+  {table(["Trained on", "Tested on", "PR-AUC", "ROC-AUC", "Precision", "Recall", "F1", "FPR"], rows, "wrap")}
+  <p>The served transfer model, scoring IEEE-CIS without retraining: PR-AUC {f(z.get('pr_auc', 0))}, ROC-AUC {f(z.get('roc_auc', 0))}. Real card fraud
+  needs card-trained models; the transfer model is not a card model.</p>
+</section>"""
+
+
 def _opt(name):
     q = os.path.join(ROOT, "research", "out", name)
     return J("research", "out", name) if os.path.exists(q) else None
@@ -859,6 +948,15 @@ def other_section():
     if R:
         rows.append(["RBA logins (account takeover)", "Login", f"{R['logins_streamed']:,} / {R['account_takeovers']}", f(R['xgboost']['pr_auc_weighted']), f(R['xgboost']['roc_auc_weighted']),
                      f"{R['test_takeovers']} takeovers in test; " + R["note"]])
+    Eth = _opt("other_ethereum.json")
+    if Eth:
+        rows.append(["Ethereum addresses (real flags)", "Crypto", f"{Eth['addresses']:,} / {Eth['fraud']:,}", f(Eth['xgboost']['pr_auc_mean']), f(Eth['xgboost']['roc_auc_mean']),
+                     f"Random 5-fold split (no time). Token fields are empty for {pct(Eth['erc20_fields_missing_share']['fraud'], 0)} of flagged and {pct(Eth['erc20_fields_missing_share']['genuine'], 0)} of genuine addresses, a collection artefact the model can use, so near-perfect scores are not evidence of real-world accuracy"])
+    BH = _opt("other_bitcoinheist.json")
+    if BH:
+        a = BH["xgboost"]["at_validation_f1_threshold"]
+        rows.append(["BitcoinHeist (real ransomware addresses)", "Crypto", f"{BH['rows']:,} / {BH['ransomware']:,}", f(BH['xgboost']['pr_auc']), f(BH['xgboost']['roc_auc']),
+                     f"Split by date; {BH['positives']['test']:,} ransomware in test; at the validation F1 threshold precision {pct(a['precision'])}, recall {pct(a['recall'])}, FPR {pct(a['fpr'], 3)}"])
     B = _opt("other_berka.json")
     if B:
         rows.append(["Berka (real Czech bank)", "Credit default", f"{B['loans']} loans / {B['bad_loans']} bad", f(B['test']['pr_auc']), f(B['test']['roc_auc']), f"{B['test']['bad']} bad loans in test; " + B["note"]])
@@ -1009,7 +1107,7 @@ def main():
     card = model_card()
     if card:
         open(os.path.join(ROOT, "docs", "MODEL_CARD.md"), "w").write(card)
-    out = os.path.join(ROOT, "service", "static", "research.html")
+    out = os.path.join(ROOT, "docs", "research", "research_review.html")  # kept out of the public site
     open(out, "w").write(page)
     print("wrote", out, len(page), "bytes")
     if "--fragment" in sys.argv:

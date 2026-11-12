@@ -1,0 +1,181 @@
+{
+ "note": "block and verify recall, any part caught, HI-Small demo window",
+ "attacks": {
+  "base": {
+   "cascade": {
+    "verify": 0.7938,
+    "block": 0.3711,
+    "genuine_blocked": 10
+   },
+   "hardened": {
+    "verify": 0.7113,
+    "block": 0.3711,
+    "genuine_blocked": 9
+   },
+   "hardened_with_pair": {
+    "verify": 0.7216,
+    "block": 0.3711,
+    "genuine_blocked": 18
+   },
+   "hardened_with_payer": {
+    "verify": 0.8144,
+    "block": 0.5258,
+    "genuine_blocked": 6284
+   }
+  },
+  "cheque": {
+   "cascade": {
+    "verify": 0.0206,
+    "block": 0.0,
+    "genuine_blocked": 10
+   },
+   "hardened": {
+    "verify": 0.4124,
+    "block": 0.0309,
+    "genuine_blocked": 9
+   },
+   "hardened_with_pair": {
+    "verify": 0.4227,
+    "block": 0.0309,
+    "genuine_blocked": 18
+   },
+   "hardened_with_payer": {
+    "verify": 0.567,
+    "block": 0.2062,
+    "genuine_blocked": 6277
+   }
+  },
+  "amount_minus10": {
+   "cascade": {
+    "verify": 0.7732,
+    "block": 0.1959,
+    "genuine_blocked": 10
+   },
+   "hardened": {
+    "verify": 0.6907,
+    "block": 0.134,
+    "genuine_blocked": 9
+   },
+   "hardened_with_pair": {
+    "verify": 0.701,
+    "block": 0.134,
+    "genuine_blocked": 18
+   },
+   "hardened_with_payer": {
+    "verify": 0.8041,
+    "block": 0.3196,
+    "genuine_blocked": 6281
+   }
+  },
+  "amount_jitter": {
+   "cascade": {
+    "verify": 0.732,
+    "block": 0.1237,
+    "genuine_blocked": 10
+   },
+   "hardened": {
+    "verify": 0.6907,
+    "block": 0.0619,
+    "genuine_blocked": 9
+   },
+   "hardened_with_pair": {
+    "verify": 0.701,
+    "block": 0.0722,
+    "genuine_blocked": 18
+   },
+   "hardened_with_payer": {
+    "verify": 0.8144,
+    "block": 0.268,
+    "genuine_blocked": 6279
+   }
+  },
+  "delay_6h": {
+   "cascade": {
+    "verify": 0.5979,
+    "block": 0.0206,
+    "genuine_blocked": 10
+   },
+   "hardened": {
+    "verify": 0.5052,
+    "block": 0.0103,
+    "genuine_blocked": 9
+   },
+   "hardened_with_pair": {
+    "verify": 0.5052,
+    "block": 0.0103,
+    "genuine_blocked": 18
+   },
+   "hardened_with_payer": {
+    "verify": 0.7113,
+    "block": 0.1959,
+    "genuine_blocked": 6277
+   }
+  },
+  "split4_spread": {
+   "cascade": {
+    "verify": 0.6186,
+    "block": 0.0103,
+    "genuine_blocked": 10
+   },
+   "hardened": {
+    "verify": 0.5464,
+    "block": 0.0103,
+    "genuine_blocked": 9
+   },
+   "hardened_with_pair": {
+    "verify": 0.7216,
+    "block": 0.1443,
+    "genuine_blocked": 18
+   },
+   "hardened_with_payer": {
+    "verify": 0.8247,
+    "block": 0.3299,
+    "genuine_blocked": 6278
+   }
+  },
+  "split4_new_payees": {
+   "cascade": {
+    "verify": 0.6495,
+    "block": 0.0,
+    "genuine_blocked": 10
+   },
+   "hardened": {
+    "verify": 0.5155,
+    "block": 0.0,
+    "genuine_blocked": 9
+   },
+   "hardened_with_pair": {
+    "verify": 0.5155,
+    "block": 0.0,
+    "genuine_blocked": 18
+   },
+   "hardened_with_payer": {
+    "verify": 0.9175,
+    "block": 0.2268,
+    "genuine_blocked": 6278
+   }
+  },
+  "cheque_split4": {
+   "cascade": {
+    "verify": 0.0206,
+    "block": 0.0,
+    "genuine_blocked": 10
+   },
+   "hardened": {
+    "verify": 0.134,
+    "block": 0.0,
+    "genuine_blocked": 9
+   },
+   "hardened_with_pair": {
+    "verify": 0.1959,
+    "block": 0.0,
+    "genuine_blocked": 18
+   },
+   "hardened_with_payer": {
+    "verify": 0.299,
+    "block": 0.1856,
+    "genuine_blocked": 6277
+   }
+  }
+ }
+}

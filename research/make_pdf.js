@@ -1,4 +1,4 @@
-// Render service/static/research.html to docs/research/RuseTect research review 2026-11.pdf (A4 landscape).
+// Render docs/research/research_review.html to docs/research/RuseTect research review 2026-11.pdf (A4 landscape).
 // Usage: node research/make_pdf.js   (after python3 -I research/build_report.py)
 const { chromium } = require('playwright');
 const path = require('path');
@@ -6,7 +6,7 @@ const path = require('path');
   const root = path.resolve(__dirname, '..');
   const b = await chromium.launch();
   const p = await b.newPage();
-  await p.goto('file://' + root + '/service/static/research.html', { waitUntil: 'networkidle' }).catch(() => {});
+  await p.goto('file://' + root + '/docs/research/research_review.html', { waitUntil: 'networkidle' }).catch(() => {});
   await p.addStyleTag({ content: `nav.site{display:none} body{padding:0!important} .tbl,.chart{overflow:visible!important}
     .wrap table{min-width:0!important} table{font-size:11.5px} th,td{padding:6px 8px} main{gap:34px}
     .card,.chart,tr,.kpis{break-inside:avoid} h2,h3,.eyebrow{break-after:avoid}` });

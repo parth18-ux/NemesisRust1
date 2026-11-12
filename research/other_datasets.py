@@ -252,6 +252,52 @@ def berka(folder):
             "note": "credit default, not fraud: the audit's 'behaviour realism' use (class D/E); few positives, so the interval is wide"}
 
 
+def ethereum(folder):
+    """Ethereum addresses with real fraud labels (Etherscan-flagged; Kaggle "Ethereum Fraud Detection", HF mirror
+    JoshikaV05/ethereum_fraud_detection). One row per address of aggregate behaviour, no time column, so stratified
+    5-fold cross-validation after removing duplicate addresses. Token-name text columns are dropped."""
+    from sklearn.model_selection import StratifiedKFold
+    d = pd.read_csv(os.path.join(folder, "transaction_dataset.csv"))
+    d = d.drop_duplicates("Address").reset_index(drop=True)
+    y = d.FLAG.values.astype(int)
+    X = d.drop(columns=[c for c in d.columns if c in ("Unnamed: 0", "Index", "Address", "FLAG") or not pd.api.types.is_numeric_dtype(d[c])]).values.astype(np.float32)
+    aucs, aps = [], []
+    for tr, te in StratifiedKFold(5, shuffle=True, random_state=0).split(X, y):
+        s = pred(fit(X[tr], y[tr]), X[te])
+        aucs.append(AUC(y[te], s)); aps.append(AP(y[te], s))
+    return {"dataset": "Ethereum addresses, real fraud labels (Etherscan flagged)", "addresses": int(len(y)), "fraud": int(y.sum()),
+            "split": "stratified 5-fold cross-validation (no time column)",
+            "xgboost": {"roc_auc_mean": round(float(np.mean(aucs)), 4), "roc_auc_sd": round(float(np.std(aucs)), 4), "pr_auc_mean": round(float(np.mean(aps)), 4)},
+            "erc20_fields_missing_share": {"genuine": round(float(d[y == 0][" Total ERC20 tnxs"].isna().mean()), 4), "fraud": round(float(d[y == 1][" Total ERC20 tnxs"].isna().mean()), 4)},
+            "note": "address-level aggregates; real labels but a random split, so it measures separability, not drift"}
+
+
+def bitcoinheist(folder):
+    """BitcoinHeist (Akcora et al. 2019, UCI 526): real Bitcoin addresses per day, ransomware labels from published
+    ransomware studies (label "white" = not known ransomware). Address-graph features only (length, weight, count,
+    looped, neighbors, income). Split by date 60/20/20; threshold that maximises F1 on validation is applied to test."""
+    from sklearn.metrics import precision_recall_curve
+    d = pd.read_csv(os.path.join(folder, "BitcoinHeistData.csv"))
+    d["t"] = d.year * 400 + d.day
+    d = d.sort_values("t", kind="stable").reset_index(drop=True)
+    y = (d.label != "white").values.astype(int)
+    X = np.c_[d[["length", "weight", "count", "looped", "neighbors"]].values, np.log1p(d.income.values)].astype(np.float32)
+    n = len(d); tr, va, te = slice(0, int(n * 0.6)), slice(int(n * 0.6), int(n * 0.8)), slice(int(n * 0.8), None)
+    b = fit(X[tr], y[tr])
+    sv, st = pred(b, X[va]), pred(b, X[te])
+    p, r, t = precision_recall_curve(y[va], sv)
+    thr = float(t[int(np.nanargmax((2 * p * r / np.maximum(p + r, 1e-12))[:-1]))])
+    k = st >= thr; yt = y[te]
+    tp, fp, fn = int((k & (yt == 1)).sum()), int((k & (yt == 0)).sum()), int((~k & (yt == 1)).sum())
+    prec, rec = tp / max(tp + fp, 1), tp / max(tp + fn, 1)
+    return {"dataset": "BitcoinHeist (UCI 526), real Bitcoin addresses, ransomware labels", "rows": int(n), "ransomware": int(y.sum()),
+            "split": "by date 60/20/20", "dates": {"train_end": int(d.t.iloc[int(n * 0.6)]), "test_start": int(d.t.iloc[int(n * 0.8)])},
+            "positives": {"train": int(y[tr].sum()), "validation": int(y[va].sum()), "test": int(yt.sum())},
+            "xgboost": {**ev(yt, st), "at_validation_f1_threshold": {"precision": round(prec, 4), "recall": round(rec, 4),
+                        "f1": round(2 * prec * rec / max(prec + rec, 1e-12), 4), "fpr": round(fp / max(1, int((yt == 0).sum())), 6)}},
+            "note": "address-day graph features only; ransomware families change over time, so the time split is a drift test"}
+
+
 def main():
     name, folder = sys.argv[1], sys.argv[2]
     R = globals()[name](folder)

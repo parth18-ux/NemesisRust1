@@ -18,7 +18,7 @@ L1T = CFG["l1_threshold"]
 NAMES = {"hismall": "HI-Small (in domain)", "li_small": "LI-Small (in domain: the served models also trained on LI-Small)",
          "himed": "HI-Medium", "li_medium": "LI-Medium", "hi_large": "HI-Large", "li_large": "LI-Large", "samld": "SAML-D",
          "amlgentex": "AMLgentex Sweden difficult", "banksim": "BankSim (cards)", "sparkov": "Sparkov (cards)",
-         "paysim": "PaySim (mobile wallets)", "tabformer": "TabFormer (cards)"}
+         "paysim": "PaySim (mobile wallets)", "ieee": "IEEE-CIS (real card-not-present fraud labels)", "tabformer": "TabFormer (cards)"}
 
 
 def main():

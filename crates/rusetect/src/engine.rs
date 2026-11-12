@@ -261,6 +261,8 @@ pub struct Hardening {
     pub verify: f64,
     pub hold: f64,
     pub block: f64,
+    /// aggregate over all of a payer's payments ("payer", research/account_aggregation.py) instead of each pair
+    pub payer_window: bool,
 }
 
 fn out_features(out: &Map<String, Value>) -> Map<String, Value> {
@@ -293,7 +295,8 @@ impl Hardening {
             .collect::<Result<Vec<_>>>()?;
         let thr = |k: &str| v["thresholds"][k].as_f64().ok_or_else(|| anyhow::anyhow!("hardening.json: thresholds.{k}"));
         Ok(Some(Hardening { model: XgbBooster::load(&dir.join(v["model"].as_str().unwrap_or("hardening_xgb.json")))?, cols,
-                            iso_served: iso("iso_served"), iso_free: iso("iso_free"), verify: thr("verify")?, hold: thr("hold")?, block: thr("block")? }))
+                            iso_served: iso("iso_served"), iso_free: iso("iso_free"), verify: thr("verify")?, hold: thr("hold")?, block: thr("block")?,
+                            payer_window: v["window"].as_str() == Some("payer") }))
     }
 
     /// (hardened risk, calibrated format-free score) for the engine's feature vector and the cascade's risk.
@@ -610,7 +613,9 @@ impl Engine {
     /// calibrated parts barely moves. Both steps can only raise a decision.
     fn finish_risk(&mut self, p: &Payment, x: &[f32], out: &mut Map<String, Value>) {
         let cascade = out["risk"].as_f64().unwrap_or(0.0);
-        let key = (self.acct_id(&p.from_bank, &p.from_account), self.acct_id(&p.to_bank, &p.to_account));
+        let payer_window = self.models.as_ref().and_then(|m| m.hardening.as_ref()).map(|h| h.payer_window).unwrap_or(false);
+        let payee = if payer_window { u32::MAX } else { self.acct_id(&p.to_bank, &p.to_account) };
+        let key = (self.acct_id(&p.from_bank, &p.from_account), payee);
         let (n, pair) = {
             let q = self.pair_risks.entry(key).or_default();
             while q.front().map(|x| x.0 <= p.tmin - 1440).unwrap_or(false) {
@@ -649,7 +654,8 @@ impl Engine {
                 *r = fr;
             }
             if self.band_for_risk(before).0 != decision && raised > cascade {
-                r.insert(0, json!({"feature": "Repeated payments to this payee in 24 h", "value": n,
+                let what = if payer_window { "Risky payments by this payer in 24 h" } else { "Repeated payments to this payee in 24 h" };
+                r.insert(0, json!({"feature": what, "value": n,
                                    "display": format!("{n} payments"), "impact": py_round(risk - before, 3)}));
             }
         }
