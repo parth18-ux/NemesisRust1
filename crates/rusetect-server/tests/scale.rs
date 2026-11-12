@@ -136,8 +136,10 @@ fn malformed_messages_go_to_dead_letter() {
     let Some(r) = start() else { return };
     let mut con = redis::Client::open(r.url.as_str()).unwrap().get_connection().unwrap();
     redis::cmd("XADD").arg("payments:0").arg("*").arg("p").arg("{not json").query::<()>(&mut con).unwrap();
+    let upi = Payment { payment_format: "UPI".into(), ..rows(1)[0].clone() };
+    publish(&mut con, &[upi], 1, "", 1, false).unwrap();
     publish(&mut con, &rows(50), 1, "", 50, true).unwrap();
     assert_eq!(run(&r.url, 0, 20, "rusetect", "").unwrap(), 50, "the worker survives and scores every good payment");
     let n: usize = redis::cmd("XLEN").arg("deadletter").query(&mut con).unwrap();
-    assert_eq!(n, 1);
+    assert_eq!(n, 2, "bad JSON and an unknown payment format are both dead-lettered");
 }

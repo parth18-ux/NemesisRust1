@@ -1,6 +1,7 @@
 //! Stateless scoring worker: reads payments from one Redis Stream partition, keeps account state in Redis, scores the
 //! payment cascade and the context layer per payment, and writes decisions to the "decisions" stream.
 use super::redis_state::RedisState;
+use crate::inputs::{CURRENCIES, PAYMENT_FORMATS};
 use rusetect::context_rules::{assess, combine, from_engine_features};
 use rusetect::engine::DECISIONS;
 use rusetect::payment::Payment;
@@ -84,9 +85,11 @@ pub fn run(redis_url: &str, partition: u32, batch: usize, group: &str, prefix: &
             let Some(pj) = fields.iter().find(|(k, _)| k == "p").map(|x| x.1.clone()) else { continue };
             // a malformed message goes to a dead-letter stream (and is acknowledged) instead of stopping the worker
             match serde_json::from_str::<Payment>(&pj) {
-                Ok(p) if p.amount_paid.is_finite() && p.amount_paid > 0.0 => pays.push(p),
+                Ok(p) if p.amount_paid.is_finite() && p.amount_paid > 0.0 && PAYMENT_FORMATS.contains(&p.payment_format.as_str())
+                    && CURRENCIES.contains(&p.payment_currency.as_str()) && CURRENCIES.contains(&p.receiving_currency.as_str()) => pays.push(p),
                 bad => {
-                    let why = bad.err().map(|e| e.to_string()).unwrap_or_else(|| "amount_paid must be finite and positive".into());
+                    let why = bad.err().map(|e| e.to_string())
+                        .unwrap_or_else(|| "amount_paid must be finite and positive; payment_format and currencies must be known".into());
                     redis::cmd("XADD").arg(format!("{prefix}deadletter")).arg("*").arg("id").arg(&id).arg("reason").arg(why).arg("p").arg(&pj).query::<()>(&mut con)?;
                     continue;
                 }

@@ -198,6 +198,12 @@ collapsing the stream into one tick); it was fixed and rerun without changing th
 duplicate `py_str` in `campaigns.rs` now uses `str_report::py_str`: 77 fewer lines of Rust (9484 to 9407). Tests (73),
 PRAMAAN parity and the attack-stream replay are unchanged.
 
+**8j. Review fixes: campaign cap, worker input check, future timestamps.** Campaign building is quadratic and runs under
+the state lock, so `/v2/str` and `/v2/campaigns` now link only the newest 2,000 alerts (`campaigns::MAX_ALERTS`).
+Redis workers now send payments with an unknown payment format or currency to the dead-letter stream, using the API's own
+lists, since the model reads those as missing and approves almost everything. The API refuses (422) a payment timestamped
+more than one day ahead of the wall clock, which would otherwise make every window evict relative to a far-future time.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
