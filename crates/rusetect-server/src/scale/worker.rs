@@ -2,7 +2,7 @@
 //! payment cascade and the context layer per payment, and writes decisions to the "decisions" stream.
 use super::redis_state::RedisState;
 use rusetect::context_rules::{assess, combine, from_engine_features};
-use rusetect::engine::{PairWindow, DECISIONS};
+use rusetect::engine::DECISIONS;
 use rusetect::payment::Payment;
 use rusetect::pyfmt::{dumps, py_round, DEFAULT_STYLE};
 use rusetect::{paths, Engine};
@@ -11,17 +11,13 @@ use serde_json::{json, Value};
 pub struct Scorer {
     pub eng: Engine,
     pub state: RedisState,
-    /// the 24 h structuring window; exact in-process because the producer sends every payer to one partition
-    /// (producer::partition_of). shortcut: lost when the worker restarts, so split payments in the first day after a
-    /// restart score per payment; move it to Redis if workers restart often.
-    pairs: PairWindow<(String, String)>,
 }
 
 impl Scorer {
     pub fn new(con: redis::Connection, prefix: &str) -> anyhow::Result<Self> {
         let eng = Engine::new(&paths::models_dir(), true)?;
         let state = RedisState::new(con, eng.cfg.clone(), prefix);
-        Ok(Scorer { eng, state, pairs: PairWindow::new() })
+        Ok(Scorer { eng, state })
     }
 
     pub fn score(&mut self, payments: &[Payment]) -> redis::RedisResult<Vec<Value>> {
@@ -38,7 +34,7 @@ impl Scorer {
             // same structuring window and format hardening as Engine::finish_risk
             if let Some(h) = m.hardening.as_ref() {
                 let payee = if h.payer_window { String::new() } else { format!("{}|{}", p.to_bank, p.to_account) };
-                let (n, pair) = self.pairs.push((format!("{}|{}", p.from_bank, p.from_account), payee), p.tmin, risk);
+                let (n, pair) = self.state.pair_window(p, &payee, risk)?;
                 risk = h.risk(&x, if n > 1 { pair.max(risk) } else { risk }).0;
                 esc = true;
             }

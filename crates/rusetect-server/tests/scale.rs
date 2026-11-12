@@ -87,3 +87,46 @@ fn partitioned_workers_score_everything() {
     eids.sort();
     assert_eq!(eids, (0..3000).collect::<Vec<i64>>());
 }
+
+#[test]
+fn redis_pair_window_matches_engine_window() {
+    let Some(r) = start() else { return };
+    let con = redis::Client::open(r.url.as_str()).unwrap().get_connection().unwrap();
+    let mut rs = RedisState::new(con, Engine::new(&paths::models_dir(), false).unwrap().cfg.clone(), "");
+    let mut w = rusetect::engine::PairWindow::new();
+    let mut x = 7u64;
+    let mut t = 0i64;
+    for i in 0..3000i64 {
+        x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+        t += (x % 60) as i64;
+        let (payer, payee, risk) = (format!("P{}", x % 7), format!("D{}", (x >> 8) % 3), ((x >> 16) % 1000) as f64 / 1000.0);
+        let p = Payment { from_bank: "1".into(), from_account: payer.clone(), to_bank: "2".into(), to_account: "x".into(), amount_paid: 1.0,
+            payment_currency: "US Dollar".into(), receiving_currency: "US Dollar".into(), payment_format: "ACH".into(), tmin: t, eid: Some(i) };
+        let (n, a) = w.push((payer, payee.clone()), t, risk);
+        let (m, b) = rs.pair_window(&p, &payee, risk).unwrap();
+        assert_eq!(n, m, "row {i}");
+        assert!((a - b).abs() < 1e-12, "row {i}: {a} vs {b}");
+    }
+    // a redelivered payment is not counted twice
+    let p = Payment { from_bank: "1".into(), from_account: "Q".into(), to_bank: "2".into(), to_account: "x".into(), amount_paid: 1.0,
+        payment_currency: "US Dollar".into(), receiving_currency: "US Dollar".into(), payment_format: "ACH".into(), tmin: t, eid: Some(99_999) };
+    assert_eq!(rs.pair_window(&p, "d", 0.5).unwrap().0, 1);
+    assert_eq!(rs.pair_window(&p, "d", 0.5).unwrap().0, 1);
+}
+
+#[test]
+fn worker_decisions_match_engine() {
+    let Some(r) = start() else { return };
+    let con = redis::Client::open(r.url.as_str()).unwrap().get_connection().unwrap();
+    let mut sc = rusetect_server::scale::worker::Scorer::new(con, "").unwrap();
+    let mut eng = Engine::new(&paths::models_dir(), true).unwrap();
+    let pays = rows(4000);
+    let got = sc.score(&pays).unwrap();
+    let mut flagged = 0;
+    for (i, (p, g)) in pays.iter().zip(&got).enumerate() {
+        let e = eng.score_payment(p);
+        assert_eq!(g["payment_decision"], e["decision"], "row {i}");
+        flagged += (e["decision"] != rusetect::engine::DECISIONS[0]) as usize;
+    }
+    assert!(flagged > 0, "the slice exercises flagged payments");
+}
