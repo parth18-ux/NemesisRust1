@@ -128,6 +128,9 @@ pub fn token_v2(x: &str, y: &str) -> f64 {
     jaro_winkler(x, y).max(CAP * jaro_winkler(&fold(x), &fold(y)))
 }
 
+/// Largest list name (in tokens) the subset search runs on; above it only the symmetric score is used.
+const MAX_SUBSET_TOKENS: usize = 8;
+
 /// Subset score for a query that drops list tokens: the best one-to-one alignment of every query token to a distinct list
 /// token with each pair >= FLOOR, scored as the pair mean minus PENALTY per unmatched list token. None when not applicable.
 fn subset(q: &[String], c: &[String]) -> Option<f64> {
@@ -147,7 +150,8 @@ fn subset(q: &[String], c: &[String]) -> Option<f64> {
         }
         top
     }
-    if q.len() < 2 || q.len() >= c.len() {
+    // The search is factorial in the token count, so long names (caller-supplied) fall back to the symmetric score.
+    if q.len() < 2 || q.len() >= c.len() || c.len() > MAX_SUBSET_TOKENS {
         return None;
     }
     best(q, c, &mut vec![false; c.len()]).map(|s| s / q.len() as f64 - PENALTY * (c.len() - q.len()) as f64)
@@ -254,6 +258,14 @@ mod tests {
         assert_eq!(subset(&normalise("Khalid"), &normalise("Khalid Mansour Dhaheri")), None, "single-token queries never use it");
         assert_eq!(subset(&normalise("Khalid Smith"), &normalise("Khalid Mansour Dhaheri")), None, "every pair must reach FLOOR");
         assert_eq!(subset(&normalise("Khalid Khalid"), &normalise("Khalid Mansour Dhaheri")), None, "one-to-one alignment");
+    }
+
+    #[test]
+    fn long_names_stay_fast() {
+        let (q, c) = (vec!["aldric".to_string(); 13], vec!["aldric".to_string(); 14]);
+        let t = std::time::Instant::now();
+        score_v2(&q, &c);
+        assert!(t.elapsed() < std::time::Duration::from_millis(100), "{:?}", t.elapsed());
     }
 
     #[test]
