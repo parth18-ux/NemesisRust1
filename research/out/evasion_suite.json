@@ -8,17 +8,17 @@
     "genuine_blocked": 10
    },
    "hardened": {
-    "verify": 0.7113,
+    "verify": 0.7216,
     "block": 0.3711,
     "genuine_blocked": 9
    },
    "hardened_with_pair": {
-    "verify": 0.7216,
+    "verify": 0.732,
     "block": 0.3711,
     "genuine_blocked": 18
    },
    "hardened_with_payer": {
-    "verify": 0.8144,
+    "verify": 0.8247,
     "block": 0.5258,
     "genuine_blocked": 6284
    }
@@ -30,17 +30,17 @@
     "genuine_blocked": 10
    },
    "hardened": {
-    "verify": 0.4124,
-    "block": 0.0309,
+    "verify": 0.4227,
+    "block": 0.0206,
     "genuine_blocked": 9
    },
    "hardened_with_pair": {
-    "verify": 0.4227,
-    "block": 0.0309,
+    "verify": 0.433,
+    "block": 0.0206,
     "genuine_blocked": 18
    },
    "hardened_with_payer": {
-    "verify": 0.567,
+    "verify": 0.5773,
     "block": 0.2062,
     "genuine_blocked": 6277
    }
@@ -52,17 +52,17 @@
     "genuine_blocked": 10
    },
    "hardened": {
-    "verify": 0.6907,
+    "verify": 0.701,
     "block": 0.134,
     "genuine_blocked": 9
    },
    "hardened_with_pair": {
-    "verify": 0.701,
+    "verify": 0.7113,
     "block": 0.134,
     "genuine_blocked": 18
    },
    "hardened_with_payer": {
-    "verify": 0.8041,
+    "verify": 0.8144,
     "block": 0.3196,
     "genuine_blocked": 6281
    }
@@ -74,17 +74,17 @@
     "genuine_blocked": 10
    },
    "hardened": {
-    "verify": 0.6907,
-    "block": 0.0619,
+    "verify": 0.701,
+    "block": 0.0722,
     "genuine_blocked": 9
    },
    "hardened_with_pair": {
-    "verify": 0.701,
+    "verify": 0.7113,
     "block": 0.0722,
     "genuine_blocked": 18
    },
    "hardened_with_payer": {
-    "verify": 0.8144,
+    "verify": 0.8247,
     "block": 0.268,
     "genuine_blocked": 6279
    }
@@ -118,17 +118,17 @@
     "genuine_blocked": 10
    },
    "hardened": {
-    "verify": 0.5464,
+    "verify": 0.5567,
     "block": 0.0103,
     "genuine_blocked": 9
    },
    "hardened_with_pair": {
-    "verify": 0.7216,
+    "verify": 0.732,
     "block": 0.1443,
     "genuine_blocked": 18
    },
    "hardened_with_payer": {
-    "verify": 0.8247,
+    "verify": 0.8351,
     "block": 0.3299,
     "genuine_blocked": 6278
    }
@@ -162,17 +162,17 @@
     "genuine_blocked": 10
    },
    "hardened": {
-    "verify": 0.134,
+    "verify": 0.0825,
     "block": 0.0,
     "genuine_blocked": 9
    },
    "hardened_with_pair": {
-    "verify": 0.1959,
+    "verify": 0.1443,
     "block": 0.0,
     "genuine_blocked": 18
    },
    "hardened_with_payer": {
-    "verify": 0.299,
+    "verify": 0.2784,
     "block": 0.1856,
     "genuine_blocked": 6277
    }

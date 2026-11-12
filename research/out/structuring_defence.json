@@ -173,14 +173,14 @@
     "base": {
      "per_payment": {
       "verify": {
-       "payments_flagged": 1167,
-       "laundering_recall_any_part": 0.7113,
-       "flagged_genuine": 1098
+       "payments_flagged": 1252,
+       "laundering_recall_any_part": 0.7216,
+       "flagged_genuine": 1182
       },
       "hold": {
-       "payments_flagged": 152,
+       "payments_flagged": 160,
        "laundering_recall_any_part": 0.433,
-       "flagged_genuine": 110
+       "flagged_genuine": 118
       },
       "block": {
        "payments_flagged": 45,
@@ -190,14 +190,14 @@
      },
      "pair_aggregated": {
       "verify": {
-       "payments_flagged": 1941,
-       "laundering_recall_any_part": 0.7113,
-       "flagged_genuine": 1872
+       "payments_flagged": 2333,
+       "laundering_recall_any_part": 0.732,
+       "flagged_genuine": 2262
       },
       "hold": {
-       "payments_flagged": 202,
+       "payments_flagged": 205,
        "laundering_recall_any_part": 0.433,
-       "flagged_genuine": 160
+       "flagged_genuine": 163
       },
       "block": {
        "payments_flagged": 54,
@@ -210,35 +210,35 @@
     "split2": {
      "per_payment": {
       "verify": {
-       "payments_flagged": 1204,
-       "laundering_recall_any_part": 0.6907,
-       "flagged_genuine": 1098
+       "payments_flagged": 1293,
+       "laundering_recall_any_part": 0.7216,
+       "flagged_genuine": 1181
       },
       "hold": {
-       "payments_flagged": 178,
-       "laundering_recall_any_part": 0.4433,
-       "flagged_genuine": 110
+       "payments_flagged": 190,
+       "laundering_recall_any_part": 0.4948,
+       "flagged_genuine": 117
       },
       "block": {
-       "payments_flagged": 22,
-       "laundering_recall_any_part": 0.134,
+       "payments_flagged": 27,
+       "laundering_recall_any_part": 0.1753,
        "flagged_genuine": 9
       }
      },
      "pair_aggregated": {
       "verify": {
-       "payments_flagged": 2001,
-       "laundering_recall_any_part": 0.6907,
-       "flagged_genuine": 1873
+       "payments_flagged": 2400,
+       "laundering_recall_any_part": 0.7732,
+       "flagged_genuine": 2263
       },
       "hold": {
-       "payments_flagged": 233,
-       "laundering_recall_any_part": 0.4536,
-       "flagged_genuine": 160
+       "payments_flagged": 240,
+       "laundering_recall_any_part": 0.5052,
+       "flagged_genuine": 162
       },
       "block": {
-       "payments_flagged": 33,
-       "laundering_recall_any_part": 0.134,
+       "payments_flagged": 37,
+       "laundering_recall_any_part": 0.1753,
        "flagged_genuine": 18
       }
      },
@@ -247,35 +247,35 @@
     "split4": {
      "per_payment": {
       "verify": {
-       "payments_flagged": 1262,
-       "laundering_recall_any_part": 0.6392,
-       "flagged_genuine": 1097
+       "payments_flagged": 1363,
+       "laundering_recall_any_part": 0.6804,
+       "flagged_genuine": 1179
       },
       "hold": {
-       "payments_flagged": 131,
-       "laundering_recall_any_part": 0.2062,
-       "flagged_genuine": 110
+       "payments_flagged": 162,
+       "laundering_recall_any_part": 0.2784,
+       "flagged_genuine": 117
       },
       "block": {
-       "payments_flagged": 10,
-       "laundering_recall_any_part": 0.0103,
+       "payments_flagged": 25,
+       "laundering_recall_any_part": 0.0515,
        "flagged_genuine": 9
       }
      },
      "pair_aggregated": {
       "verify": {
-       "payments_flagged": 2107,
-       "laundering_recall_any_part": 0.6598,
-       "flagged_genuine": 1872
+       "payments_flagged": 2531,
+       "laundering_recall_any_part": 0.8351,
+       "flagged_genuine": 2258
       },
       "hold": {
-       "payments_flagged": 265,
-       "laundering_recall_any_part": 0.4021,
-       "flagged_genuine": 160
+       "payments_flagged": 287,
+       "laundering_recall_any_part": 0.4639,
+       "flagged_genuine": 162
       },
       "block": {
-       "payments_flagged": 25,
-       "laundering_recall_any_part": 0.0412,
+       "payments_flagged": 40,
+       "laundering_recall_any_part": 0.1134,
        "flagged_genuine": 18
       }
      },
@@ -284,14 +284,14 @@
     "split4_spread": {
      "per_payment": {
       "verify": {
-       "payments_flagged": 1247,
-       "laundering_recall_any_part": 0.5464,
-       "flagged_genuine": 1097
+       "payments_flagged": 1332,
+       "laundering_recall_any_part": 0.5567,
+       "flagged_genuine": 1182
       },
       "hold": {
-       "payments_flagged": 118,
+       "payments_flagged": 126,
        "laundering_recall_any_part": 0.0515,
-       "flagged_genuine": 110
+       "flagged_genuine": 118
       },
       "block": {
        "payments_flagged": 10,
@@ -301,14 +301,14 @@
      },
      "pair_aggregated": {
       "verify": {
-       "payments_flagged": 2075,
-       "laundering_recall_any_part": 0.5773,
-       "flagged_genuine": 1870
+       "payments_flagged": 2483,
+       "laundering_recall_any_part": 0.6804,
+       "flagged_genuine": 2260
       },
       "hold": {
-       "payments_flagged": 249,
+       "payments_flagged": 254,
        "laundering_recall_any_part": 0.3814,
-       "flagged_genuine": 160
+       "flagged_genuine": 163
       },
       "block": {
        "payments_flagged": 23,
@@ -337,14 +337,14 @@
     "base": {
      "per_payment": {
       "verify": {
-       "payments_flagged": 1167,
-       "laundering_recall_any_part": 0.7113,
-       "flagged_genuine": 1098
+       "payments_flagged": 1252,
+       "laundering_recall_any_part": 0.7216,
+       "flagged_genuine": 1182
       },
       "hold": {
-       "payments_flagged": 152,
+       "payments_flagged": 160,
        "laundering_recall_any_part": 0.433,
-       "flagged_genuine": 110
+       "flagged_genuine": 118
       },
       "block": {
        "payments_flagged": 45,
@@ -354,14 +354,14 @@
      },
      "pair_aggregated": {
       "verify": {
-       "payments_flagged": 2159,
-       "laundering_recall_any_part": 0.7216,
-       "flagged_genuine": 2089
+       "payments_flagged": 2244,
+       "laundering_recall_any_part": 0.732,
+       "flagged_genuine": 2173
       },
       "hold": {
-       "payments_flagged": 172,
+       "payments_flagged": 180,
        "laundering_recall_any_part": 0.433,
-       "flagged_genuine": 130
+       "flagged_genuine": 138
       },
       "block": {
        "payments_flagged": 54,
@@ -374,35 +374,35 @@
     "split2": {
      "per_payment": {
       "verify": {
-       "payments_flagged": 1204,
-       "laundering_recall_any_part": 0.6907,
-       "flagged_genuine": 1098
+       "payments_flagged": 1293,
+       "laundering_recall_any_part": 0.7216,
+       "flagged_genuine": 1181
       },
       "hold": {
-       "payments_flagged": 178,
-       "laundering_recall_any_part": 0.4433,
-       "flagged_genuine": 110
+       "payments_flagged": 190,
+       "laundering_recall_any_part": 0.4948,
+       "flagged_genuine": 117
       },
       "block": {
-       "payments_flagged": 22,
-       "laundering_recall_any_part": 0.134,
+       "payments_flagged": 27,
+       "laundering_recall_any_part": 0.1753,
        "flagged_genuine": 9
       }
      },
      "pair_aggregated": {
       "verify": {
-       "payments_flagged": 2221,
-       "laundering_recall_any_part": 0.7113,
-       "flagged_genuine": 2091
+       "payments_flagged": 2308,
+       "laundering_recall_any_part": 0.7423,
+       "flagged_genuine": 2174
       },
       "hold": {
-       "payments_flagged": 203,
-       "laundering_recall_any_part": 0.4536,
-       "flagged_genuine": 130
+       "payments_flagged": 215,
+       "laundering_recall_any_part": 0.5052,
+       "flagged_genuine": 137
       },
       "block": {
-       "payments_flagged": 54,
-       "laundering_recall_any_part": 0.3402,
+       "payments_flagged": 58,
+       "laundering_recall_any_part": 0.3814,
        "flagged_genuine": 18
       }
      },
@@ -411,35 +411,35 @@
     "split4": {
      "per_payment": {
       "verify": {
-       "payments_flagged": 1262,
-       "laundering_recall_any_part": 0.6392,
-       "flagged_genuine": 1097
+       "payments_flagged": 1363,
+       "laundering_recall_any_part": 0.6804,
+       "flagged_genuine": 1179
       },
       "hold": {
-       "payments_flagged": 131,
-       "laundering_recall_any_part": 0.2062,
-       "flagged_genuine": 110
+       "payments_flagged": 162,
+       "laundering_recall_any_part": 0.2784,
+       "flagged_genuine": 117
       },
       "block": {
-       "payments_flagged": 10,
-       "laundering_recall_any_part": 0.0103,
+       "payments_flagged": 25,
+       "laundering_recall_any_part": 0.0515,
        "flagged_genuine": 9
       }
      },
      "pair_aggregated": {
       "verify": {
-       "payments_flagged": 2341,
-       "laundering_recall_any_part": 0.7629,
-       "flagged_genuine": 2086
+       "payments_flagged": 2436,
+       "laundering_recall_any_part": 0.7938,
+       "flagged_genuine": 2168
       },
       "hold": {
-       "payments_flagged": 248,
-       "laundering_recall_any_part": 0.4227,
-       "flagged_genuine": 130
+       "payments_flagged": 270,
+       "laundering_recall_any_part": 0.4639,
+       "flagged_genuine": 137
       },
       "block": {
-       "payments_flagged": 57,
-       "laundering_recall_any_part": 0.2165,
+       "payments_flagged": 69,
+       "laundering_recall_any_part": 0.2577,
        "flagged_genuine": 18
       }
      },
@@ -448,14 +448,14 @@
     "split4_spread": {
      "per_payment": {
       "verify": {
-       "payments_flagged": 1247,
-       "laundering_recall_any_part": 0.5464,
-       "flagged_genuine": 1097
+       "payments_flagged": 1332,
+       "laundering_recall_any_part": 0.5567,
+       "flagged_genuine": 1182
       },
       "hold": {
-       "payments_flagged": 118,
+       "payments_flagged": 126,
        "laundering_recall_any_part": 0.0515,
-       "flagged_genuine": 110
+       "flagged_genuine": 118
       },
       "block": {
        "payments_flagged": 10,
@@ -465,14 +465,14 @@
      },
      "pair_aggregated": {
       "verify": {
-       "payments_flagged": 2320,
-       "laundering_recall_any_part": 0.7216,
-       "flagged_genuine": 2085
+       "payments_flagged": 2405,
+       "laundering_recall_any_part": 0.732,
+       "flagged_genuine": 2170
       },
       "hold": {
-       "payments_flagged": 242,
+       "payments_flagged": 250,
        "laundering_recall_any_part": 0.4227,
-       "flagged_genuine": 130
+       "flagged_genuine": 138
       },
       "block": {
        "payments_flagged": 40,
