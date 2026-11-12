@@ -63,8 +63,9 @@ rate_limit (middleware)                       per-client token bucket; X-Forward
 ## Redis scale path
 
 `rusetect-replay` → `producer::publish` (partition by payer hash) → Redis streams →
-`rusetect-worker` → `worker::run` → `Scorer::score` (features from `redis_state`, L1, L2, `Hardening::risk`,
-`Engine::thresholds`, then `context_rules::assess` and `combine`). The pair aggregation is not in this path yet.
+`rusetect-worker` → `worker::run` → `Scorer::score` (features from `redis_state`, L1, L2, `RedisState::pair_window`, `Hardening::risk`,
+`Engine::thresholds`, then `context_rules::assess` and `combine`). The 24 h pair window lives in Redis (`pr:{payer}>payee`), so
+it survives worker restarts; `tests/scale.rs` checks worker decisions equal the API's.
 
 ## Research pipeline
 

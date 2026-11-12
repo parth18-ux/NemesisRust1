@@ -7,7 +7,7 @@ services:
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory-policy", "noeviction"]
-    ports: ["6379:6379"]
+    # not published to the host: only the services on this compose network reach Redis (it has no password)
   api:
     build: {context: .., dockerfile: deploy/Dockerfile}
     ports: ["8000:8000"]

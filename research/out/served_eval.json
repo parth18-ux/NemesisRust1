@@ -1,0 +1,236 @@
+{
+ "design_budget_validation_rates": {
+  "verify": 0.009457805643373974,
+  "hold": 0.0044315618572586144,
+  "block": 0.001340003485387464
+ },
+ "validation_rates_at_served_thresholds": {
+  "verify": 0.009962,
+  "hold": 0.004793,
+  "block": 0.001411
+ },
+ "all": {
+  "rows": 1015669,
+  "positives": 1797,
+  "pr_auc": {
+   "cascade": 0.7104,
+   "served": 0.72
+  },
+  "pr_auc_ci95_day_bootstrap": {
+   "cascade": [
+    0.611,
+    0.9837
+   ],
+   "served": [
+    0.6201,
+    0.963
+   ],
+   "served_minus_cascade": [
+    -0.014,
+    0.0176
+   ],
+   "resamples": 500,
+   "days": 11
+  },
+  "bands_at_thresholds": {
+   "cascade": {
+    "verify": {
+     "flags": 15319,
+     "rate": 0.015083,
+     "precision": 0.1039,
+     "recall": 0.8859
+    },
+    "hold": {
+     "flags": 6773,
+     "rate": 0.006669,
+     "precision": 0.2151,
+     "recall": 0.8108
+    },
+    "block": {
+     "flags": 1840,
+     "rate": 0.001812,
+     "precision": 0.6375,
+     "recall": 0.6528
+    }
+   },
+   "served": {
+    "verify": {
+     "flags": 15523,
+     "rate": 0.015284,
+     "precision": 0.1033,
+     "recall": 0.892
+    },
+    "hold": {
+     "flags": 6649,
+     "rate": 0.006546,
+     "precision": 0.2271,
+     "recall": 0.8403
+    },
+    "block": {
+     "flags": 2075,
+     "rate": 0.002043,
+     "precision": 0.6039,
+     "recall": 0.6973
+    }
+   }
+  },
+  "bands_at_design_budget": {
+   "k": {
+    "verify": 9606,
+    "hold": 4501,
+    "block": 1361
+   },
+   "cascade": {
+    "verify": {
+     "flags": 9606,
+     "precision": 0.1592,
+     "recall": 0.8509
+    },
+    "hold": {
+     "flags": 4501,
+     "precision": 0.305,
+     "recall": 0.7641
+    },
+    "block": {
+     "flags": 1361,
+     "precision": 0.8097,
+     "recall": 0.6132
+    }
+   },
+   "served": {
+    "verify": {
+     "flags": 9606,
+     "precision": 0.1605,
+     "recall": 0.8581
+    },
+    "hold": {
+     "flags": 4501,
+     "precision": 0.3186,
+     "recall": 0.798
+    },
+    "block": {
+     "flags": 1361,
+     "precision": 0.8384,
+     "recall": 0.6349
+    }
+   }
+  },
+  "calibration": {
+   "ece_20_equal_count_bins": 0.00033,
+   "mean_risk": 0.0021,
+   "observed_rate": 0.001769
+  }
+ },
+ "without_sep11_18_tail": {
+  "rows": 1014561,
+  "positives": 1142,
+  "pr_auc": {
+   "cascade": 0.5808,
+   "served": 0.5798
+  },
+  "pr_auc_ci95_day_bootstrap": {
+   "cascade": [
+    0.5501,
+    0.6293
+   ],
+   "served": [
+    0.5525,
+    0.6285
+   ],
+   "served_minus_cascade": [
+    -0.0109,
+    0.0024
+   ],
+   "resamples": 500,
+   "days": 3
+  },
+  "bands_at_thresholds": {
+   "cascade": {
+    "verify": {
+     "flags": 14602,
+     "rate": 0.014392,
+     "precision": 0.0645,
+     "recall": 0.8249
+    },
+    "hold": {
+     "flags": 6108,
+     "rate": 0.00602,
+     "precision": 0.1375,
+     "recall": 0.7356
+    },
+    "block": {
+     "flags": 1275,
+     "rate": 0.001257,
+     "precision": 0.4925,
+     "recall": 0.5499
+    }
+   },
+   "served": {
+    "verify": {
+     "flags": 14780,
+     "rate": 0.014568,
+     "precision": 0.0646,
+     "recall": 0.8363
+    },
+    "hold": {
+     "flags": 5939,
+     "rate": 0.005854,
+     "precision": 0.147,
+     "recall": 0.7644
+    },
+    "block": {
+     "flags": 1430,
+     "rate": 0.001409,
+     "precision": 0.4594,
+     "recall": 0.5753
+    }
+   }
+  },
+  "bands_at_design_budget": {
+   "k": {
+    "verify": 9596,
+    "hold": 4496,
+    "block": 1360
+   },
+   "cascade": {
+    "verify": {
+     "flags": 9596,
+     "precision": 0.0939,
+     "recall": 0.789
+    },
+    "hold": {
+     "flags": 4496,
+     "precision": 0.1768,
+     "recall": 0.6961
+    },
+    "block": {
+     "flags": 1360,
+     "precision": 0.4676,
+     "recall": 0.5569
+    }
+   },
+   "served": {
+    "verify": {
+     "flags": 9596,
+     "precision": 0.0952,
+     "recall": 0.8004
+    },
+    "hold": {
+     "flags": 4496,
+     "precision": 0.1846,
+     "recall": 0.7268
+    },
+    "block": {
+     "flags": 1360,
+     "precision": 0.4801,
+     "recall": 0.5718
+    }
+   }
+  },
+  "calibration": {
+   "ece_20_equal_count_bins": 0.000413,
+   "mean_risk": 0.001538,
+   "observed_rate": 0.001126
+  }
+ }
+}

@@ -1,0 +1,297 @@
+{
+ "rule": {
+  "B1_max_drop_any_aml_set": 0.005,
+  "B2_min_mean_aml_gain": 0.005,
+  "B3_max_hismall_pr_drop": 0.01,
+  "B4_min_attack_ratio": 0.8
+ },
+ "trained_on": [
+  "hismall",
+  "himed",
+  "hi_large",
+  "li_small",
+  "li_medium",
+  "li_large",
+  "samld",
+  "amlgentex"
+ ],
+ "validation": {
+  "hismall": {
+   "served": {
+    "roc_auc": 0.9883,
+    "pr_auc": 0.6564
+   },
+   "candidate": {
+    "roc_auc": 0.9885,
+    "pr_auc": 0.6625
+   }
+  },
+  "himed": {
+   "served": {
+    "roc_auc": 0.9879,
+    "pr_auc": 0.6325
+   },
+   "candidate": {
+    "roc_auc": 0.9884,
+    "pr_auc": 0.6461
+   }
+  },
+  "hi_large": {
+   "served": {
+    "roc_auc": 0.944,
+    "pr_auc": 0.4398
+   },
+   "candidate": {
+    "roc_auc": 0.9558,
+    "pr_auc": 0.2923
+   }
+  },
+  "li_small": {
+   "served": {
+    "roc_auc": 0.9776,
+    "pr_auc": 0.3057
+   },
+   "candidate": {
+    "roc_auc": 0.9774,
+    "pr_auc": 0.3153
+   }
+  },
+  "li_medium": {
+   "served": {
+    "roc_auc": 0.9759,
+    "pr_auc": 0.2457
+   },
+   "candidate": {
+    "roc_auc": 0.9766,
+    "pr_auc": 0.2535
+   }
+  },
+  "li_large": {
+   "served": {
+    "roc_auc": 0.8876,
+    "pr_auc": 0.0946
+   },
+   "candidate": {
+    "roc_auc": 0.9141,
+    "pr_auc": 0.0554
+   }
+  },
+  "samld": {
+   "served": {
+    "roc_auc": 0.9984,
+    "pr_auc": 0.9095
+   },
+   "candidate": {
+    "roc_auc": 0.999,
+    "pr_auc": 0.9411
+   }
+  },
+  "amlgentex": {
+   "served": {
+    "roc_auc": 0.6964,
+    "pr_auc": 0.0862
+   },
+   "candidate": {
+    "roc_auc": 0.6876,
+    "pr_auc": 0.0397
+   }
+  },
+  "banksim": {
+   "served": {
+    "roc_auc": 0.9967,
+    "pr_auc": 0.8066
+   },
+   "candidate": {
+    "roc_auc": 0.4126,
+    "pr_auc": 0.0145
+   }
+  },
+  "sparkov": {
+   "served": {
+    "roc_auc": 0.9899,
+    "pr_auc": 0.8013
+   },
+   "candidate": {
+    "roc_auc": 0.6637,
+    "pr_auc": 0.0269
+   }
+  },
+  "paysim": {
+   "served": {
+    "roc_auc": 0.896,
+    "pr_auc": 0.019
+   },
+   "candidate": {
+    "roc_auc": 0.419,
+    "pr_auc": 0.0005
+   }
+  },
+  "tabformer": {
+   "served": {
+    "roc_auc": 0.9417,
+    "pr_auc": 0.1894
+   },
+   "candidate": {
+    "roc_auc": 0.7965,
+    "pr_auc": 0.0122
+   }
+  },
+  "ieee": {
+   "served": {
+    "roc_auc": 0.699,
+    "pr_auc": 0.0993
+   },
+   "candidate": {
+    "roc_auc": 0.4092,
+    "pr_auc": 0.0328
+   }
+  }
+ },
+ "decision": {
+  "checks": {
+   "B1": false,
+   "B2": false,
+   "B3": true,
+   "B4": true
+  },
+  "adopt": false,
+  "candidate_worst_attack_pr_auc": 0.6286,
+  "mean_aml_roc": {
+   "served": 0.932,
+   "candidate": 0.9359
+  },
+  "note": "decided on validation parts only; test parts scored after this line"
+ },
+ "test": {
+  "hismall": {
+   "served": {
+    "roc_auc": 0.9907,
+    "pr_auc": 0.7169
+   },
+   "candidate": {
+    "roc_auc": 0.9908,
+    "pr_auc": 0.7393
+   }
+  },
+  "himed": {
+   "served": {
+    "roc_auc": 0.99,
+    "pr_auc": 0.7422
+   },
+   "candidate": {
+    "roc_auc": 0.9903,
+    "pr_auc": 0.7587
+   }
+  },
+  "hi_large": {
+   "served": {
+    "roc_auc": 0.9466,
+    "pr_auc": 0.5031
+   },
+   "candidate": {
+    "roc_auc": 0.9764,
+    "pr_auc": 0.2122
+   }
+  },
+  "li_small": {
+   "served": {
+    "roc_auc": 0.9771,
+    "pr_auc": 0.3677
+   },
+   "candidate": {
+    "roc_auc": 0.9781,
+    "pr_auc": 0.3587
+   }
+  },
+  "li_medium": {
+   "served": {
+    "roc_auc": 0.9752,
+    "pr_auc": 0.399
+   },
+   "candidate": {
+    "roc_auc": 0.9761,
+    "pr_auc": 0.4155
+   }
+  },
+  "li_large": {
+   "served": {
+    "roc_auc": 0.8661,
+    "pr_auc": 0.1263
+   },
+   "candidate": {
+    "roc_auc": 0.945,
+    "pr_auc": 0.0437
+   }
+  },
+  "samld": {
+   "served": {
+    "roc_auc": 0.9978,
+    "pr_auc": 0.8968
+   },
+   "candidate": {
+    "roc_auc": 0.9981,
+    "pr_auc": 0.9265
+   }
+  },
+  "amlgentex": {
+   "served": {
+    "roc_auc": 0.6745,
+    "pr_auc": 0.085
+   },
+   "candidate": {
+    "roc_auc": 0.6867,
+    "pr_auc": 0.0306
+   }
+  },
+  "banksim": {
+   "served": {
+    "roc_auc": 0.9954,
+    "pr_auc": 0.7606
+   },
+   "candidate": {
+    "roc_auc": 0.3867,
+    "pr_auc": 0.0128
+   }
+  },
+  "sparkov": {
+   "served": {
+    "roc_auc": 0.9884,
+    "pr_auc": 0.7381
+   },
+   "candidate": {
+    "roc_auc": 0.6988,
+    "pr_auc": 0.0167
+   }
+  },
+  "paysim": {
+   "served": {
+    "roc_auc": 0.8964,
+    "pr_auc": 0.302
+   },
+   "candidate": {
+    "roc_auc": 0.422,
+    "pr_auc": 0.0028
+   }
+  },
+  "tabformer": {
+   "served": {
+    "roc_auc": 0.8326,
+    "pr_auc": 0.0354
+   },
+   "candidate": {
+    "roc_auc": 0.7623,
+    "pr_auc": 0.0043
+   }
+  },
+  "ieee": {
+   "served": {
+    "roc_auc": 0.5966,
+    "pr_auc": 0.0529
+   },
+   "candidate": {
+    "roc_auc": 0.3913,
+    "pr_auc": 0.0283
+   }
+  }
+ }
+}

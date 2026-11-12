@@ -23,7 +23,7 @@ def pct(x, d=0):
 
 
 def main():
-    HD, FULL, SD, EV, U, TS = J("hardened_eval.json"), J("full_hi_eval.json"), J("structuring_defence.json"), J("evasion_suite.json"), J("unified_train.json"), J("transfer_samld.json")
+    HD, FULL, SD, EV, U, TS = (J("hardened_eval_served.json") or J("hardened_eval.json")), J("full_hi_eval.json"), J("structuring_defence.json"), J("evasion_suite.json"), J("unified_train.json"), J("transfer_samld.json")
     PH, AA, HT = J("pooled_hardening.json"), J("account_aggregation.json"), J("hardened_transfer.json")
     RM, RV = J("regression_metrics.json"), J("real_vs_synthetic.json")
     T = HD["test"]
@@ -67,11 +67,19 @@ new payee, pass-through ratio, 24 hour velocity. The state is then updated.</li>
     rows = [("Cascade alone", T["served"], min(T["attack"]["served"].values()), T["bands"]["served"]["block"]),
             ("Served, hardened", T["hardened"], min(T["attack"]["hardened"].values()), T["bands"]["hardened"]["block"])]
     perf = "".join(f"<tr><td>{n}</td><td>{f(v['pr_auc'])}</td><td>{f(a)}</td><td>{pct(b['recall'], 1)} / {pct(b['precision'], 1)}</td></tr>" for n, v, a, b in rows)
+    SE = J("served_eval.json")
+    budget = ""
+    if SE:
+        A = SE["all"]; k = A["bands_at_design_budget"]
+        budget = (f"<p>At the same workload as the old cascade ({k['k']['block']:,} blocks), the served score catches {pct(k['served']['block']['recall'], 1)} of laundering "
+                  f"at {pct(k['served']['block']['precision'], 1)} precision (cascade {pct(k['cascade']['block']['recall'], 1)} at {pct(k['cascade']['block']['precision'], 1)}). "
+                  f"Its PR-AUC gain over the cascade is within noise (paired day-bootstrap interval {A['pr_auc_ci95_day_bootstrap']['served_minus_cascade']}): the hardening "
+                  "keeps accuracy and closes the format attack.</p>")
     sec("4. Key results (HI-Small test)", f"""
 <table><tr><th>Score</th><th>PR-AUC</th><th>PR-AUC, format attack</th><th>Block recall / precision</th></tr>{perf}</table>
 <p>The full test window has {T['hardened']['rows']:,} payments and {T['hardened']['positives']:,} laundering. Without the last eight
 days (a simulation tail with {pct(FULL['test']['tail']['share_of_test_laundering'])} of test laundering) the cascade scores
-{f(T['without_sep11_18_tail']['served']['pr_auc'])}: the honest headline.</p>""")
+{f(T['without_sep11_18_tail']['served']['pr_auc'])}: the honest headline.</p>{budget}""")
 
     rob = ""
     if EV:
@@ -129,6 +137,7 @@ RMSE&sup2; is the Brier score and R&sup2; is the Brier skill score (research/out
         ("What stops a misconfigured deployment from using demo keys?", "check_config: without RUSETECT_ANALYST_KEYS the server needs RUSETECT_DEMO=1 explicitly."),
         ("What is the biggest remaining weakness?", "All payment data is synthetic; real performance is unknown until a shadow pilot on a bank's data."),
         ("Which training data won on real card fraud, and how was it chosen?", "Real only (IEEE-CIS), picked on validation PR-AUC before the test part was read."),
+        ("Why compare models at the same number of alerts?", "Recall can always be raised by alerting more; a fair comparison fixes the analysts' workload."),
         ("Which attack is still hardest?", "Changes that keep each payment small and new, such as splitting over new mule accounts and delaying."),
     ]
     q = "".join(f"<li><p><b>{E(a)}</b></p><p class='ans'>{E(b)}</p></li>" for a, b in quiz)

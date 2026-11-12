@@ -64,7 +64,7 @@ pipeline; the Rust port serves the same models, so the live path reproduces them
 | Area | Data | Result |
 |---|---|---|
 | Payment models | IBM AMLworld HI-Small, every payment streamed through the live engine, last 20% of time as test | PR-AUC 0.711, ROC-AUC 0.985 |
-| Payment models, served hardened risk (pooled format-free second opinion) | HI-Small test, same protocol ([research/out/hardened_eval.json](research/out/hardened_eval.json)) | PR-AUC 0.720; 0.687 when every laundering payment switches format (cascade alone: 0.004) |
+| Payment models, served hardened risk (pooled format-free second opinion) | HI-Small test, same protocol ([research/out/served_eval.json](research/out/served_eval.json)) | PR-AUC 0.720 (cascade 0.710; the difference is within noise); block band at the design budget: 63.5% recall, 83.8% precision; PR-AUC 0.687 when every laundering payment switches format (cascade alone: 0.004) |
 | Payment models, lower laundering rate | IBM AMLworld LI-Small, same protocol | PR-AUC 0.345, ROC-AUC 0.967 |
 | Account opening | Feedzai BAF Base and Variants I to V, months 6 to 7 | mean ROC-AUC 0.888 over six populations; false alarm parity between age groups 0.93 on Base |
 | Messages | Synthetic Indian scam messages from templates held out of training | 0.95 precision at 68% recall for push warnings; no false alarms on genuine OTP, bank, bill and delivery messages |
@@ -87,9 +87,9 @@ the bundled HI-Small slice is ACH, and re-sending laundering as Cheque takes blo
 payments in four removes the block band; the LightGBM half adds no measurable PR-AUC; scores are uncalibrated; and the
 31 features transfer to AMLgentex when retrained while the HI-Small model does not. The API no longer fills a missing
 `payment_format` with ACH. Two fixes are now served: a format-free second opinion
-(block recall under the Cheque attack 67%, was 2%)
+(block recall under the Cheque attack 65.8%, was 2.0%)
 and 24 hour payer-to-payee aggregation against split payments (four-part block recall
-22%, was 1%;
+26%, was 5%, an exploratory variant chosen on the same window;
 [research/out/structuring_defence.json](research/out/structuring_defence.json)).
 
 The [model card](docs/MODEL_CARD.md) lists intended use, measured performance, robustness and known limits; the

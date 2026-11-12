@@ -15,7 +15,8 @@ The format-free model and its isotonic map come from full_hi_eval.py (trained on
 validation). Results: research/out/hardened_eval.json; if adopted, the maps and thresholds the Rust engine serves
 are written to service/models/hardening.json.
 SERVED=1 evaluates service/models/hardening.json as served (model, maps and thresholds read, nothing fitted or written
-to service/); used after research/pooled_hardening.py replaced the second opinion.
+to service/) and writes research/out/hardened_eval_served.json, leaving the adoption record above untouched; used after
+research/pooled_hardening.py replaced the second opinion (adopted under its own rules G1-G3, not H1-H3).
 """
 import json, os, sys, time
 import numpy as np, pandas as pd, xgboost as xgb, lightgbm as lgb
@@ -92,7 +93,8 @@ def main():
     R["thresholds"] = {"served_validation_alert_rates": rates, "hardened": hthr}
     R["decision"] = {"checks": checks, "adopt": all(checks.values()), "decided_at_seconds": round(time.time() - t0, 1),
                      "note": "decided on validation only; test scored after this line"}
-    json.dump(R, open(os.path.join(OUT, "hardened_eval.json"), "w"), indent=1)
+    OUTF = os.path.join(OUT, "hardened_eval_served.json" if SV else "hardened_eval.json")
+    json.dump(R, open(OUTF, "w"), indent=1)
 
     # ---------------------------------------------------------------- test, after the decision
     meta_day = pd.read_csv(sys.argv[2], usecols=["ts"], dtype=str).ts.str.slice(0, 10).values[TEST0:] if len(sys.argv) > 2 else None
@@ -110,10 +112,11 @@ def main():
     T["bands_under_cheque_attack"] = {"served": {b: band_counts(yt, sa, t) for b, t in (("verify", VER), ("hold", HOLD), ("block", BLK))},
                                       "hardened": {b: band_counts(yt, ha, t) for b, t in hthr.items()}}
     R["test"] = T
-    json.dump(R, open(os.path.join(OUT, "hardened_eval.json"), "w"), indent=1)
+    json.dump(R, open(OUTF, "w"), indent=1)
     if SV:
         R["source"] = "service/models/hardening.json as served: " + HJ["note"]
-        json.dump(R, open(os.path.join(OUT, "hardened_eval.json"), "w"), indent=1)
+        R["decision"]["note"] = "H1-H3 re-checked for the served pooled model; it was adopted under G1-G3 (pooled_hardening.json)"
+        json.dump(R, open(OUTF, "w"), indent=1)
     elif R["decision"]["adopt"]:
         json.dump({"note": "written by research/hardened_eval.py; risk = max(iso_served(cascade), iso_free(format-free XGBoost))",
                    "model": "hardening_xgb.json", "features": FNOFMT, "iso_served": iso_s, "iso_free": iso_f, "thresholds": hthr},

@@ -49,9 +49,9 @@ Built in `service/scale/`, tested in `tests/test_scale.py` against a real `redis
 payments ──► producer ──► Redis Streams  payments:0 … payments:N-1   (partition = crc32(payer) mod N)
                                  │
                  ┌───────────────┴───────────────┐
-             worker 0   …   worker N-1            (stateless: features, L1, L2, context rules; batched)
+             worker 0   …   worker N-1            (stateless: features, L1, L2, pair window, context rules; batched)
                  │                               │
-                 └──────► Redis account state ◄──┘   a:{acct} hash · p:{acct} payee set · wo/wi:{acct} 24 h zsets
+                 └──────► Redis account state ◄──┘   a:{acct} hash · p:{acct} payee set · wo/wi:{acct} 24 h zsets · pr:{acct}>payee risk zset
                                  │
                            decisions stream ──► analyst review desk, case tool, STR workflow
 ```

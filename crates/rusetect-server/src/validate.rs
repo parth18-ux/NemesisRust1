@@ -173,7 +173,11 @@ impl<'a> Obj<'a> {
     }
 
     pub fn gt(&self, errs: &mut Errors, f: &str, v: f64, lo: f64) {
-        if !(v > lo) {
+        if !v.is_finite() && !v.is_nan() {
+            // inf would poison running sums (inf - inf = NaN) and every later feature of the account
+            let input = self.m.get(f).unwrap_or(&MISSING);
+            self.err(errs, "finite_number", f, "Input should be a finite number", input);
+        } else if !(v > lo) {
             let input = self.m.get(f).unwrap_or(&MISSING);
             self.err(errs, "greater_than", f, &format!("Input should be greater than {}", lo as i64), input);
         }

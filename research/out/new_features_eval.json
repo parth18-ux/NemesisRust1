@@ -1,0 +1,179 @@
+{
+ "rule": {
+  "N1_min_gain_vs_current": 0.02,
+  "N2_min_gain_vs_ctrl": 0.01,
+  "N3_max_pr_auc_drop": 0.005,
+  "N4_max_attack_drop": 0.02
+ },
+ "indicators": [
+  "s_cnt_1h",
+  "s_usd_1h",
+  "d_cnt_1h",
+  "d_fanin_1h",
+  "d_usd_24h",
+  "pair_cnt_24h",
+  "pair_usd_24h",
+  "amt_z",
+  "amt_to_max",
+  "just_below_round",
+  "hour_dev",
+  "payee_age_min",
+  "s_new_payees_24h"
+ ],
+ "rounds": {
+  "ctrl": 915,
+  "new": 318
+ },
+ "alert_counts_second_half": {
+  "verify": 4904,
+  "hold": 2319,
+  "block": 652
+ },
+ "validation_second_half": {
+  "current": {
+   "pr_auc": 0.6496,
+   "attack_worst": 0.6171,
+   "bands": {
+    "verify": {
+     "flags": 4904,
+     "tp": 434,
+     "precision": 0.0885,
+     "recall": 0.8282
+    },
+    "hold": {
+     "flags": 2319,
+     "tp": 412,
+     "precision": 0.1777,
+     "recall": 0.7863
+    },
+    "block": {
+     "flags": 652,
+     "tp": 334,
+     "precision": 0.5123,
+     "recall": 0.6374
+    }
+   }
+  },
+  "mean3_ctrl": {
+   "pr_auc": 0.6527,
+   "attack_worst": 0.6163,
+   "bands": {
+    "verify": {
+     "flags": 4904,
+     "tp": 433,
+     "precision": 0.0883,
+     "recall": 0.8263
+    },
+    "hold": {
+     "flags": 2319,
+     "tp": 412,
+     "precision": 0.1777,
+     "recall": 0.7863
+    },
+    "block": {
+     "flags": 652,
+     "tp": 330,
+     "precision": 0.5061,
+     "recall": 0.6298
+    }
+   }
+  },
+  "mean3_new": {
+   "pr_auc": 0.6667,
+   "attack_worst": 0.6194,
+   "bands": {
+    "verify": {
+     "flags": 4904,
+     "tp": 435,
+     "precision": 0.0887,
+     "recall": 0.8302
+    },
+    "hold": {
+     "flags": 2319,
+     "tp": 413,
+     "precision": 0.1781,
+     "recall": 0.7882
+    },
+    "block": {
+     "flags": 652,
+     "tp": 341,
+     "precision": 0.523,
+     "recall": 0.6508
+    }
+   }
+  }
+ },
+ "decision": {
+  "checks": {
+   "N1": false,
+   "N2": true,
+   "N3": true,
+   "N4": true
+  },
+  "adopt": false,
+  "seconds": 521,
+  "note": "decided on the second half of validation only; the test part is not read by this script"
+ },
+ "new_model_top_gain": [
+  [
+   "new_pair",
+   26973.771484375
+  ],
+  [
+   "self_loop",
+   7384.64990234375
+  ],
+  [
+   "pair_cnt_24h",
+   2748.759521484375
+  ],
+  [
+   "s_new_payees_24h",
+   2449.14453125
+  ],
+  [
+   "payee_age_min",
+   2226.021484375
+  ],
+  [
+   "fmt_code",
+   1977.818603515625
+  ],
+  [
+   "s_mins_since_in",
+   1802.8992919921875
+  ],
+  [
+   "s_cnt_1h",
+   1168.137939453125
+  ],
+  [
+   "s_uniq_dst",
+   1118.9393310546875
+  ],
+  [
+   "d_cnt_24h",
+   856.7942504882812
+  ],
+  [
+   "cross_cur",
+   836.1995849609375
+  ],
+  [
+   "s_out_over_last_in",
+   784.4011840820312
+  ],
+  [
+   "pair_usd_24h",
+   757.142333984375
+  ],
+  [
+   "d_uniq_src",
+   631.0671997070312
+  ],
+  [
+   "s_usd_24h",
+   572.4432983398438
+  ]
+ ]
+}

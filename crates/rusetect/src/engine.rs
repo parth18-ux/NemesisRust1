@@ -129,7 +129,9 @@ pub struct Window {
 
 impl Window {
     pub fn add(&mut self, t: i64, key: u32, usd: f64) -> (usize, usize, f64) {
-        self.q.push_back((t, key, usd));
+        // kept in time order, so a late (out-of-order) payment is evicted on time, as in the Redis zsets
+        let at = self.q.iter().rposition(|e| e.0 <= t).map_or(0, |i| i + 1);
+        self.q.insert(at, (t, key, usd));
         *self.cnt.entry(key).or_insert(0) += 1;
         self.usd += usd;
         while self.q.front().map(|e| e.0 <= t - MIN24).unwrap_or(false) {
@@ -219,8 +221,10 @@ impl CascadeConfig {
         })
     }
 
+    /// Amount in USD, capped at 1e18 so a huge amount times a rate above 1 cannot overflow to inf (which would turn
+    /// running sums into NaN for the rest of the account's history). Shared by the engine and the Redis state.
     pub fn usd(&self, amount: f64, currency: &str) -> f64 {
-        amount * self.usd_rates.get(currency).copied().unwrap_or(1.0)
+        (amount * self.usd_rates.get(currency).copied().unwrap_or(1.0)).min(1e18)
     }
 
     /// Column order of the model input vector.
@@ -246,6 +250,25 @@ pub struct Models {
     pub l0: LiteBooster,
     pub l0cfg: L0Config,
     pub hardening: Option<Hardening>,
+    /// a third L2 model trained on HI-Small, HI-Medium and HI-Large (research/l3_eval.py), served only when
+    /// cascade_config.json names its "l2_mode": "mean3" averages it with the two L2 models, "l3_only" replaces them
+    pub l3: Option<(XgbBooster, bool)>,
+}
+
+impl Models {
+    /// the L2 score of an escalated payment, as research/l3_eval.py computes it
+    pub fn l2(&self, x: &[f32]) -> f64 {
+        self.l2_from(x, self.l2x.predict(x) as f64, self.l2l.predict_f32(x))
+    }
+
+    /// the same, given the two L2 members' scores already computed
+    pub fn l2_from(&self, x: &[f32], sx: f64, sl: f64) -> f64 {
+        match &self.l3 {
+            None => (sx + sl) / 2.0,
+            Some((b, true)) => b.predict(x) as f64,
+            Some((b, false)) => (sx + sl + b.predict(x) as f64) / 3.0,
+        }
+    }
 }
 
 /// Format-hardened risk (research/hardened_eval.py, adopted under its pre-registered rule): a launderer who re-sends a
@@ -269,10 +292,52 @@ fn out_features(out: &Map<String, Value>) -> Map<String, Value> {
     out.get("features").and_then(|v| v.as_object()).cloned().unwrap_or_default()
 }
 
-/// np.interp: linear between knots, clamped outside them.
+/// 24 h causal noisy-OR of risks per key, current payment included (the structuring defence). Keys idle for a day are
+/// swept every 65,536 pushes, so memory follows the last day's traffic instead of every pair ever seen.
+pub struct PairWindow<K> {
+    q: HashMap<K, VecDeque<(i64, f64)>>,
+    pushes: u32,
+}
+
+impl<K: std::hash::Hash + Eq> PairWindow<K> {
+    pub fn new() -> Self {
+        PairWindow { q: HashMap::new(), pushes: 0 }
+    }
+
+    /// add risk `r` at minute `t`; returns (payments in the window, noisy-OR of their risks)
+    pub fn push(&mut self, key: K, t: i64, r: f64) -> (usize, f64) {
+        self.pushes = self.pushes.wrapping_add(1);
+        if self.pushes.is_multiple_of(65_536) {
+            self.q.retain(|_, d| d.back().is_some_and(|x| x.0 > t - 1440));
+        }
+        let d = self.q.entry(key).or_default();
+        while d.front().is_some_and(|x| x.0 <= t - 1440) {
+            d.pop_front();
+        }
+        let at = d.iter().rposition(|e| e.0 <= t).map_or(0, |i| i + 1);
+        d.insert(at, (t, r));
+        (d.len(), 1.0 - d.iter().map(|x| 1.0 - x.1).product::<f64>())
+    }
+
+    pub fn keys(&self) -> usize {
+        self.q.len()
+    }
+
+    pub fn clear(&mut self) {
+        self.q.clear();
+    }
+}
+
+impl<K: std::hash::Hash + Eq> Default for PairWindow<K> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// np.interp: linear between knots, clamped outside them; NaN in, NaN out (never an index underflow).
 pub fn interp(m: &(Vec<f64>, Vec<f64>), v: f64) -> f64 {
     let (x, y) = m;
-    if x.is_empty() { return v; }
+    if x.is_empty() || v.is_nan() { return v; }
     if v <= x[0] { return y[0]; }
     if v >= x[x.len() - 1] { return y[y.len() - 1]; }
     let i = x.partition_point(|k| *k <= v);
@@ -325,6 +390,7 @@ impl Models {
             l0: LiteBooster::load(&dir.join("l0_onboarding_lgbm.json"))?,
             l0cfg,
             hardening: None,
+            l3: None,
         })
     }
 }
@@ -350,7 +416,7 @@ pub struct Engine {
     pub n_seen: u64,
     pub decisions: IndexMap<String, i64>,
     /// served risks of each payer->payee pair in the last 24 h (structuring defence)
-    pair_risks: HashMap<(u32, u32), VecDeque<(i64, f64)>>,
+    pair_risks: PairWindow<(u32, u32)>,
     pub models: Option<Models>,
 }
 
@@ -376,6 +442,10 @@ impl Engine {
         let models = if load_models {
             let mut m = Models::load(models_dir)?;
             m.hardening = Hardening::load(models_dir, &cfg.features)?;
+            m.l3 = match cfg.raw["l2_mode"].as_str() {
+                Some(mode @ ("mean3" | "l3_only")) => Some((XgbBooster::load(&models_dir.join("l3_xgb.json"))?, mode == "l3_only")),
+                _ => None,
+            };
             Some(m)
         } else {
             None
@@ -397,7 +467,7 @@ impl Engine {
             case_alerts: IndexMap::new(),
             n_seen: 0,
             decisions: IndexMap::new(),
-            pair_risks: HashMap::new(),
+            pair_risks: PairWindow::new(),
             models,
         }
     }
@@ -570,6 +640,9 @@ impl Engine {
         let mut out = Map::new();
         out.insert("l1_score".into(), jf(py_round(s1, 5)));
         out.insert("features".into(), Value::Object(feats.clone()));
+        // the unrounded cascade risk goes into the structuring window and the calibration maps, as in the worker and
+        // the research code; only the reported value is rounded
+        let mut raw = s1;
         if s1 < self.cfg.l1_threshold {
             out.insert("layer_exit".into(), json!("L1"));
             out.insert("risk".into(), jf(py_round(s1, 5)));
@@ -580,7 +653,8 @@ impl Engine {
         } else {
             let sx = m.l2x.predict(&x) as f64;
             let sl = m.l2l.predict_f32(&x);
-            let risk = (sx + sl) / 2.0;
+            let risk = m.l2_from(&x, sx, sl);
+            raw = risk;
             // reasons are added in finish_risk, only for flagged payments (TreeSHAP is most of the scoring time)
             let reasons: Vec<Value> = Vec::new();
             let (decision, band) = self.band_for_risk(risk);
@@ -596,7 +670,7 @@ impl Engine {
             out.insert("reasons".into(), Value::Array(reasons));
             out.insert("case_id".into(), cid);
         }
-        self.finish_risk(p, &x, &mut out);
+        self.finish_risk(p, &x, raw, &mut out);
         let dec = out["decision"].as_str().unwrap().to_string();
         *self.decisions.entry(dec).or_insert(0) += 1;
         out.insert("latency_ms".into(), jf(py_round(t0.elapsed().as_secs_f64() * 1000.0, 2)));
@@ -611,19 +685,11 @@ impl Engine {
     /// max(iso_served(that cascade risk), iso_free(format-free score)) on the hardened band thresholds. Aggregating
     /// before calibration matters: the isotonic map sends small cascade risks to near zero, where a noisy-OR of
     /// calibrated parts barely moves. Both steps can only raise a decision.
-    fn finish_risk(&mut self, p: &Payment, x: &[f32], out: &mut Map<String, Value>) {
-        let cascade = out["risk"].as_f64().unwrap_or(0.0);
+    fn finish_risk(&mut self, p: &Payment, x: &[f32], cascade: f64, out: &mut Map<String, Value>) {
         let payer_window = self.models.as_ref().and_then(|m| m.hardening.as_ref()).map(|h| h.payer_window).unwrap_or(false);
         let payee = if payer_window { u32::MAX } else { self.acct_id(&p.to_bank, &p.to_account) };
         let key = (self.acct_id(&p.from_bank, &p.from_account), payee);
-        let (n, pair) = {
-            let q = self.pair_risks.entry(key).or_default();
-            while q.front().map(|x| x.0 <= p.tmin - 1440).unwrap_or(false) {
-                q.pop_front();
-            }
-            q.push_back((p.tmin, cascade));
-            (q.len(), 1.0 - q.iter().map(|x| 1.0 - x.1).product::<f64>())
-        };
+        let (n, pair) = self.pair_risks.push(key, p.tmin, cascade);
         let raised = if n > 1 { pair.max(cascade) } else { cascade };
         let (risk, before, free) = match self.models.as_ref().and_then(|m| m.hardening.as_ref()) {
             Some(h) => {
@@ -753,7 +819,11 @@ impl Engine {
             }
         }
         let root = self.find(&b);
-        self.case_alerts.entry(root.clone()).or_default().push(CaseEdge { from: a, to: b, amount: p.amount_paid, format: p.payment_format.clone() });
+        let edges = self.case_alerts.entry(root.clone()).or_default();
+        edges.push(CaseEdge { from: a, to: b, amount: p.amount_paid, format: p.payment_format.clone() });
+        if edges.len() > 1000 {
+            edges.remove(0); // a case keeps its latest 1,000 flagged payments
+        }
         case_id(&root)
     }
 

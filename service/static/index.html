@@ -344,7 +344,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 32px;justify-content:space-bet
       <div class="why-grid">
         <div><h3>Features matter more than the algorithm</h3><p>XGBoost scores 0.172 PR-AUC on raw payment fields and 0.715 with account history features. The top four tree models sit between 0.699 and 0.715.</p></div>
         <div><h3>L1 is small on purpose</h3><p>30 shallow trees approve about 80% of payments in about 0.3 ms while keeping about 99% of laundering for L2. The goal is speed with very few misses, not a final decision.</p></div>
-        <div><h3>L2 averages XGBoost and LightGBM</h3><p>Two boosters grown differently give a steadier score. In the audit, the live average scored 0.716 PR-AUC on the test period against 0.722 for its XGBoost half alone, so the case for it is robustness, not accuracy.</p></div>
+        <div><h3>L2 averages XGBoost and LightGBM</h3><p>Two boosters grown differently give a steadier score. In the audit the average scored no higher PR-AUC than its XGBoost half alone, so the case for it is robustness, not accuracy.</p></div>
       </div>
       <div class="mt"><table>
         <thead><tr><th>Model</th><th>Task · features</th><th>PR-AUC</th><th>Strengths</th><th>Limits</th><th>Status</th></tr></thead>

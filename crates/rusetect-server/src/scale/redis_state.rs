@@ -6,6 +6,7 @@
 //!   wo:{acct}   zset   outgoing payments in the last 24 h (score = minute), member "eid|counterparty|usd"
 //!   wi:{acct}   zset   incoming payments in the last 24 h
 //!   bp          set    bank corridors seen
+//!   pr:{acct}>payee  zset  cascade risks of this payer->payee pair in the last 24 h (structuring window), member "eid|risk"
 //! Per payment: one pipelined read round trip, features computed exactly as Engine::features, one pipelined write.
 use rusetect::engine::{fx, CascadeConfig, Features, MIN24};
 use rusetect::payment::Payment;
@@ -52,6 +53,22 @@ pub struct RedisState {
 impl RedisState {
     pub fn new(con: redis::Connection, cfg: CascadeConfig, prefix: &str) -> Self {
         RedisState { con, cfg, px: prefix.to_string(), last_sender_fan_in: 0 }
+    }
+
+    /// The structuring window of Engine::finish_risk (engine::PairWindow) kept in Redis, so a restarted or rebalanced
+    /// worker keeps it: 24 h noisy-OR of the cascade risks of this payer's payments to `payee` (all payees when `payee`
+    /// is empty), current one included. A redelivered payment (same eid) is counted once. Returns (payments, noisy-OR).
+    pub fn pair_window(&mut self, p: &Payment, payee: &str, risk: f64) -> redis::RedisResult<(usize, f64)> {
+        let key = format!("{}>{}", self.k("pr", &format!("{}|{}", p.from_bank, p.from_account)), payee);
+        let eid = p.eid.map(|e| e.to_string()).unwrap_or_else(|| format!("{}.{}", p.tmin, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let (members,): (Vec<String>,) = redis::pipe()
+            .cmd("ZREMRANGEBYSCORE").arg(&key).arg("-inf").arg(p.tmin - MIN24).ignore()
+            .cmd("ZADD").arg(&key).arg(p.tmin).arg(format!("{eid}|{risk}")).ignore()
+            .cmd("ZRANGE").arg(&key).arg(0).arg(-1)
+            .cmd("EXPIRE").arg(&key).arg(MIN24 * 60 + 3600).ignore()
+            .query(&mut self.con)?;
+        let prod: f64 = members.iter().map(|m| 1.0 - m.rsplit_once('|').and_then(|x| x.1.parse::<f64>().ok()).unwrap_or(0.0)).product();
+        Ok((members.len(), 1.0 - prod))
     }
 
     fn k(&self, kind: &str, acct: &str) -> String {

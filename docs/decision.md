@@ -42,9 +42,19 @@ same code run live and in research, and it rules out leakage from the future.
 - **Chronological splits.** Fraud changes over time; a random split lets the model see the future. Every dataset is
   split by time (60% train, 20% validation, 20% test).
 - **Thresholds and calibration on validation only.** The test part is read once, after the decision.
-- **Pre-registered adoption rules.** Each candidate model has its rule written in the script docstring before any test
-  number exists. Two candidates were rejected by their own rules (format-free retrain, new indicators); that is the
-  rule working, not a failure.
+- **Adoption rules written in the script.** Each candidate's rule is in its script's docstring and is decided on
+  validation before the script reads test. For the later studies (pooled second opinion, payer window, real against
+  synthetic, the L3 studies, the indicator test) the script was committed before its results, so git shows the rule came
+  first; for the earlier ones (full HI-Small evaluation, hardened risk, structuring, unified training) script and results
+  arrived in the same commit, so that cannot be shown. One study broke the rule: `unified_train.py` decided on test.
+  Candidates rejected by their own rules (format-free retrain, new indicators twice, payer window, third L2 model, L3
+  combiner) are the rule working, not a failure.
+- **The HI-Small test part is spent.** It has now been read by more than eight studies, and later studies were designed
+  knowing earlier test results. Its numbers describe the served model, but they are no longer an untouched estimate: the
+  served stack needs one confirmation on data no study has read (a new generator run or a bank's shadow pilot).
+- **Isotonic maps fitted on the whole validation part** (hardened, pooled, third L2) are judged on that same part, which
+  flatters their validation numbers; the test numbers are unaffected. The L3 combiner and indicator studies fit on the
+  first half of validation and judge on the second.
 - **PR-AUC first.** With 0.1% positives ROC-AUC looks good for weak models; PR-AUC shows precision where it matters.
   ROC-AUC is used across datasets because prevalence differs 10 to 100 times between them.
 - **No MAE, RMSE or R².** Those measure errors when predicting a number. Fraud is a yes/no outcome, so the metrics are
@@ -67,7 +77,7 @@ add accounts; known accounts keep scoring.
 **4. Hardened risk: a format-free second opinion.**
 Laundering re-sent in another format dropped the cascade's PR-AUC from 0.71 to under 0.01, because 92% of training
 laundering is ACH. Retraining without the format feature lost accuracy and was rejected by its rule. Taking the larger
-of the two calibrated scores keeps the cascade's accuracy on honest traffic and the format-free model's robustness under
+of the two isotonic-mapped scores keeps the cascade's accuracy on honest traffic and the format-free model's robustness under
 attack. It passed its rule (`research/out/hardened_eval.json`). Calibration (isotonic) is needed first, because the two
 models' raw scores are on different scales; isotonic was chosen over Platt because it does not assume a shape.
 
@@ -87,11 +97,18 @@ The IBM Large files have 180 million payments. Sampling genuine rows inside the 
 every payment) made the dump about 8 times faster and kept the output small; totals are written next to each file so
 every metric is reweighted to the true prevalence.
 
-**8. Pooled second opinion: adopted.**
-The format-free model was trained on HI-Small only and transfers poorly. A model pooled over every payment dataset
-(bank AML, cards, wallets, and IEEE-CIS with real fraud labels) replaced it after passing all three of its rules (G1 to G3),
-decided on validation parts only (`research/out/pooled_hardening.json`). The served engine was rebuilt and replayed
-against the Python results; block decisions match exactly.
+**8. Pooled second opinion (multi-domain training): adopted, with a regression to disclose.**
+The format-free model was trained on HI-Small only. A model trained on the training parts of every payment dataset
+(bank AML, cards, wallets, and IEEE-CIS with real fraud labels) replaced it after passing its three rules (G1 to G3),
+decided on validation parts only (`research/out/pooled_hardening.json`). This is multi-domain training, not evidence of
+generalisation: the candidate saw the training parts of the very datasets on which its gain was measured, while the old
+model saw only HI-Small. The mean gain also hides losses on the two largest bank-AML sets, HI-Large and LI-Large
+(per-dataset numbers in the same file and in the report); the rule had no "no bank-AML set may get worse" check, and it
+should have. It stays served because the served risk is the larger of the cascade and this model, so the cascade still
+scores those sets, and it gains on six of the eight bank-AML sets; that candidate, a model trained on bank-AML data
+only, was then tested with a per-dataset guard and not adopted (`research/out/aml_hardening.json`): it fixed the ROC-AUC
+loss on HI-Large and LI-Large, but lost on AMLgentex (rule B1) and its mean bank-AML gain stayed under half a point (B2).
+The served engine was rebuilt and replayed against the Python results; block decisions match exactly.
 
 **8a. Payer window: not adopted.**
 Widening the 24 hour window from a payer-payee pair to all of a payer's payments catches parts sent to new mule accounts,
@@ -103,6 +120,48 @@ running log sum (linear time); it matches the old version to 1e-12.
 On IEEE-CIS (real card fraud) the arm trained on real data won on validation, and on test the synthetic-only arm was
 close to random on the real data (`research/out/real_vs_synthetic.json`). Synthetic card sets are kept as tests, not as
 a substitute for real training data. The unseen-payer subset is too small to support any claim.
+
+**8c. One pair window for the API and the workers, with idle keys swept.**
+The API kept every payer-payee pair it had seen forever, so memory grew without limit over a long uptime, and the Redis
+workers skipped the window, so the same payment could get a different decision on the scaled path. The API now uses
+`PairWindow` (pairs idle for a day are swept every 65,536 payments); the workers keep the same window in Redis
+(`RedisState::pair_window`), so it survives restarts and rebalancing, and a redelivered payment is counted once.
+`tests/scale.rs` checks the Redis window equals `PairWindow` and that worker decisions equal the API's.
+
+**8d. More layers for the block band: tested, not adopted.**
+Three pre-registered attempts to raise block-band recall (`research/out/l3_eval.json`, `research/out/l3_stack_eval.json`,
+`research/out/new_features_eval.json`):
+- a third L2 model trained on HI-Small, HI-Medium and HI-Large (about 40 times more laundering): validation block
+  recall moved by under a point (rule: two points). It ranks better overall on test (PR-AUC), and on test its bands also
+  catch more, but at more alerts (the thresholds sit on isotonic plateaus), so the study did not compare equal workloads;
+  the later two do.
+- a learned monotone L3 combiner over the layer scores: the same flat block recall, and it relearned the payment-format
+  shortcut (worst format-attack PR-AUC near zero), because validation holds no attacked payments.
+- the 13 account-behaviour indicators in that third model: 2.1 points over the same model without them, but 1.3 over
+  the served cascade (rule: two), at exactly the served alert count.
+Four different candidates land within about a point of the same block recall at the same alert count, which points to
+a limit of the features and labels at this budget rather than of the layering. The served max of two calibrated scores stays: it is
+the only combination that keeps the format attack closed.
+
+**8e. Security and robustness pass after an independent review.**
+- One access gate for every API route (`security::gate`): with real keys configured, everything except health, the
+  public key, signature checks and the model card needs a known key, and wiping state (demo reset and replay) needs a
+  supervisor. Before, only the review and evidence routes checked keys, so anyone could reset all state, change alert
+  status, read campaigns (tipping off) or poison the watchlist. Demo mode stays open, as the public demo needs.
+- Keys are validated at start-up (JSON, 16+ characters, known role), so a bad value stops the server instead of
+  failing every request later.
+- Duress PINs: a registration is never overwritten (it could hijack a customer's PIN and contacts), five wrong PINs
+  lock the account, and the deliberately slow PIN hashing runs outside the shared lock so it cannot stall the server.
+- Consortium publishing needs an analyst or supervisor key and signs only as this bank outside demo mode.
+- Inputs: infinite amounts and non-finite typing values are refused (inf turned an account's running sums into NaN
+  for good); timestamps accept ASCII digits only (other scripts' digits panicked the request); USD amounts are capped.
+- Windows keep time order, so a late payment leaves the 24 h window on time, as in the Redis state.
+- The engine passes the unrounded risk to the pair window and the calibration maps, as the workers and research do.
+- Workers: malformed messages go to a dead-letter stream instead of stopping the worker, unacknowledged messages
+  are replayed on restart (at-least-once), and the pair window applies with or without the hardening file.
+- Memory: typing profiles, session events, device lists and case edges are capped; batches are all or nothing.
+- Response headers (nosniff, no framing, no referrer); Redis is no longer published to the host in docker-compose,
+  and the container runs as an unprivileged user.
 
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.

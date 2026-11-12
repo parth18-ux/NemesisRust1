@@ -24,6 +24,10 @@ pub const VERIFIER_FEATURES: [&str; 13] = ["median_z", "mean_z_clipped", "frac_z
 pub type Stats = IndexMap<String, (f64, f64, usize)>;
 
 /// Attempt-vs-profile features. NaNs when fewer than MIN_PAIRS pairs were seen in at least MIN_SESSIONS sessions.
+/// Enrolment bounds per account (a typing sample has a few hundred key pairs; a profile needs a handful of sessions).
+pub const MAX_SESSIONS: usize = 20;
+pub const MAX_DIGRAPHS: usize = 1000;
+
 pub fn verifier_features(stats: &Stats, attempt: &IndexMap<String, f64>) -> Vec<f64> {
     let shared: Vec<(f64, (f64, f64, usize))> = attempt.iter().filter_map(|(k, v)| {
         stats.get(k).filter(|s| s.2 >= MIN_SESSIONS && *v > 0.0).map(|s| (*v, *s))
@@ -32,9 +36,9 @@ pub fn verifier_features(stats: &Stats, attempt: &IndexMap<String, f64>) -> Vec<
         return vec![f64::NAN; VERIFIER_FEATURES.len()];
     }
     let mut z: Vec<f64> = shared.iter().map(|(v, (mu, sd, _))| (v - mu).abs() / sd.max(0.15 * mu).max(5.0)).collect();
-    z.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    z.sort_by(|a, b| a.total_cmp(b));
     let mut r: Vec<f64> = shared.iter().filter(|(_, (mu, _, _))| *mu > 0.0).map(|(v, (mu, _, _))| (v / mu).ln()).collect();
-    r.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    r.sort_by(|a, b| a.total_cmp(b));
     let med_r = median(&r);
     let n = z.len() as f64;
     vec![
@@ -99,8 +103,13 @@ pub struct TypingProfile {
 }
 
 impl TypingProfile {
-    pub fn enrol(&mut self, digraphs: IndexMap<String, f64>) {
+    /// Keeps the latest MAX_SESSIONS sessions of at most MAX_DIGRAPHS pairs each, so enrolment memory is bounded.
+    pub fn enrol(&mut self, mut digraphs: IndexMap<String, f64>) {
+        digraphs.truncate(MAX_DIGRAPHS);
         self.sessions.push(digraphs);
+        if self.sessions.len() > MAX_SESSIONS {
+            self.sessions.remove(0);
+        }
     }
 
     pub fn ready(&self) -> bool {
