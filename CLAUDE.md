@@ -31,7 +31,7 @@ It is cheaper in tokens and covers code, docs and the research review in one pla
 
 - Fable 5.2: architecture, hard bugs, review
 - Opus 5.5: edits, tests, docs, refactors
-- Haiku 4.5: lookups and summaries
+- Haiku 5.5: lookups and summaries
 - Pass `model` on every Agent call (`fable`, `opus`, `haiku`)
 
 ### Delegation
