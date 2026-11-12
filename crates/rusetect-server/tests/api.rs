@@ -545,3 +545,19 @@ async fn authenticate_owner_and_sim_swap() {
     let (s, _, _) = t.req("POST", "/api/v2/challenge/verify", Some(json!({"decision_id": "nope", "passed": true})), &[]).await;
     assert_eq!(s, StatusCode::NOT_FOUND);
 }
+
+/// RuseTect's consortium mule registry feeds PRAMAAN's payee-risk signal.
+#[tokio::test]
+async fn consortium_flag_raises_payee_risk_in_authentication() {
+    let t = T::new();
+    let pay = |payee: &str| json!({"user_id": "ravi", "ts": 1.767e9, "device": {"device_id": "phone-r"},
+        "transaction": {"amount": 2500, "payee_id": payee}});
+    let clean = t.post("/api/v2/authenticate", pay("011:CLEAN1")).await;
+    assert_eq!(clean["features"]["payee_risk"], Value::Null);
+    let (s, _, _) = t.req("POST", "/api/v2/consortium/publish", Some(json!({"bank": "BANK-B", "identifier": "011:MULE7"})), &[("X-Analyst-Key", "demo-analyst-1")]).await;
+    assert_eq!(s, StatusCode::OK);
+    let r = t.post("/api/v2/authenticate", pay("011:MULE7")).await;
+    assert_eq!(r["features"]["payee_risk"], json!(0.9));
+    assert_eq!(r["payee_flagged_by_consortium"], json!(["BANK-B"]));
+    assert!(r["risk_score"].as_f64().unwrap() >= clean["risk_score"].as_f64().unwrap(), "a flagged payee never lowers the risk");
+}
