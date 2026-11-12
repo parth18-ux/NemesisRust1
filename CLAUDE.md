@@ -29,7 +29,7 @@ It is cheaper in tokens and covers code, docs and the research review in one pla
 
 ### Model routing
 
-- Fable 5.1: architecture, hard bugs, review
+- Fable 5.2: architecture, hard bugs, review
 - Opus 5.5: edits, tests, docs, refactors
 - Haiku 4.5: lookups and summaries
 - Pass `model` on every Agent call (`fable`, `opus`, `haiku`)
