@@ -381,7 +381,7 @@ const MAX_PROFILES: usize = 100_000;
 async fn require_key(req: Request, next: Next) -> Response {
     if let Some(path) = req.uri().path().strip_prefix("/api") {
         let key = req.headers().get("x-analyst-key").and_then(|v| v.to_str().ok());
-        if let Err((code, msg)) = rusetect::security::gate(&KEYS, path, key) {
+        if let Err((code, msg)) = rusetect::security::gate(&KEYS, req.method().as_str(), path, key) {
             return ApiError::new(code, msg).into_response();
         }
     }
@@ -655,6 +655,10 @@ async fn v2_customer(State(app): State<AppRef>, Path(alert_id): Path<String>, b:
         }
         if answer != "stop" && answer != "continue" {
             return Err(ApiError::new(400, "answer must be stop or continue"));
+        }
+        // the pause screen answers an alert no analyst has acted on; a hold, block, release or verification stands
+        if !matches!(s.desk.alerts[&alert_id]["status"].as_str(), Some("open" | "cooling_off" | "stopped_by_customer")) {
+            return Err(ApiError::new(409, "an analyst has acted on this alert; the customer answer cannot change it"));
         }
         let status = if answer == "stop" { "stopped_by_customer" } else { "cooling_off" };
         ok(s.desk.system_event(&alert_id, status, "customer", &format!("pause screen answer: {answer}"), true).map_err(review_err)?)

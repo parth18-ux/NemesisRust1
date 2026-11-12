@@ -75,15 +75,42 @@ pub fn analyst_for(key: Option<&str>) -> Option<Analyst> {
 /// documentation. Everything else under /api names accounts, changes state or costs CPU.
 pub const PUBLIC_API: [&str; 7] = ["", "/", "/health", "/v2/keys/public", "/v2/verify", "/v2/model-card", "/v2/demo/analysts"];
 
+/// POST routes that take a review decision or publish to the shared ledger: analyst or supervisor only.
+const REVIEW_ROUTES: [&str; 2] = ["/v2/alerts/*/review", "/v2/consortium/publish"];
+
+/// `path` against a pattern whose `*` segments stand for one path parameter (an alert id).
+fn route_is(path: &str, pattern: &str) -> bool {
+    let (mut a, mut b) = (path.split('/'), pattern.split('/'));
+    loop {
+        match (a.next(), b.next()) {
+            (None, None) => return true,
+            (Some(x), Some(y)) if y == "*" || x == y => {}
+            _ => return false,
+        }
+    }
+}
+
 /// Access rule for one API request (`path` without the /api prefix). Demo mode is open, as the public demo needs.
-/// Otherwise a known key is required, and wiping state (demo reset, demo replay) needs a supervisor.
-pub fn gate(keys: &Keys, path: &str, key: Option<&str>) -> Result<(), (u16, &'static str)> {
+/// Otherwise a known key is required and the role sets the reach: any role reads (GET); a write needs channel or
+/// above, a review or publish needs an analyst or supervisor, and wiping state (demo reset, demo replay) a supervisor.
+/// A write route not named here falls to the channel rule, so a new route is never open to a viewer.
+pub fn gate(keys: &Keys, method: &str, path: &str, key: Option<&str>) -> Result<(), (u16, &'static str)> {
     if keys.demo_mode || PUBLIC_API.contains(&path) {
         return Ok(());
     }
     let who = keys.keys.get(key.unwrap_or("")).ok_or((401, "missing or unknown X-Analyst-Key"))?;
-    if path.starts_with("/v2/demo/") && who.role != "supervisor" {
-        return Err((403, "demo reset and replay need a supervisor key"));
+    let role = who.role.as_str();
+    if path.starts_with("/v2/demo/") {
+        return if role == "supervisor" { Ok(()) } else { Err((403, "demo reset and replay need a supervisor key")) };
+    }
+    if matches!(method, "GET" | "HEAD" | "OPTIONS") {
+        return Ok(());
+    }
+    if REVIEW_ROUTES.iter().any(|p| route_is(path, p)) {
+        return if allowed(role, "hold") { Ok(()) } else { Err((403, "review and publish need an analyst or supervisor key")) };
+    }
+    if role == "viewer" {
+        return Err((403, "a viewer key is read only"));
     }
     Ok(())
 }
@@ -222,14 +249,24 @@ mod tests {
     #[test]
     fn production_gate_and_key_validation() {
         let k = |r: &str| Analyst { analyst: "a".into(), role: r.into() };
-        let keys = Keys { keys: [("k-viewer".to_string(), k("viewer")), ("k-super".to_string(), k("supervisor"))].into_iter().collect(), demo_mode: false };
-        assert!(gate(&keys, "/health", None).is_ok());
-        assert_eq!(gate(&keys, "/v2/payment", None), Err((401, "missing or unknown X-Analyst-Key")));
-        assert_eq!(gate(&keys, "/v2/campaigns", Some("nope")).unwrap_err().0, 401);
-        assert!(gate(&keys, "/v2/payment", Some("k-viewer")).is_ok());
-        assert_eq!(gate(&keys, "/v2/demo/reset", Some("k-viewer")).unwrap_err().0, 403, "only a supervisor wipes state");
-        assert!(gate(&keys, "/v2/demo/reset", Some("k-super")).is_ok());
-        assert!(gate(&Keys { keys: IndexMap::new(), demo_mode: true }, "/v2/demo/reset", None).is_ok(), "the public demo stays open");
+        let keys = Keys { keys: ["viewer", "channel", "analyst", "supervisor"].iter().map(|r| (format!("k-{r}"), k(r))).collect(), demo_mode: false };
+        assert!(gate(&keys, "GET", "/health", None).is_ok());
+        assert_eq!(gate(&keys, "POST", "/v2/payment", None), Err((401, "missing or unknown X-Analyst-Key")));
+        assert_eq!(gate(&keys, "GET", "/v2/campaigns", Some("nope")).unwrap_err().0, 401);
+        assert!(gate(&keys, "GET", "/v2/alerts/A1/evidence", Some("k-viewer")).is_ok(), "a viewer reads");
+        assert_eq!(gate(&keys, "POST", "/v2/payment", Some("k-viewer")).unwrap_err().0, 403, "a viewer never writes");
+        assert_eq!(gate(&keys, "POST", "/v2/alerts/A1/customer", Some("k-viewer")).unwrap_err().0, 403);
+        assert!(gate(&keys, "POST", "/v2/payment", Some("k-channel")).is_ok());
+        assert!(gate(&keys, "POST", "/v2/alerts/A1/customer", Some("k-channel")).is_ok());
+        assert_eq!(gate(&keys, "POST", "/v2/alerts/A1/review", Some("k-channel")).unwrap_err().0, 403, "a channel never reviews");
+        assert_eq!(gate(&keys, "POST", "/v2/consortium/publish", Some("k-channel")).unwrap_err().0, 403);
+        assert!(gate(&keys, "POST", "/v2/alerts/A1/review", Some("k-analyst")).is_ok());
+        assert!(gate(&keys, "POST", "/v2/payment", Some("k-analyst")).is_ok());
+        assert!(gate(&keys, "POST", "/v2/consortium/publish", Some("k-supervisor")).is_ok());
+        assert!(gate(&keys, "POST", "/v2/verify", None).is_ok(), "signature checks stay public");
+        assert_eq!(gate(&keys, "POST", "/v2/demo/reset", Some("k-analyst")).unwrap_err().0, 403, "only a supervisor wipes state");
+        assert!(gate(&keys, "POST", "/v2/demo/reset", Some("k-supervisor")).is_ok());
+        assert!(gate(&Keys { keys: IndexMap::new(), demo_mode: true }, "POST", "/v2/demo/reset", None).is_ok(), "the public demo stays open");
         assert!(parse_keys(r#"{"0123456789abcdef": {"analyst": "asha", "role": "analyst"}}"#).is_ok());
         for bad in ["", "[]", "{}", r#"{"short": {"analyst": "a", "role": "analyst"}}"#, r#"{"0123456789abcdef": {"analyst": "a", "role": "root"}}"#] {
             assert!(parse_keys(bad).is_err(), "{bad:?} must be refused at start-up");
