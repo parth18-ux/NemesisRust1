@@ -561,3 +561,23 @@ async fn consortium_flag_raises_payee_risk_in_authentication() {
     assert_eq!(r["payee_flagged_by_consortium"], json!(["BANK-B"]));
     assert!(r["risk_score"].as_f64().unwrap() >= clean["risk_score"].as_f64().unwrap(), "a flagged payee never lowers the risk");
 }
+
+#[tokio::test]
+async fn future_timestamps_are_refused() {
+    let t = T::new();
+    let mut p = pay();
+    p["timestamp"] = json!("2999-01-01 10:00");
+    assert_eq!(t.req("POST", "/api/v2/payment", Some(p), &[]).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(t.req("POST", "/api/v2/payment", Some(pay()), &[]).await.0, StatusCode::OK);
+}
+
+#[test]
+fn campaigns_use_only_the_newest_alerts() {
+    use rusetect::campaigns::{build_recent, MAX_ALERTS};
+    let alerts: indexmap::IndexMap<String, Value> = (0..=MAX_ALERTS).map(|i| (format!("A{i}"), json!({"alert_id": format!("A{i}"), "status": "open",
+        "payment": {"to_bank": "011", "to_account": "P1", "from_account": format!("V{i}"), "amount_paid": 1, "timestamp": "2022-09-01 10:00"}}))).collect();
+    let cs = build_recent(&alerts);
+    let ids = cs[0]["alerts"].as_array().unwrap();
+    assert_eq!(ids.len(), MAX_ALERTS);
+    assert!(!ids.contains(&json!("A0")) && ids.contains(&json!(format!("A{MAX_ALERTS}"))));
+}

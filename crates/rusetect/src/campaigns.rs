@@ -27,6 +27,16 @@ pub fn jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
     a.intersection(b).count() as f64 / a.union(b).count() as f64
 }
 
+/// Campaigns are built from at most this many of the newest alerts.
+// shortcut: build() is O(n^2) and runs under the state lock, so only the newest 2,000 alerts are linked; index by payee/entity/shingle when older links matter.
+pub const MAX_ALERTS: usize = 2_000;
+
+/// Campaigns over the newest MAX_ALERTS alerts of the review desk (kept in arrival order).
+pub fn build_recent(alerts: &IndexMap<String, Value>) -> Vec<Value> {
+    let all: Vec<&Value> = alerts.values().skip(alerts.len().saturating_sub(MAX_ALERTS)).collect();
+    build(&all)
+}
+
 /// alerts: ReviewDesk alerts (payment + assessed.context with redacted_text and entity_hashes).
 pub fn build(alerts: &[&Value]) -> Vec<Value> {
     let n = alerts.len();
