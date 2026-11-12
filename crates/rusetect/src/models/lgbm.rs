@@ -111,10 +111,6 @@ impl LiteBooster {
         let v: Vec<f64> = x.iter().map(|&a| a as f64).collect();
         self.predict(&v)
     }
-
-    pub fn num_trees(&self) -> usize {
-        self.trees.len()
-    }
 }
 
 fn flatten(n: &Value, out: &mut Vec<Node>) -> Result<usize> {

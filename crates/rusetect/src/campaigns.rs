@@ -4,6 +4,7 @@
 //! identical script (Jaccard similarity of 5 character shingles of the REDACTED messages >= 0.5). Union find over
 //! those links; only groups of two or more alerts are reported. Each campaign lists why its alerts are linked.
 use crate::pyfmt::{py_float_value, py_round, py_split, py_sum};
+use crate::str_report::py_str;
 use indexmap::IndexMap;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -24,16 +25,6 @@ pub fn jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
         return 0.0;
     }
     a.intersection(b).count() as f64 / a.union(b).count() as f64
-}
-
-fn py_str(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Null => "None".into(),
-        Value::Number(n) if n.is_f64() => crate::pyfmt::py_repr(n.as_f64().unwrap()),
-        Value::Bool(b) => if *b { "True".into() } else { "False".into() },
-        other => other.to_string(),
-    }
 }
 
 /// alerts: ReviewDesk alerts (payment + assessed.context with redacted_text and entity_hashes).

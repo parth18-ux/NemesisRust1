@@ -1,8 +1,6 @@
-//! Where the repository's data lives (port of ml/paths.py plus the service's ROOT / MODELS).
+//! Where the repository's data lives (the service's ROOT / MODELS).
 //!
 //! RUSETECT_ROOT  repository root (default: found by walking up from the working directory or the executable)
-//! RUSETECT_DATA  folder with the raw datasets (default ROOT/data)
-//! RUSETECT_WORK  folder for intermediate files (default ROOT/work)
 use std::path::{Path, PathBuf};
 
 fn is_root(p: &Path) -> bool {
@@ -32,29 +30,9 @@ pub fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
 
-fn env_or(name: &str, default: PathBuf) -> PathBuf {
-    std::env::var(format!("RUSETECT_{name}")).ok().filter(|s| !s.is_empty()).map(PathBuf::from).unwrap_or(default)
-}
-
 pub fn models_dir() -> PathBuf {
     repo_root().join("service").join("models")
 }
 pub fn static_dir() -> PathBuf {
     repo_root().join("service").join("static")
-}
-pub fn results_dir() -> PathBuf {
-    repo_root().join("results")
-}
-pub fn data_dir() -> PathBuf {
-    env_or("DATA", repo_root().join("data"))
-}
-pub fn work_dir() -> PathBuf {
-    let w = env_or("WORK", repo_root().join("work"));
-    let _ = std::fs::create_dir_all(&w);
-    w
-}
-pub fn export_dir() -> PathBuf {
-    let e = repo_root().join("ml").join("exported");
-    let _ = std::fs::create_dir_all(&e);
-    e
 }

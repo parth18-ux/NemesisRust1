@@ -194,6 +194,10 @@ ROC-AUC 0.4789 and PR-AUC 0.001 on validation, no better than chance, so it is n
 A first run was invalid (all scores zero: the timestamp unit was read as nanoseconds while pandas returned microseconds,
 collapsing the stream into one tick); it was fixed and rerun without changing the rule.
 
+**8i. Ponytail pass.** Unused Rust removed (`pyfmt::dumps_indent`, unused `paths` helpers, `LiteBooster::num_trees`) and the
+duplicate `py_str` in `campaigns.rs` now uses `str_report::py_str`: 77 fewer lines of Rust (9484 to 9407). Tests (73),
+PRAMAAN parity and the attack-stream replay are unchanged.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
