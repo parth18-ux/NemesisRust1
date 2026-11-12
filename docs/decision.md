@@ -187,10 +187,12 @@ HMOG dataset is not reachable from this environment (HTTP 403), and the model ne
 **8h. MIDAS-R streaming burst score (Stream-AD/MIDAS, Apache-2.0): not adopted.** MIDAS-R edge, source and destination
 scores were added as three extra features to a third L2 model and compared with the same model without them, at the
 served alert counts on the second half of HI-Small validation, under rule M1-M4 pre-registered in `research/midas_eval.py`.
-M1 and M2 failed: block-band recall was 0.6393 with MIDAS against 0.6374 for the current model and 0.6489 for the control
-without MIDAS. M3 and M4 passed (PR-AUC 0.6523 against 0.6496; worst PR-AUC under the format attack 0.6158 against 0.6171).
-The MIDAS-R score alone reached ROC-AUC 0.5 and PR-AUC 0.0011 on validation, no better than chance, so it is not ported
-(`research/out/midas_eval.json`).
+M1 and M2 failed: block-band recall was 0.6412 (precision 0.5153) with MIDAS against 0.6374 (0.5123) for the current model
+and 0.6489 (0.5215) for the control without MIDAS. M3 and M4 passed (PR-AUC 0.6493 against 0.6496 for the current model and
+0.6601 for the control; worst PR-AUC under the format attack 0.6138 against 0.6171). The MIDAS-R score alone reached
+ROC-AUC 0.4789 and PR-AUC 0.001 on validation, no better than chance, so it is not ported (`research/out/midas_eval.json`).
+A first run was invalid (all scores zero: the timestamp unit was read as nanoseconds while pandas returned microseconds,
+collapsing the stream into one tick); it was fixed and rerun without changing the rule.
 
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
