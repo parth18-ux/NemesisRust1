@@ -698,8 +698,25 @@ async fn v2_authenticate(State(app): State<AppRef>, b: Bytes) -> ApiResult {
     let id = o.get("request_id").and_then(|v| v.as_str()).filter(|r| !r.is_empty() && r.len() <= 64).map(String::from)
         .unwrap_or_else(|| (0..16).map(|_| format!("{:x}", rand::random::<u8>() % 16)).collect());
     with_state(app, move |s| {
+        let mut req = req;
+        // payee intelligence from RuseTect: a payee other banks flagged as a mule on the consortium ledger gets the
+        // risk PRAMAAN gives a held mule account (0.9), unless the caller already sent a payee risk
+        let mut flagged_by = Value::Null;
+        if let Some(tx) = req.get_mut("transaction").and_then(|t| t.as_object_mut()) {
+            if tx.get("payee_risk").is_none_or(|v| v.is_null()) {
+                if let Some(pid) = tx.get("payee_id").and_then(|v| v.as_str()).filter(|p| !p.is_empty()) {
+                    let c = s.consortium.check("mule_account", pid);
+                    if c["flagged"] == true {
+                        tx.insert("payee_risk".into(), json!(0.9));
+                        flagged_by = c["banks"].clone();
+                    }
+                }
+            }
+        }
         let a = s.auth.as_mut().ok_or_else(|| ApiError::new(503, "authentication model not loaded"))?;
-        ok(a.authenticate(&req, id))
+        let mut out = a.authenticate(&req, id);
+        out["payee_flagged_by_consortium"] = flagged_by;
+        ok(out)
     }).await
 }
 

@@ -179,6 +179,11 @@ simulator: the comparison ranks designs, it is not a real-world fraud rate. Not 
 1D-CNN (the deviations are inputs; its simpler touch model, window statistics + LDA, nearly matches the BiLSTM in its own
 report and is the one to port next) and the PayPal checkout gate (PayPal-specific, and it needs sandbox keys).
 
+**8g. RuseTect payee intelligence feeds PRAMAAN.** When an authentication request carries no payee risk and its payee
+is on the consortium mule registry, the engine receives 0.9 (PRAMAAN's own value for a held mule account) and the response
+names the flagging banks. Monotone model: a flag can only raise the risk (tested). The touch model port is blocked: the
+HMOG dataset is not reachable from this environment (HTTP 403), and the model needs it to fit its LDA projection.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
