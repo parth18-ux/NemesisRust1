@@ -53,7 +53,11 @@ Structuring (HI-Small demo window, block recall, any part caught): clean 37%, sp
 - The HI-Small test part has been read by many studies, some designed after earlier test results; the served model needs one
   confirmation on data no study has read (a new generator run or a bank's shadow pilot).
 - Generalisation across generators is weak. The served cascade zero-shot ROC-AUC on SAML-D 0.565; a research model (29 features plus 13 indicators) trained on all other datasets, leave-one-out ROC-AUC (same-generator siblings stay in training, which flatters the IBM sets): hismall 0.991, himed 0.990, hi_large 0.882, li_small 0.976, li_medium 0.976, li_large 0.863, samld 0.803, amlgentex 0.497, banksim 0.940, sparkov 0.751, paysim 0.349, tabformer 0.458, ieee 0.435.
-- Spread-out structuring still evades most per-payment and pair checks; account-level alerts are the next step.
+- Spread-out structuring still evades most per-payment and pair checks; account-level alerts are the next step. The structuring
+  numbers come from 97 laundering payments in one window, so a few payments move them by points.
+- The format attack flips the payment-format field of each laundering payment; the format-free model cannot read that field, so it
+  is robust to it by construction. Attacks aimed at the format-free model itself are covered only by the evasion suite (amounts,
+  delays, splits, new mule accounts), where block recall stays low.
 - The multi-domain second opinion is weaker than the HI-Small-only one on the two largest bank-AML sets (test ROC-AUC HI-Large 0.980 to 0.947, LI-Large 0.953 to 0.866); its adoption rule had no per-dataset guard.
 - Reasons are TreeSHAP contributions of the model that set the risk (the L2 XGBoost half, or the format-free model); the LightGBM half is not explained.
 - Serverless deployments (Vercel) keep state per instance; use the Redis deployment (`deploy/docker-compose.yml`) for shared state.

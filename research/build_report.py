@@ -773,7 +773,11 @@ def model_card():
         "- The HI-Small test part has been read by many studies, some designed after earlier test results; the served model needs one",
         "  confirmation on data no study has read (a new generator run or a bank's shadow pilot).",
         f"- Generalisation across generators is weak. The served cascade zero-shot ROC-AUC on {zs}; a research model (29 features plus 13 indicators) trained on all other datasets, leave-one-out ROC-AUC (same-generator siblings stay in training, which flatters the IBM sets): {loo}." if U else "- Generalisation across generators is weak.",
-        "- Spread-out structuring still evades most per-payment and pair checks; account-level alerts are the next step.",
+        "- Spread-out structuring still evades most per-payment and pair checks; account-level alerts are the next step. The structuring",
+        "  numbers come from 97 laundering payments in one window, so a few payments move them by points.",
+        "- The format attack flips the payment-format field of each laundering payment; the format-free model cannot read that field, so it",
+        "  is robust to it by construction. Attacks aimed at the format-free model itself are covered only by the evasion suite (amounts,",
+        "  delays, splits, new mule accounts), where block recall stays low.",
         *([f"- The multi-domain second opinion is weaker than the HI-Small-only one on the two largest bank-AML sets (test ROC-AUC HI-Large "
            f"{f(PH['test']['hi_large']['current_hardened']['roc_auc'])} to {f(PH['test']['hi_large']['pooled_hardened']['roc_auc'])}, LI-Large "
            f"{f(PH['test']['li_large']['current_hardened']['roc_auc'])} to {f(PH['test']['li_large']['pooled_hardened']['roc_auc'])}); its adoption rule had no per-dataset guard."]
