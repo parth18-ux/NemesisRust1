@@ -14,6 +14,8 @@ ADOPTION RULE (fixed here before any test number is computed; same thresholds as
 The format-free model and its isotonic map come from full_hi_eval.py (trained on train rows, calibrated on
 validation). Results: research/out/hardened_eval.json; if adopted, the maps and thresholds the Rust engine serves
 are written to service/models/hardening.json.
+SERVED=1 evaluates service/models/hardening.json as served (model, maps and thresholds read, nothing fitted or written
+to service/); used after research/pooled_hardening.py replaced the second opinion.
 """
 import json, os, sys, time
 import numpy as np, pandas as pd, xgboost as xgb, lightgbm as lgb
@@ -38,12 +40,16 @@ def main():
     assert len(d) == 5_078_345 and (np.diff(d.row.values) == 1).all()
     y = d.y.values.astype(np.int8); X = d[F].values.astype(np.float32)
     live = np.where(d.l1 < L1T, d.l1, (d.l2x + d.l2l) / 2).astype(np.float64)
-    fi, cols = F.index("fmt_code"), [F.index(f) for f in FNOFMT]
+    fi = F.index("fmt_code")
     b1 = xgb.Booster(); b1.load_model(os.path.join(ROOT, "service/models/l1_gatekeeper.json"))
     bx = xgb.Booster(); bx.load_model(os.path.join(ROOT, "service/models/l2_xgb.json"))
     bl = lgb.Booster(model_file=os.path.join(ROOT, "ml/exported/l2_lgbm.txt"))
-    bf = xgb.Booster(); bf.load_model(os.path.join(OUT, "candidate_no_format_xgb.json"))
-    iso_f = json.load(open(os.path.join(OUT, "candidate_isotonic.json")))
+    SV = os.environ.get("SERVED") == "1"
+    HJ = json.load(open(os.path.join(ROOT, "service", "models", "hardening.json"))) if SV else None
+    FF = HJ["features"] if SV else FNOFMT
+    cols = [F.index(f) for f in FF]
+    bf = xgb.Booster(); bf.load_model(os.path.join(ROOT, "service", "models", "hardening_xgb.json") if SV else os.path.join(OUT, "candidate_no_format_xgb.json"))
+    iso_f = HJ["iso_free"] if SV else json.load(open(os.path.join(OUT, "candidate_isotonic.json")))
 
     def served(Xm):
         dm = xgb.DMatrix(Xm, missing=np.nan, feature_names=F)
@@ -51,14 +57,14 @@ def main():
         return np.where(s1 < L1T, s1, (bx.predict(dm) + bl.predict(Xm.astype(np.float64))) / 2)
 
     def free(Xm):
-        return interp(iso_f, bf.predict(xgb.DMatrix(Xm[:, cols], missing=np.nan, feature_names=FNOFMT)))
+        return interp(iso_f, bf.predict(xgb.DMatrix(Xm[:, cols], missing=np.nan, feature_names=FF)))
 
     va, te = slice(VAL0, TEST0), slice(TEST0, None)
     yv, Xv = y[va], X[va]
     # the dump's served score must equal the Python reproduction (train/serve parity)
     assert np.abs(served(Xv[:200_000]) - live[va][:200_000]).max() < 1e-5
     iso = IsotonicRegression(out_of_bounds="clip", y_min=0, y_max=1).fit(live[va], yv)
-    iso_s = {"x": [float(v) for v in iso.X_thresholds_], "y": [float(v) for v in iso.y_thresholds_]}
+    iso_s = HJ["iso_served"] if SV else {"x": [float(v) for v in iso.X_thresholds_], "y": [float(v) for v in iso.y_thresholds_]}
 
     def hard(Xm, s_live=None):
         s = served(Xm) if s_live is None else s_live
@@ -82,7 +88,7 @@ def main():
     checks = {"H1": h_clean >= s_clean - RULE["R1_max_drop"], "H2": h_worst >= RULE["R2_min_ratio"] * h_clean,
               "H3": s_worst < RULE["R3_served_max_ratio"] * s_clean}
     rates = {b: float((live[va] >= t).mean()) for b, t in (("verify", VER), ("hold", HOLD), ("block", BLK))}
-    hthr = {b: thr_for_rate(hv, r) for b, r in rates.items()}
+    hthr = HJ["thresholds"] if SV else {b: thr_for_rate(hv, r) for b, r in rates.items()}
     R["thresholds"] = {"served_validation_alert_rates": rates, "hardened": hthr}
     R["decision"] = {"checks": checks, "adopt": all(checks.values()), "decided_at_seconds": round(time.time() - t0, 1),
                      "note": "decided on validation only; test scored after this line"}
@@ -105,7 +111,10 @@ def main():
                                       "hardened": {b: band_counts(yt, ha, t) for b, t in hthr.items()}}
     R["test"] = T
     json.dump(R, open(os.path.join(OUT, "hardened_eval.json"), "w"), indent=1)
-    if R["decision"]["adopt"]:
+    if SV:
+        R["source"] = "service/models/hardening.json as served: " + HJ["note"]
+        json.dump(R, open(os.path.join(OUT, "hardened_eval.json"), "w"), indent=1)
+    elif R["decision"]["adopt"]:
         json.dump({"note": "written by research/hardened_eval.py; risk = max(iso_served(cascade), iso_free(format-free XGBoost))",
                    "model": "hardening_xgb.json", "features": FNOFMT, "iso_served": iso_s, "iso_free": iso_f, "thresholds": hthr},
                   open(os.path.join(ROOT, "service", "models", "hardening.json"), "w"), indent=1)

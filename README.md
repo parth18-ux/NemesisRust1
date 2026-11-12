@@ -64,7 +64,7 @@ pipeline; the Rust port serves the same models, so the live path reproduces them
 | Area | Data | Result |
 |---|---|---|
 | Payment models | IBM AMLworld HI-Small, every payment streamed through the live engine, last 20% of time as test | PR-AUC 0.711, ROC-AUC 0.985 |
-| Payment models, served hardened risk (format-free second opinion) | HI-Small test, same protocol ([research/out/hardened_eval.json](research/out/hardened_eval.json)) | PR-AUC 0.716; 0.681 when every laundering payment switches format (cascade alone: 0.004) |
+| Payment models, served hardened risk (pooled format-free second opinion) | HI-Small test, same protocol ([research/out/hardened_eval.json](research/out/hardened_eval.json)) | PR-AUC 0.720; 0.687 when every laundering payment switches format (cascade alone: 0.004) |
 | Payment models, lower laundering rate | IBM AMLworld LI-Small, same protocol | PR-AUC 0.345, ROC-AUC 0.967 |
 | Account opening | Feedzai BAF Base and Variants I to V, months 6 to 7 | mean ROC-AUC 0.888 over six populations; false alarm parity between age groups 0.93 on Base |
 | Messages | Synthetic Indian scam messages from templates held out of training | 0.95 precision at 68% recall for push warnings; no false alarms on genuine OTP, bank, bill and delivery messages |

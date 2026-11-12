@@ -7,9 +7,9 @@
   "R2": -0.905
  },
  "served_hardened_calibrated": {
-  "MAE": 0.001892,
-  "RMSE": 0.02748,
-  "R2": 0.5724
+  "MAE": 0.001696,
+  "RMSE": 0.027083,
+  "R2": 0.5847
  },
  "base_rate_constant": {
   "MAE": 0.003532,

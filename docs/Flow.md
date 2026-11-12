@@ -26,7 +26,7 @@ session. Paths are relative to the repository root.
    - `Engine::new(models_dir, true)` (`crates/rusetect/src/engine.rs`)
      - `CascadeConfig::load()` reads `service/models/cascade_config.json` (features, thresholds, codes)
      - `Models::load()` reads the L1 XGBoost, L2 XGBoost and LightGBM, and the L0 onboarding model
-     - `Hardening::load()` reads `service/models/hardening.json` and `hardening_xgb.json` (format-free second opinion)
+     - `Hardening::load()` reads `service/models/hardening.json` and `hardening_xgb.json` (format-free second opinion, pooled over all payment datasets)
    - `MessageModel::load()` (scam text), typing verifier, consortium, signer, review desk
    - `RateLimiter::new(RUSETECT_RATE_LIMIT or 240, 10 s)`
 4. `build_app()` builds the axum router: pages (`/`, `/console`, `/investigate`, `/report`, `/research`, `/docs`)

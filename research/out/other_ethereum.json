@@ -8,9 +8,9 @@
   "roc_auc_sd": 0.0003,
   "pr_auc_mean": 0.9963
  },
- "note": "address-level aggregates; real labels but a random split, so it measures separability, not drift",
  "erc20_fields_missing_share": {
   "genuine": 0.0,
-  "fraud": 0.3805
- }
+  "fraud": 0.3804
+ },
+ "note": "address-level aggregates; real labels but a random split, so it measures separability, not drift"
 }

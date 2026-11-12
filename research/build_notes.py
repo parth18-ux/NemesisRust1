@@ -25,6 +25,7 @@ def pct(x, d=0):
 def main():
     HD, FULL, SD, EV, U, TS = J("hardened_eval.json"), J("full_hi_eval.json"), J("structuring_defence.json"), J("evasion_suite.json"), J("unified_train.json"), J("transfer_samld.json")
     PH, AA, HT = J("pooled_hardening.json"), J("account_aggregation.json"), J("hardened_transfer.json")
+    RM, RV = J("regression_metrics.json"), J("real_vs_synthetic.json")
     T = HD["test"]
     E = html.escape
     sections = []
@@ -44,8 +45,8 @@ It is one Rust program (<code>rusetect-server</code>) that serves an HTTP API an
 new payee, pass-through ratio, 24 hour velocity. The state is then updated.</li>
 <li><b>L1 gate.</b> A small XGBoost (30 trees). Low scores exit as safe.</li>
 <li><b>L2.</b> The mean of an XGBoost (400 trees) and a LightGBM (600 trees).</li>
-<li><b>Pair or payer window.</b> A 24 hour noisy-OR of recent risks: 1 &minus; &prod;(1 &minus; r<sub>i</sub>). It catches one sum split into parts.</li>
-<li><b>Hardening.</b> risk = max(calibrated cascade risk, calibrated format-free model). A launderer cannot lower it by changing the payment format.</li>
+<li><b>Pair window.</b> A 24 hour noisy-OR of recent risks: 1 &minus; &prod;(1 &minus; r<sub>i</sub>). It catches one sum split into parts.</li>
+<li><b>Hardening.</b> risk = max(calibrated cascade risk, calibrated format-free model pooled over all payment datasets). A launderer cannot lower it by changing the payment format.</li>
 <li><b>Bands.</b> Verify, hold, block, with thresholds set to an alert budget on validation data.</li>
 <li><b>Reasons.</b> TreeSHAP contributions of the model that set the risk, only for flagged payments.</li>
 </ol>""")
@@ -90,6 +91,21 @@ days (a simulation tail with {pct(FULL['test']['tail']['share_of_test_laundering
 <p>{'Pooled second opinion adopted.' if PH and PH['decision']['adopt'] else 'Pooled second opinion: ' + ('not adopted by its rule.' if PH else 'pending.')}
 Lesson: synthetic generators differ; a new bank must label some of its own data (docs/PILOT.md).</p>""")
 
+    if RM:
+        rr = "".join(f"<tr><td>{E(lab)}</td><td>{f(RM[k]['MAE'], 4)}</td><td>{f(RM[k]['RMSE'], 4)}</td><td>{f(RM[k]['R2'], 3)}</td></tr>" for k, lab in (
+            ("served_hardened_calibrated", "Served risk (calibrated)"), ("cascade_uncalibrated", "Cascade, uncalibrated"), ("base_rate_constant", "Always the base rate")))
+        sec("6a. MAE, RMSE and R\u00b2 of the risk score", f"""
+<p>Computed against the 0/1 label on the HI-Small test part ({RM['rows']:,} payments). For a yes/no target these measure calibration:
+RMSE&sup2; is the Brier score and R&sup2; is the Brier skill score (research/out/regression_metrics.json).</p>
+<table><tr><th>Score</th><th>MAE</th><th>RMSE</th><th>R&sup2;</th></tr>{rr}</table>""")
+    if RV:
+        rv = "".join(f"<tr><td>{E(a.replace('_', ' '))}</td><td>{f(RV['test'][a]['ieee']['pr_auc'])}</td><td>{f(RV['test'][a]['ieee']['roc_auc'])}</td><td>{f(RV['test'][a]['ieee']['f1'])}</td><td>{f(RV['test'][a]['ieee']['fpr'], 4)}</td></tr>" for a in RV["arms"])
+        sec("6b. Real against synthetic training data", f"""
+<p>Tested on IEEE-CIS (real card fraud), last 20% in time. The arm was chosen on validation: <b>{E(RV['decision']['selected'].replace('_', ' '))}</b>
+(research/out/real_vs_synthetic.json).</p>
+<table><tr><th>Trained on</th><th>PR-AUC</th><th>ROC-AUC</th><th>F1</th><th>FPR</th></tr>{rv}</table>
+<p>Synthetic card data does not stand in for real card data.</p>""")
+
     sec("7. Why these choices", """
 <ul>
 <li><b>Rust serves, Python trains.</b> Per-payment code needs speed and one binary; training needs mature libraries.</li>
@@ -112,6 +128,7 @@ Lesson: synthetic generators differ; a new bank must label some of its own data 
         ("Why are explanations computed only for flagged payments?", "TreeSHAP was most of the scoring time and approved payments show no reasons."),
         ("What stops a misconfigured deployment from using demo keys?", "check_config: without RUSETECT_ANALYST_KEYS the server needs RUSETECT_DEMO=1 explicitly."),
         ("What is the biggest remaining weakness?", "All payment data is synthetic; real performance is unknown until a shadow pilot on a bank's data."),
+        ("Which training data won on real card fraud, and how was it chosen?", "Real only (IEEE-CIS), picked on validation PR-AUC before the test part was read."),
         ("Which attack is still hardest?", "Changes that keep each payment small and new, such as splitting over new mule accounts and delaying."),
     ]
     q = "".join(f"<li><p><b>{E(a)}</b></p><p class='ans'>{E(b)}</p></li>" for a, b in quiz)

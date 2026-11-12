@@ -87,10 +87,22 @@ The IBM Large files have 180 million payments. Sampling genuine rows inside the 
 every payment) made the dump about 8 times faster and kept the output small; totals are written next to each file so
 every metric is reweighted to the true prevalence.
 
-**8. Pooled second opinion (pending its rule).**
+**8. Pooled second opinion: adopted.**
 The format-free model was trained on HI-Small only and transfers poorly. A model pooled over every payment dataset
-(bank AML, cards, wallets, and IEEE-CIS with real fraud labels) replaces it only if it keeps HI-Small accuracy and
-format robustness and improves validation ROC-AUC on the other datasets (`research/pooled_hardening.py`).
+(bank AML, cards, wallets, and IEEE-CIS with real fraud labels) replaced it after passing all three of its rules (G1 to G3),
+decided on validation parts only (`research/out/pooled_hardening.json`). The served engine was rebuilt and replayed
+against the Python results; block decisions match exactly.
+
+**8a. Payer window: not adopted.**
+Widening the 24 hour window from a payer-payee pair to all of a payer's payments catches parts sent to new mule accounts,
+but even with its own validation-fitted thresholds it raised clean block alerts about a hundredfold and failed rules A1
+and A3 (`research/out/account_aggregation.json`). The pair window stays. The Python window was also rewritten to a
+running log sum (linear time); it matches the old version to 1e-12.
+
+**8b. Real against synthetic card data: real only.**
+On IEEE-CIS (real card fraud) the arm trained on real data won on validation, and on test the synthetic-only arm was
+close to random on the real data (`research/out/real_vs_synthetic.json`). Synthetic card sets are kept as tests, not as
+a substitute for real training data. The unseen-payer subset is too small to support any claim.
 
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.

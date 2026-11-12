@@ -670,7 +670,8 @@ def hardening_section():
   <p>The engine now serves a hardened risk: the cascade, plus a format-free XGBoost as a second opinion, each calibrated on validation,
   combined by taking the larger (<code>research/hardened_eval.py</code>, <code>service/models/hardening.json</code>). Rule fixed before test:
   keep validation PR-AUC within 0.03 of the cascade and keep 80% of it when every laundering payment switches format. Result: {chk}.
-  <b>{'Adopted and served.' if D['adopt'] else 'Not adopted.'}</b> The Rust engine reproduces the Python scores to rounding.</p>
+  <b>{'Adopted and served.' if D['adopt'] else 'Not adopted.'}</b> {'The second opinion was later replaced by one pooled over every payment dataset (see Generalisation); the numbers below are for the served pooled version, with its rules re-checked.' if HD.get('source') else ''}
+  The Rust engine reproduces the Python scores to rounding.</p>
   {table(["Score", "Validation PR-AUC", "Validation, worst format attack", "Test PR-AUC [95% CI]", "Test without Sep 11 to 18", "Test, worst format attack"], rows, "wrap")}
   {table(["Band (recall / precision), test", "Cascade", "Hardened", "Cascade, Cheque attack (recall)", "Hardened, Cheque attack (recall)"], bands)}
   <p>Band thresholds keep the cascade's validation alert rates. The block band trades precision for recall; the format attack no longer works.</p>
@@ -706,6 +707,7 @@ def model_card():
         "A per-payment money-laundering and mule risk score for bank transfers, served by one Rust binary (`rusetect-server`).",
         "Risk = max(calibrated cascade risk, calibrated format-free XGBoost risk). The cascade is an XGBoost gate (L1) and the mean of",
         "XGBoost and LightGBM (L2) on 31 causal account-history features. A 24 hour payer-to-payee aggregation raises the risk of split payments.",
+        "The format-free model is trained on the training parts of every payment dataset (bank AML, card, wallet, and IEEE-CIS real card fraud).",
         "Bands: verify, hold, block (thresholds in `service/models/hardening.json`, set to the cascade's validation alert rates).",
         "",
         "## Intended use",
@@ -813,7 +815,8 @@ def generalisation_section():
 <section id="generalisation">
   <span class="eyebrow">Generalisation, executed</span>
   <h2>The served score on every dataset</h2>
-  <p>The served models were trained on HI-Small. Each other dataset's last 20% in time is scored as is (<code>research/hardened_transfer.py</code>);
+  <p>The cascade was trained on HI-Small; the served second opinion is pooled over the training parts of every payment dataset, so on those sets it is
+  in-domain. Each dataset's last 20% in time is scored as is (<code>research/hardened_transfer.py</code>);
   pre-sampled files are reweighted to their true prevalence. IEEE-CIS is the one set with real fraud labels on real payments.</p>
   {body}
 </section>"""
@@ -840,7 +843,10 @@ def real_section():
   Thresholds maximise F1 on each set's validation part; FPR is the share of genuine payments flagged.</p>
   {table(["Trained on", "Tested on", "PR-AUC", "ROC-AUC", "Precision", "Recall", "F1", "FPR"], rows, "wrap")}
   <p>The served transfer model, scoring IEEE-CIS without retraining: PR-AUC {f(z.get('pr_auc', 0))}, ROC-AUC {f(z.get('roc_auc', 0))}. Real card fraud
-  needs card-trained models; the transfer model is not a card model.</p>
+  needs card-trained models; the transfer model is not a card model. Trained only on the synthetic card sets, the model reaches ROC-AUC
+  {f(T['synthetic_only']['ieee']['roc_auc'])} on the real test part, against {f(T['real_only']['ieee']['roc_auc'])} for the real-trained model:
+  synthetic card fraud does not stand in for real card fraud. The unseen-payer subset has only {T['real_only'].get('ieee_unseen_payers', {}).get('positives', 0)}
+  fraud cases, too few for any conclusion.</p>
 </section>"""
 
 
