@@ -401,48 +401,6 @@ pub const CANON_STYLE: JsonStyle = JsonStyle { sort_keys: true, item_sep: ",", k
 pub const RESPONSE_STYLE: JsonStyle = JsonStyle { sort_keys: false, item_sep: ",", key_sep: ":", ensure_ascii: false };
 /// Default `json.dumps(obj)`
 pub const DEFAULT_STYLE: JsonStyle = JsonStyle { sort_keys: false, item_sep: ", ", key_sep: ": ", ensure_ascii: true };
-/// `json.dumps(obj, indent=1)` as used for the committed result files
-pub fn dumps_indent(v: &Value, indent: usize) -> String {
-    let mut out = String::new();
-    write_indent(&mut out, v, indent, 0);
-    out
-}
-
-fn write_indent(out: &mut String, v: &Value, ind: usize, level: usize) {
-    match v {
-        Value::Array(a) if !a.is_empty() => {
-            out.push('[');
-            for (i, x) in a.iter().enumerate() {
-                if i > 0 {
-                    out.push(',');
-                }
-                out.push('\n');
-                out.push_str(&" ".repeat(ind * (level + 1)));
-                write_indent(out, x, ind, level + 1);
-            }
-            out.push('\n');
-            out.push_str(&" ".repeat(ind * level));
-            out.push(']');
-        }
-        Value::Object(m) if !m.is_empty() => {
-            out.push('{');
-            for (i, (k, x)) in m.iter().enumerate() {
-                if i > 0 {
-                    out.push(',');
-                }
-                out.push('\n');
-                out.push_str(&" ".repeat(ind * (level + 1)));
-                write_str(out, k, true);
-                out.push_str(": ");
-                write_indent(out, x, ind, level + 1);
-            }
-            out.push('\n');
-            out.push_str(&" ".repeat(ind * level));
-            out.push('}');
-        }
-        other => write_value(out, other, DEFAULT_STYLE),
-    }
-}
 
 pub fn dumps(v: &Value, style: JsonStyle) -> String {
     let mut out = String::new();
