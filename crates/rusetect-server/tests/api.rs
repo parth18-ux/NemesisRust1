@@ -454,3 +454,18 @@ fn hardened_risk_ignores_format_and_pairs_add_up() {
     let r = |v: &serde_json::Map<String, Value>, k: &str| v[k].as_f64().unwrap();
     assert!(r(&parts[3], "pair_risk") >= r(&parts[3], "cascade_risk"), "noisy-OR never lowers the cascade risk");
 }
+
+#[test]
+fn pair_window_expires_and_sweeps_idle_keys() {
+    use rusetect::engine::PairWindow;
+    let mut w = PairWindow::new();
+    assert_eq!(w.push(1u32, 0, 0.5), (1, 0.5));
+    assert_eq!(w.push(1, 30, 0.5), (2, 0.75), "noisy-OR of two halves");
+    assert_eq!(w.push(1, 30 + 1440, 0.2).0, 1, "parts older than 24 h drop out");
+    for k in 2..65_534u32 {
+        w.push(k, 0, 0.1); // one-off pairs; 3 + 65,532 pushes so far
+    }
+    assert!(w.keys() >= 65_000);
+    w.push(0, 5000, 0.1); // the 65,536th push, a day later, sweeps idle keys
+    assert!(w.keys() <= 2, "idle pairs are swept, kept {}", w.keys());
+}

@@ -270,6 +270,47 @@ fn out_features(out: &Map<String, Value>) -> Map<String, Value> {
 }
 
 /// np.interp: linear between knots, clamped outside them.
+/// 24 h causal noisy-OR of risks per key, current payment included (the structuring defence). Keys idle for a day are
+/// swept every 65,536 pushes, so memory follows the last day's traffic instead of every pair ever seen.
+pub struct PairWindow<K> {
+    q: HashMap<K, VecDeque<(i64, f64)>>,
+    pushes: u32,
+}
+
+impl<K: std::hash::Hash + Eq> PairWindow<K> {
+    pub fn new() -> Self {
+        PairWindow { q: HashMap::new(), pushes: 0 }
+    }
+
+    /// add risk `r` at minute `t`; returns (payments in the window, noisy-OR of their risks)
+    pub fn push(&mut self, key: K, t: i64, r: f64) -> (usize, f64) {
+        self.pushes = self.pushes.wrapping_add(1);
+        if self.pushes.is_multiple_of(65_536) {
+            self.q.retain(|_, d| d.back().is_some_and(|x| x.0 > t - 1440));
+        }
+        let d = self.q.entry(key).or_default();
+        while d.front().is_some_and(|x| x.0 <= t - 1440) {
+            d.pop_front();
+        }
+        d.push_back((t, r));
+        (d.len(), 1.0 - d.iter().map(|x| 1.0 - x.1).product::<f64>())
+    }
+
+    pub fn keys(&self) -> usize {
+        self.q.len()
+    }
+
+    pub fn clear(&mut self) {
+        self.q.clear();
+    }
+}
+
+impl<K: std::hash::Hash + Eq> Default for PairWindow<K> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn interp(m: &(Vec<f64>, Vec<f64>), v: f64) -> f64 {
     let (x, y) = m;
     if x.is_empty() { return v; }
@@ -350,7 +391,7 @@ pub struct Engine {
     pub n_seen: u64,
     pub decisions: IndexMap<String, i64>,
     /// served risks of each payer->payee pair in the last 24 h (structuring defence)
-    pair_risks: HashMap<(u32, u32), VecDeque<(i64, f64)>>,
+    pair_risks: PairWindow<(u32, u32)>,
     pub models: Option<Models>,
 }
 
@@ -397,7 +438,7 @@ impl Engine {
             case_alerts: IndexMap::new(),
             n_seen: 0,
             decisions: IndexMap::new(),
-            pair_risks: HashMap::new(),
+            pair_risks: PairWindow::new(),
             models,
         }
     }
@@ -616,14 +657,7 @@ impl Engine {
         let payer_window = self.models.as_ref().and_then(|m| m.hardening.as_ref()).map(|h| h.payer_window).unwrap_or(false);
         let payee = if payer_window { u32::MAX } else { self.acct_id(&p.to_bank, &p.to_account) };
         let key = (self.acct_id(&p.from_bank, &p.from_account), payee);
-        let (n, pair) = {
-            let q = self.pair_risks.entry(key).or_default();
-            while q.front().map(|x| x.0 <= p.tmin - 1440).unwrap_or(false) {
-                q.pop_front();
-            }
-            q.push_back((p.tmin, cascade));
-            (q.len(), 1.0 - q.iter().map(|x| 1.0 - x.1).product::<f64>())
-        };
+        let (n, pair) = self.pair_risks.push(key, p.tmin, cascade);
         let raised = if n > 1 { pair.max(cascade) } else { cascade };
         let (risk, before, free) = match self.models.as_ref().and_then(|m| m.hardening.as_ref()) {
             Some(h) => {

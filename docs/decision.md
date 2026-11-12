@@ -104,6 +104,12 @@ On IEEE-CIS (real card fraud) the arm trained on real data won on validation, an
 close to random on the real data (`research/out/real_vs_synthetic.json`). Synthetic card sets are kept as tests, not as
 a substitute for real training data. The unseen-payer subset is too small to support any claim.
 
+**8c. One pair window for the API and the workers, with idle keys swept.**
+The API kept every payer-payee pair it had seen forever, so memory grew without limit over a long uptime, and the Redis
+workers skipped the window, so the same payment could get a different decision on the scaled path. Both now use
+`PairWindow`: pairs idle for a day are swept every 65,536 payments, and each worker keeps its own window, which is exact
+because the producer sends every payer to one partition. It is lost on a worker restart (marked as a shortcut in the code).
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
