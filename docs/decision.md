@@ -210,6 +210,18 @@ or supervisor key reaches the review and consortium publish routes; before, any 
 customer's pause-screen answer now changes only an alert no analyst has acted on (open, cooling_off, stopped_by_customer);
 on a held, blocked, released or verification alert it is refused with 409 and leaves the status and audit log unchanged.
 
+**8l. Sanctions name screening.** New `POST /api/v2/sanctions/screen` (`crates/rusetect/src/sanctions.rs`, a channel
+route): names are normalised (accents, punctuation and honorifics removed), tokens are aligned in any order by
+Jaro-Winkler and a Soundex key breaks ties; the response lists the five closest entries with scores and `hit`. List
+source: the OFAC SDN download (treasury.gov) was blocked by this network, so `service/models/sanctions_sdn.csv` holds
+40 **fictitious test entities** (program FICTITIOUS-TEST), none a real sanctioned party; the real list must be
+loaded in deployment, and the threshold refitted on it. The threshold rule was committed before the first run
+(`research/sanctions_eval.py`): on validation, the highest precision with recall >= 0.95, giving 0.927083
+(validation precision 1.0, recall 0.9623). Test, once: precision 1.0, recall 0.9231, F1 0.96
+(52 true variants, 112 hard negatives), below the 0.95 recall target; transliterations (recall 0.625)
+and dropped middle names (0.75) are missed most. The validation split is small (53 true variants), so the
+threshold is coarse; refit on the real list. Results: `research/out/sanctions_eval.json`, which the API reads for the threshold.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

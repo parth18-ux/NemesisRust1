@@ -16,3 +16,16 @@ and whether to port. Code is copied or adapted only from permissive licences (MI
 | [jube-home/aml-fraud-transaction-monitoring](https://github.com/jube-home/aml-fraud-transaction-monitoring) | 116 | AGPL-3.0 | Real-time transaction monitoring platform: rules, abstraction (aggregation) rules, sanctions screening, case management | Ideas only (AGPL: no code copied). Sanctions-list screening is a gap in RuseTect |
 | [safe-graph/graph-fraud-detection-papers](https://github.com/safe-graph/graph-fraud-detection-papers) | 1906 | none | Curated paper list for graph fraud detection | Reading list |
 | [DilshanSenarath/BehaveFormer](https://github.com/DilshanSenarath/BehaveFormer) | 26 | MIT | Transformer for keystroke plus touch behavioural biometrics | Candidate for the touch layer once a touch dataset is reachable (HMOG returns 403 here) |
+
+## 2026-11-12, round 2: sanctions screening
+
+| Repository | Stars | Licence | What it offers | Verdict |
+|---|---|---|---|---|
+| [opensanctions/opensanctions](https://github.com/opensanctions/opensanctions) | 875 | MIT (code), CC BY-NC (data) | Crawlers that merge hundreds of sanctions, PEP and watchlists into one entity database | Data source only for non-commercial use (the data licence is non-commercial); a bank deployment loads the official lists or licenses the data |
+| [opensanctions/yente](https://github.com/opensanctions/yente) | 185 | MIT | Matching API over the OpenSanctions data: query an entity, get scored candidates | API shape idea: `/v2/sanctions/screen` returns scored candidates and a hit flag |
+| [opensanctions/followthemoney](https://github.com/opensanctions/followthemoney) | 118 | MIT | Entity model (Person, Company, Vessel, ...) with typed properties | Entity model idea: the list keeps an individual/entity type the API can filter on |
+| [apognu/motiva](https://github.com/apognu/motiva) | 16 | MIT | Rust reimplementation of yente's scoring | Rust scorer reference; RuseTect's scorer is written from the Jaro-Winkler and Soundex definitions, no code copied |
+| [Divine16/Sanctions-screening-benchmark](https://github.com/Divine16/Sanctions-screening-benchmark) | 33 | MIT | Benchmark of name matchers on generated variants (typos, transliteration, reordering) | Evaluation protocol: generated variants against hard negatives, as in `research/sanctions_eval.py` |
+| [AbgarSim/sieve-aml](https://github.com/AbgarSim/sieve-aml) | 15 | MIT | Sanctions list download, normalisation and screening pipeline | List pipeline reference: download, trim to names, screen |
+| [abrahamjuliot/creepjs](https://github.com/abrahamjuliot/creepjs) | 2548 | MIT | Browser fingerprint lie and spoofing detection | Idea for the device layer (spoofed fingerprints); not ported now |
+| [luizvbo/fuzzt](https://github.com/luizvbo/fuzzt) | 4 | MIT | Rust string similarity metrics including Jaro-Winkler | Jaro-Winkler reference; own implementation checked against the textbook values (MARTHA/MARHTA, DIXON/DICKSONX) |
