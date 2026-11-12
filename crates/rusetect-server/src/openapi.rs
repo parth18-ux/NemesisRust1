@@ -92,7 +92,7 @@ const ROUTES: &[(&str, &str, &str, Option<&str>, &[(&str, &str, &str)])] = &[
     ("get", "/api/v2/fixtures/mule", "The fictional mule replay fixture (fixtures/mule_replay.json) used by the investigator demo.", None, &[]),
     ("get", "/api/v2/audit", "Hash-chained audit log", None, &[]),
     ("post", "/api/v2/message", "L-1 lure detector. Scores the text, explains which scam workflow and tactics it matches, and applies the alert-fatigue policy (push only high-risk, deduplicated, capped). Entities in risky messages join a payee watchlist.", Some("MessageIn"), &[]),
-    ("post", "/api/v2/sanctions/screen", "Watchlist name screening. Returns the five closest list entries (name, list_id, program, score in [0, 1]) and hit = best score >= threshold (fitted on validation, research/out/sanctions_eval.json). The bundled list is fictitious test data; load the real list in deployment.", Some("SanctionsIn"), &[]),
+    ("post", "/api/v2/sanctions/screen", "Watchlist name screening. Returns the five closest list entries (name, list_id, program, score in [0, 1]) and hit = best score >= threshold (fitted on validation; matcher v2 and its threshold from research/out/sanctions_eval_v2.json when adopted, else research/out/sanctions_eval.json). The bundled list is fictitious test data; load the real list in deployment.", Some("SanctionsIn"), &[]),
     ("get", "/api/v2/alerts/summary", "How many messages were scored, pushed, or suppressed (and why); how many payments a lure escalated.", None, &[]),
     ("get", "/api/v2/message-model", "Message model evaluation", None, &[]),
     ("post", "/api/v2/payments/batch", "Score up to 20,000 payments (sorted by timestamp)", None, &[]),

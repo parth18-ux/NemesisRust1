@@ -228,6 +228,21 @@ cooling_off, stopped_by_customer or customer_verification and otherwise returns 
 still escalates any alert to duress_hold except a blocked or released one, where the event is recorded but the status stays
 and the confirm response carries `alert_status_unchanged: true`.
 
+**8n. Sanctions matcher v2 (transliteration folding, dropped middle names): adopted.** The v1 test split (8l) had been
+read once already, when its misses were analysed, so it could not judge a matcher designed after reading it. The rule
+was therefore committed before any v2 code (`research/sanctions_eval_v2.py`, ADOPTION RULE v2) together with a FRESH
+test set: 40 new fictitious entities, new romanisation rewrites and 150 common names from new pools, read once. v2
+(`score_v2` in `crates/rusetect/src/sanctions.rs`; v1 stays callable) folds each token (suffix off -> ov, digraph and
+letter rules, doubled letters collapsed) and scores a token pair max(JW raw, 0.96 x JW folded); a query of two or more
+tokens shorter than the list name may also align one-to-one with every pair >= 0.90, scoring the mean minus 0.06 per
+unmatched list token. Scores come from the Rust scorer itself (no Python mirror). Threshold, fitted on the v1 validation
+split only: 0.94 (validation precision 1.0, recall 1.0). Fresh test: precision 1.0, recall 0.9847, F1 0.9923
+(262 true variants, 412 hard negatives), against v1 at its own threshold: precision 1.0, recall 0.8626; v2 recall on
+fresh transliterations 1.0 (v1 0.55) and dropped middle names 0.9545 (v1 0.2273). Old test: precision 1.0, recall
+0.9808 (v1 1.0 and 0.9231). All four checks hold, so the API serves v2 with threshold 0.94; it reads
+`research/out/sanctions_eval_v2.json` and falls back to v1 when `adopted` is false. Limits: variants are synthetic,
+the fresh rewrites overlap the folding table, and the list is fictitious, so refit on the real list.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

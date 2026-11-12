@@ -1,0 +1,124 @@
+{
+  "rule": "ADOPTION RULE v2 in research/sanctions_eval_v2.py (pre-registered)",
+  "date": "2026-11-12",
+  "scorer": "Rust (crates/rusetect/src/sanctions.rs via the sanctions_dump example; no Python mirror)",
+  "constants": {
+    "cap": 0.96,
+    "floor": 0.9,
+    "penalty": 0.06
+  },
+  "threshold_rule": "v2 threshold fitted on the v1 validation split only: highest precision with recall >= 0.95",
+  "fresh_list": "research/out/sanctions_fresh_list.csv",
+  "fresh_seed": 20261112,
+  "fresh_entities": 40,
+  "fresh_common_names": 150,
+  "v1": {
+    "threshold": 0.927083,
+    "validation": {
+      "precision": 1.0,
+      "recall": 0.9623,
+      "f1": 0.9808,
+      "tp": 51,
+      "fp": 0,
+      "fn": 2,
+      "positives": 53,
+      "negatives": 113
+    },
+    "old_test": {
+      "precision": 1.0,
+      "recall": 0.9231,
+      "f1": 0.96,
+      "tp": 48,
+      "fp": 0,
+      "fn": 4,
+      "positives": 52,
+      "negatives": 112
+    },
+    "fresh_test": {
+      "precision": 1.0,
+      "recall": 0.8626,
+      "f1": 0.9262,
+      "tp": 226,
+      "fp": 0,
+      "fn": 36,
+      "positives": 262,
+      "negatives": 412
+    },
+    "old_test_recall_by_variant": {
+      "dropped": 0.75,
+      "exact": 1.0,
+      "noise": 1.0,
+      "reordered": 1.0,
+      "translit": 0.625,
+      "typo1": 1.0,
+      "typo2": 1.0
+    },
+    "fresh_test_recall_by_variant": {
+      "dropped": 0.2273,
+      "exact": 1.0,
+      "noise": 1.0,
+      "reordered": 1.0,
+      "translit": 0.55,
+      "typo1": 1.0,
+      "typo2": 0.975
+    }
+  },
+  "v2": {
+    "threshold": 0.94,
+    "validation": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 53,
+      "fp": 0,
+      "fn": 0,
+      "positives": 53,
+      "negatives": 113
+    },
+    "old_test": {
+      "precision": 1.0,
+      "recall": 0.9808,
+      "f1": 0.9903,
+      "tp": 51,
+      "fp": 0,
+      "fn": 1,
+      "positives": 52,
+      "negatives": 112
+    },
+    "fresh_test": {
+      "precision": 1.0,
+      "recall": 0.9847,
+      "f1": 0.9923,
+      "tp": 258,
+      "fp": 0,
+      "fn": 4,
+      "positives": 262,
+      "negatives": 412
+    },
+    "old_test_recall_by_variant": {
+      "dropped": 1.0,
+      "exact": 1.0,
+      "noise": 1.0,
+      "reordered": 1.0,
+      "translit": 1.0,
+      "typo1": 1.0,
+      "typo2": 0.875
+    },
+    "fresh_test_recall_by_variant": {
+      "dropped": 0.9545,
+      "exact": 1.0,
+      "noise": 1.0,
+      "reordered": 1.0,
+      "translit": 1.0,
+      "typo1": 1.0,
+      "typo2": 0.925
+    }
+  },
+  "checks": {
+    "a_fresh_recall_ge_0.95": true,
+    "a_fresh_precision_ge_0.98": true,
+    "b_old_recall_not_below_v1": true,
+    "b_old_precision_ge_0.98": true
+  },
+  "adopted": true
+}
