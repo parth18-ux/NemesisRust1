@@ -84,8 +84,8 @@ pub struct AppState {
     pub auth: Option<rusetect::pramaan::AuthEngine>,
     /// watchlist and its hit threshold (research/out/sanctions_eval_v2.json when v2 was adopted, else sanctions_eval.json); None if absent
     pub sanctions: Option<(rusetect::sanctions::List, f64)>,
-    /// payee name check thresholds (t_hi, t_lo) from research/out/payee_check_eval.json; None unless it was adopted
-    pub payee: Option<(f64, f64)>,
+    /// payee name check (t_hi, t_lo, v2) from research/out/payee_check_eval_v2.json or payee_check_eval.json; None unless adopted
+    pub payee: Option<(f64, f64, bool)>,
     pub demo: Demo,
 }
 
@@ -133,8 +133,10 @@ impl AppState {
                 None
             }
         };
-        let payee = read_json(root.join("research/out/payee_check_eval.json")).ok().filter(|v| v["adopted"] == true)
-            .and_then(|v| Some((v["t_hi"].as_f64()?, v["t_lo"].as_f64()?)));
+        // payee check v2 is served only when its pre-registered evaluation adopted it, else v1 if adopted
+        let thr = |f: &str| read_json(root.join(f)).ok().filter(|v| v["adopted"] == true).and_then(|v| Some((v["t_hi"].as_f64()?, v["t_lo"].as_f64()?)));
+        let payee = thr("research/out/payee_check_eval_v2.json").map(|(h, l)| (h, l, true))
+            .or_else(|| thr("research/out/payee_check_eval.json").map(|(h, l)| (h, l, false)));
         AppState {
             verifier: Verifier::load(&models.join("typing_verifier.json")),
             root,
@@ -335,7 +337,7 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/models/sample_applications.json", "service/models/demo_stream.csv.gz",
     "service/models/hardening.json", "service/models/hardening_xgb.json", "service/models/auth_config.json", "service/models/auth_xgb.json",
     "service/models/sanctions_sdn.csv", "research/out/sanctions_eval.json", "research/out/sanctions_eval_v2.json",
-    "research/out/payee_check_eval.json",
+    "research/out/payee_check_eval.json", "research/out/payee_check_eval_v2.json",
     "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html",
     "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
 ];
@@ -983,8 +985,8 @@ async fn v2_payee_check(State(app): State<AppRef>, b: Bytes) -> ApiResult {
         }
     }
     with_state(app, move |s| {
-        let (t_hi, t_lo) = s.payee.ok_or_else(|| ApiError::new(503, "Payee check thresholds not loaded"))?;
-        let r = rusetect::payee::check(&entered, &account, kind.as_deref(), t_hi, t_lo);
+        let (t_hi, t_lo, v2) = s.payee.ok_or_else(|| ApiError::new(503, "Payee check thresholds not loaded"))?;
+        let r = rusetect::payee::check(&entered, &account, kind.as_deref(), t_hi, t_lo, v2);
         let mut out = json!({"verdict": r.verdict, "score": r.score, "reason": r.reason});
         if let Some(n) = r.suggested_name {
             out["suggested_name"] = json!(n);
