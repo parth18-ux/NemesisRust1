@@ -191,6 +191,21 @@ async fn alert_review_audit_evidence() {
     assert!(!s.contains("9876543210") && !s.contains("vendor.new@ybl"));
 }
 
+#[tokio::test]
+async fn customer_answer_cannot_overwrite_an_analyst_hold() {
+    let t = T::new();
+    t.post("/api/v2/demo/reset?warm=false", json!({})).await;
+    let r = t.post("/api/v2/assess", json!({"timestamp": "2022-09-09 10:00", "from_bank": "070", "from_account": "RV1", "to_bank": "011",
+                                           "to_account": "RM1", "amount_paid": 9300, "payment_format": "ACH", "message": S09, "consent": true})).await;
+    let aid = r["alert_id"].as_str().unwrap().to_string();
+    assert_eq!(t.review(&aid, Some("demo-analyst-1"), "hold", None).await.1["status"], "held");
+    let entries = t.get("/api/v2/audit").await["entries"].as_array().unwrap().len();
+    let (s, _, _) = t.req("POST", &format!("/api/v2/alerts/{aid}/customer"), Some(json!({"answer": "continue"})), &[]).await;
+    assert_eq!(s, StatusCode::CONFLICT);
+    assert_eq!(t.get(&format!("/api/v2/alerts/{aid}/evidence")).await["alert"]["status"], "held");
+    assert_eq!(t.get("/api/v2/audit").await["entries"].as_array().unwrap().len(), entries, "a refused answer leaves no audit entry");
+}
+
 // ---------------------------------------------------------------- test_context.py
 #[tokio::test]
 async fn assess_endpoint_veto_and_consent() {

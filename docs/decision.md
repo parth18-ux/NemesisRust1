@@ -204,6 +204,12 @@ Redis workers now send payments with an unknown payment format or currency to th
 lists, since the model reads those as missing and approves almost everything. The API refuses (422) a payment timestamped
 more than one day ahead of the wall clock, which would otherwise make every window evict relative to a far-future time.
 
+**8k. Per-route roles and analyst holds.** Outside demo mode the key check now also checks the role for each route
+(`security::gate`): a viewer key reads only, a channel key also calls the scoring and customer routes, and only an analyst
+or supervisor key reaches the review and consortium publish routes; before, any known key could call every POST. The
+customer's pause-screen answer now changes only an alert no analyst has acted on (open, cooling_off, stopped_by_customer);
+on a held, blocked, released or verification alert it is refused with 409 and leaves the status and audit log unchanged.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
