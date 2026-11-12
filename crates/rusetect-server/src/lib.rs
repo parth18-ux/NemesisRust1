@@ -658,6 +658,14 @@ async fn v2_campaigns(State(app): State<AppRef>) -> ApiResult {
     }).await
 }
 
+/// A customer path may change an alert's status only from `allowed`; otherwise an analyst decision stands (409).
+fn customer_may_act(alert: &Value, allowed: &[&str]) -> Result<(), ApiError> {
+    if alert["status"].as_str().is_some_and(|st| allowed.contains(&st)) {
+        return Ok(());
+    }
+    Err(ApiError::new(409, "an analyst has acted on this alert; the customer cannot change it"))
+}
+
 /// The customer's answer on the pause screen.
 async fn v2_customer(State(app): State<AppRef>, Path(alert_id): Path<String>, b: Bytes) -> ApiResult {
     let answer = parse_obj(&b, |o, e| o.req_str(e, "answer"))?;
@@ -669,9 +677,7 @@ async fn v2_customer(State(app): State<AppRef>, Path(alert_id): Path<String>, b:
             return Err(ApiError::new(400, "answer must be stop or continue"));
         }
         // the pause screen answers an alert no analyst has acted on; a hold, block, release or verification stands
-        if !matches!(s.desk.alerts[&alert_id]["status"].as_str(), Some("open" | "cooling_off" | "stopped_by_customer")) {
-            return Err(ApiError::new(409, "an analyst has acted on this alert; the customer answer cannot change it"));
-        }
+        customer_may_act(&s.desk.alerts[&alert_id], &["open", "cooling_off", "stopped_by_customer"])?;
         let status = if answer == "stop" { "stopped_by_customer" } else { "cooling_off" };
         ok(s.desk.system_event(&alert_id, status, "customer", &format!("pause screen answer: {answer}"), true).map_err(review_err)?)
     }).await
@@ -684,6 +690,8 @@ async fn v2_reverify(State(app): State<AppRef>, Path(alert_id): Path<String>, b:
         if !s.desk.alerts.contains_key(&alert_id) {
             return Err(ApiError::new(404, "unknown alert"));
         }
+        // re-verification answers the pause screen or an analyst's "verify" request; a hold, block or release stands
+        customer_may_act(&s.desk.alerts[&alert_id], &["open", "cooling_off", "stopped_by_customer", "customer_verification"])?;
         ok(s.desk.system_event(&alert_id, "customer_reverified", "customer", &format!("re-verified by {method}"), true).map_err(review_err)?)
     }).await
 }
@@ -775,9 +783,15 @@ async fn v2_confirm(State(app): State<AppRef>, b: Bytes) -> ApiResult {
             Some(h) => s.duress.confirm_hashed(&account, &h),
             None => json!({"result": "not_registered"}),
         };
+        let mut r = r;
         if r["result"] == "duress" {
             if let Some(aid) = alert_id.filter(|a| !a.is_empty() && s.desk.alerts.contains_key(a)) {
-                let _ = s.desk.system_event(&aid, "duress_hold", "customer", "duress PIN used: funds held, trusted contacts alerted", true);
+                // a duress hold escalates from any status, but never undoes a final block or release; the event is still recorded
+                let final_ = matches!(s.desk.alerts[&aid]["status"].as_str(), Some("blocked" | "released"));
+                let _ = s.desk.system_event(&aid, "duress_hold", "customer", "duress PIN used: funds held, trusted contacts alerted", !final_);
+                if final_ {
+                    r["alert_status_unchanged"] = json!(true);
+                }
             }
         }
         ok(r)

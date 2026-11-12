@@ -206,6 +206,33 @@ async fn customer_answer_cannot_overwrite_an_analyst_hold() {
     assert_eq!(t.get("/api/v2/audit").await["entries"].as_array().unwrap().len(), entries, "a refused answer leaves no audit entry");
 }
 
+#[tokio::test]
+async fn reverify_and_duress_cannot_undo_analyst_decisions() {
+    let t = T::new();
+    t.post("/api/v2/demo/reset?warm=false", json!({})).await;
+    let mut ids = vec![];
+    for acct in ["RV2", "RV3", "RV4"] {
+        let r = t.post("/api/v2/assess", json!({"timestamp": "2022-09-09 10:00", "from_bank": "070", "from_account": acct, "to_bank": "011",
+                                               "to_account": "RM1", "amount_paid": 9300, "payment_format": "ACH", "message": S09, "consent": true})).await;
+        ids.push(r["alert_id"].as_str().unwrap().to_string());
+    }
+    // held -> reverify refused
+    t.review(&ids[0], Some("demo-analyst-1"), "hold", None).await;
+    let (s, _, _) = t.req("POST", &format!("/api/v2/alerts/{}/reverify", ids[0]), Some(json!({})), &[]).await;
+    assert_eq!(s, StatusCode::CONFLICT);
+    assert_eq!(t.get(&format!("/api/v2/alerts/{}/evidence", ids[0])).await["alert"]["status"], "held");
+    // blocked and released -> duress recorded, status unchanged
+    t.review(&ids[1], Some("demo-analyst-1"), "approve_block", None).await;
+    t.review(&ids[1], Some("demo-analyst-2"), "approve_block", None).await;
+    t.review(&ids[2], Some("demo-analyst-1"), "release", None).await;
+    t.post("/api/v2/duress/register", json!({"account": "D2", "normal_pin": "2468", "duress_pin": "8642", "trusted_contacts": ["son"]})).await;
+    for (aid, want) in [(&ids[1], "blocked"), (&ids[2], "released")] {
+        let r = t.post("/api/v2/payments/confirm", json!({"account": "D2", "pin": "8642", "alert_id": aid})).await;
+        assert_eq!((r["funds"].as_str(), r["alert_status_unchanged"].as_bool()), (Some("held"), Some(true)));
+        assert_eq!(t.get(&format!("/api/v2/alerts/{aid}/evidence")).await["alert"]["status"], want);
+    }
+}
+
 // ---------------------------------------------------------------- test_context.py
 #[tokio::test]
 async fn assess_endpoint_veto_and_consent() {
