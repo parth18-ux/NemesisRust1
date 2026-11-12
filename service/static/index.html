@@ -93,7 +93,11 @@ section{padding-block:clamp(72px,10vw,128px)}
 .feat p{color:var(--ink-2);font-size:14.5px}
 .feat .stat{margin-top:auto;padding-top:10px;font:400 30px/1 var(--serif)}
 .feat .stat small{display:block;font:500 11.5px/1.4 var(--sans);color:var(--ink-3);margin-top:4px;min-height:2.8em}
-@media (max-width:900px){.feat{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.feat article.wide{grid-column:1/-1;background:var(--wash);border-radius:16px;padding:24px;display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,18ch);gap:8px 24px;align-items:start}
+.feat article.wide .tag,.feat article.wide h3,.feat article.wide p{grid-column:2}
+.feat article.wide svg{grid-row:1/4}
+.feat article.wide .stat{grid-column:3;grid-row:1/4;margin-top:0;padding-top:0;font-size:44px}
+@media (max-width:900px){.feat{grid-template-columns:repeat(2,minmax(0,1fr))}.feat article.wide{grid-template-columns:auto minmax(0,1fr)}.feat article.wide .stat{grid-column:2;grid-row:auto;font-size:30px}}
 @media (max-width:520px){.feat{grid-template-columns:1fr}}
 
 .split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:clamp(32px,6vw,80px);align-items:center}
@@ -334,6 +338,13 @@ img,svg,video,canvas{max-width:100%}
           <h3>Signed in, four eyes, STR drafted</h3>
           <p>Analysts act with their own keys, a block needs two different people, replays are rejected, and a ready to review STR draft is built from the evidence pack without sending data to any outside AI service.</p>
           <div class="stat num">2 analysts<small>required for every block · hash chained audit log</small></div>
+        </article>
+        <article class="wide">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+          <span class="tag">PRAMAAN · Account takeover (new)</span>
+          <h3>Pick the step-up the attacker can't pass</h3>
+          <p>A monotone XGBoost reads 27 behaviour, device and payment signals and decides allow, challenge or block. After a SIM swap it asks for a passkey, never an SMS code; a remote-access app gets a bank call-back. Ported from the PRAMAAN project.</p>
+          <div class="stat num">96.4%<small>of simulated takeover attempts stopped, against 77.0% for a SIM-swap rule · same traffic, assumed challenge success</small></div>
         </article>
       </div>
     </div>

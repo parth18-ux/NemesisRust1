@@ -1,0 +1,65 @@
+{
+ "with_behaviour": {
+  "traffic": {
+   "requests": 36398,
+   "attack_requests": 796
+  },
+  "sim_swap_recent_h": 72.0,
+  "pramaan": {
+   "attack_requests_stopped": 0.9648,
+   "genuine_challenged": 0.0336,
+   "genuine_refused": 0.00166,
+   "stopped_by_scenario": {
+    "ato_new_device": 1.0,
+    "bot": 0.994,
+    "coerced": 0.524,
+    "remote_access": 0.925,
+    "sim_swap": 0.962
+   }
+  },
+  "rusetect": {
+   "attack_requests_stopped": 0.7701,
+   "genuine_challenged": 0.017,
+   "genuine_refused": 0.00037,
+   "stopped_by_scenario": {
+    "ato_new_device": 0.367,
+    "bot": 0.919,
+    "coerced": 0.0,
+    "remote_access": 0.0,
+    "sim_swap": 0.308
+   }
+  }
+ },
+ "note": "PRAMAAN's simulator and assumed challenge efficacies; with_behaviour draws touch and typing deviations (attackers far from the owner), without_behaviour has none, the conservative case",
+ "without_behaviour": {
+  "traffic": {
+   "requests": 36398,
+   "attack_requests": 796
+  },
+  "sim_swap_recent_h": 72.0,
+  "pramaan": {
+   "attack_requests_stopped": 0.9636,
+   "genuine_challenged": 0.0383,
+   "genuine_refused": 0.00183,
+   "stopped_by_scenario": {
+    "ato_new_device": 0.98,
+    "bot": 0.989,
+    "coerced": 0.595,
+    "remote_access": 0.925,
+    "sim_swap": 0.962
+   }
+  },
+  "rusetect": {
+   "attack_requests_stopped": 0.7701,
+   "genuine_challenged": 0.0169,
+   "genuine_refused": 0.00037,
+   "stopped_by_scenario": {
+    "ato_new_device": 0.367,
+    "bot": 0.919,
+    "coerced": 0.0,
+    "remote_access": 0.0,
+    "sim_swap": 0.308
+   }
+  }
+ }
+}

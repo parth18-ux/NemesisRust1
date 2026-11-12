@@ -510,3 +510,38 @@ fn duress_registration_cannot_be_overwritten_and_locks_out() {
     }
     assert_eq!(v.confirm("X", "1234")["result"], "locked");
 }
+
+/// PRAMAAN account-takeover authentication: an everyday payment from the owner's own device passes; a SIM swap on a
+/// new device is never sent an SMS code; a failed challenge blocks the next attempt.
+#[tokio::test]
+async fn authenticate_owner_and_sim_swap() {
+    let t = T::new();
+    let base = |ts: f64, dev: &str, sim: Value, amount: f64, payee: &str| json!({"user_id": "asha", "ts": ts,
+        "device": {"device_id": dev, "platform": "android", "sim_change_hours": sim},
+        "network": {"ip": "49.229.31.106", "city": "Mumbai", "lat": 19.07, "lon": 72.87},
+        "behaviour": {"time_to_submit_s": 20, "input_events": 30}, "transaction": {"amount": amount, "payee_id": payee}});
+    let day = 86400.0;
+    // build a little history on her own phone: the first payment is device binding, then she becomes known
+    let first = t.post("/api/v2/authenticate", base(1.767e9, "phone-a", Value::Null, 600.0, "grocer")).await;
+    assert_eq!(first["decision"], "challenge", "first payment from a never-seen device is stepped up");
+    let v = t.post("/api/v2/challenge/verify", json!({"decision_id": first["decision_id"], "passed": true})).await;
+    assert_eq!(v["decision"], "allow");
+    for i in 1..12 {
+        t.post("/api/v2/authenticate", base(1.767e9 + i as f64 * day, "phone-a", Value::Null, 600.0, "grocer")).await;
+    }
+    let everyday = t.post("/api/v2/authenticate", base(1.767e9 + 12.0 * day, "phone-a", Value::Null, 640.0, "grocer")).await;
+    assert_eq!(everyday["decision"], "allow", "{everyday}");
+    let swap = t.post("/api/v2/authenticate", base(1.767e9 + 12.2 * day, "attacker-phone", json!(1.0), 60000.0, "mule-9")).await;
+    assert_ne!(swap["decision"], "allow", "{swap}");
+    assert_ne!(swap["challenge_type"], "sms_otp", "after a SIM swap the SMS code would reach the attacker");
+    assert!(!swap["reasons"].as_array().unwrap().is_empty() && !swap["message_hi"].as_str().unwrap().is_empty());
+    if swap["decision"] == "challenge" {
+        t.post("/api/v2/challenge/verify", json!({"decision_id": swap["decision_id"], "passed": false})).await;
+        let again = t.post("/api/v2/authenticate", base(1.767e9 + 12.21 * day, "attacker-phone", json!(1.2), 100.0, "mule-9")).await;
+        assert_eq!((again["decision"].as_str(), again["rule"].as_str()), (Some("block"), Some("recent_failed_challenge")));
+    }
+    let (s, _, _) = t.req("POST", "/api/v2/authenticate", Some(json!({"ts": 1})), &[]).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    let (s, _, _) = t.req("POST", "/api/v2/challenge/verify", Some(json!({"decision_id": "nope", "passed": true})), &[]).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}

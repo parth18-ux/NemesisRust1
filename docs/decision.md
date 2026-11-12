@@ -163,6 +163,22 @@ the only combination that keeps the format attack closed.
 - Response headers (nosniff, no framing, no referrer); Redis is no longer published to the host in docker-compose,
   and the container runs as an unprivileged user.
 
+**8f. PRAMAAN account-takeover authentication: ported, adopted as a new layer.**
+PRAMAAN (MIT, Team CaffeineEaters, co-authored by Parth Sharma) decides allow / challenge / block for a login or payment
+from 27 causal behaviour, device and transaction features with a monotone XGBoost, and picks the step-up the likely attack
+cannot pass (a passkey, never an SMS code, after a SIM swap; a bank call-back for remote-access apps; a cool-off for a
+coached customer on their own device). It is ported to Rust (`crates/rusetect/src/pramaan.rs`, routes
+`/api/v2/authenticate` and `/api/v2/challenge/verify`) and checked against PRAMAAN's Python engine on 36,398
+simulated requests: the same decision, challenge, rule, reasons and features on every one (`examples/pramaan_parity.rs`).
+Against RuseTect's identity rule on the same traffic and the same assumed challenge efficacies
+(`research/out/pramaan_eval.json`): attack requests stopped 96.4% against
+77.0% with no touch or typing data (the conservative case), at the cost of more
+genuine customers challenged (3.8% against 1.7%).
+It is added next to the identity rule, not in place of it. Simulated traffic and assumed efficacies, from PRAMAAN's own
+simulator: the comparison ranks designs, it is not a real-world fraud rate. Not ported: PRAMAAN's touch BiLSTM and typing
+1D-CNN (the deviations are inputs; its simpler touch model, window statistics + LDA, nearly matches the BiLSTM in its own
+report and is the one to port next) and the PayPal checkout gate (PayPal-specific, and it needs sandbox keys).
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
