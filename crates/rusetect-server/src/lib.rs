@@ -86,6 +86,8 @@ pub struct AppState {
 pub struct Shared {
     pub state: Mutex<AppState>,
     pub rate: Mutex<RateLimiter>,
+    /// repository root (pages, fixtures), fixed at start-up and read without taking the state lock
+    pub root: PathBuf,
 }
 
 pub type AppRef = Arc<Shared>;
@@ -350,7 +352,9 @@ pub fn ensure_root() -> std::io::Result<()> {
 
 pub fn new_shared() -> AppRef {
     let limit = std::env::var("RUSETECT_RATE_LIMIT").ok().and_then(|v| v.parse().ok()).unwrap_or(240);
-    Arc::new(Shared { state: Mutex::new(AppState::load()), rate: Mutex::new(RateLimiter::new(limit, 10.0)) })
+    let state = AppState::load();
+    let root = state.root.clone();
+    Arc::new(Shared { state: Mutex::new(state), rate: Mutex::new(RateLimiter::new(limit, 10.0)), root })
 }
 
 /// Use X-Forwarded-For for client identity only behind a proxy that sets it: Vercel (VERCEL is set by the platform and
@@ -359,7 +363,6 @@ static TRUST_PROXY: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
     std::env::var("RUSETECT_TRUST_PROXY").map(|v| v == "1").unwrap_or(false) || std::env::var("VERCEL").is_ok()
 });
 
-/// Requests per 10 s per client on POST /api.
 /// Accounts with a typing profile kept in memory (each holds at most 20 sessions of 1,000 key pairs).
 const MAX_PROFILES: usize = 100_000;
 
@@ -384,6 +387,7 @@ async fn security_headers(req: Request, next: Next) -> Response {
     r
 }
 
+/// Requests per 10 s per client on POST /api.
 async fn rate_limit(State(app): State<AppRef>, req: Request, next: Next) -> Response {
     if req.method() == Method::POST && req.uri().path().starts_with("/api/") {
         let peer = req.extensions().get::<ConnectInfo<SocketAddr>>().map(|c| c.0.ip().to_string()).unwrap_or_else(|| "?".into());
@@ -402,7 +406,7 @@ async fn rate_limit(State(app): State<AppRef>, req: Request, next: Next) -> Resp
 // ---------------------------------------------------------------- pages
 
 async fn page(State(app): State<AppRef>, name: &'static str) -> Response {
-    let root = app.state.lock().unwrap_or_else(|p| p.into_inner()).root.clone();
+    let root = app.root.clone();
     match tokio::fs::read_to_string(root.join("service/static").join(name)).await {
         Ok(html) => axum::response::Html(html).into_response(),
         Err(_) => ApiError::new(404, "Not Found").into_response(),
@@ -410,7 +414,7 @@ async fn page(State(app): State<AppRef>, name: &'static str) -> Response {
 }
 
 async fn favicon(State(app): State<AppRef>) -> Response {
-    let root = app.state.lock().unwrap_or_else(|p| p.into_inner()).root.clone();
+    let root = app.root.clone();
     match tokio::fs::read(root.join("service/static/favicon.svg")).await {
         Ok(b) => ([("content-type", "image/svg+xml")], b).into_response(),
         Err(_) => ApiError::new(404, "Not Found").into_response(),
