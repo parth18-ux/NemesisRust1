@@ -20,6 +20,9 @@ ADOPTION RULE (fixed here before any number is computed; second half of validati
   M4  mean3_midas worst PR-AUC under the format attack >= current worst - 0.02
 Also reported, not judged: the MIDAS-R score alone (ROC-AUC, PR-AUC on validation). If adopted, MIDAS-R is ported to
 Rust (engine and Redis worker) before anything is served. Results: research/out/midas_eval.json
+Fix (2026-11-12): the first run's scores were broken (all zero, so MIDAS alone gave ROC-AUC 0.5). The hour tick divided
+the timestamp's int64 by nanoseconds per hour, but pandas 3 parses to datetime64[us], so the whole stream fell into one
+tick and the score formula returns 0 while t - 1 == 0. The tick is now taken as datetime64[h]. Rule and arms unchanged.
 """
 import json, math, os, sys, time
 import numpy as np, pandas as pd, xgboost as xgb, lightgbm as lgb
@@ -67,7 +70,7 @@ def midas_r(src, dst, tick):
 def main():
     t0 = time.time()
     raw = pd.read_csv(sys.argv[2], usecols=["ts", "fb", "fa", "tb", "ta"], dtype=str)
-    tick = (pd.to_datetime(raw.ts, format="%Y/%m/%d %H:%M").astype("int64") // 3_600_000_000_000).values
+    tick = pd.to_datetime(raw.ts, format="%Y/%m/%d %H:%M").values.astype("datetime64[h]").astype("int64")
     ids = {}
     node = lambda a: ids.setdefault(a, len(ids))
     src = np.array([node(x) for x in (raw.fb + "|" + raw.fa).values], np.int64)
