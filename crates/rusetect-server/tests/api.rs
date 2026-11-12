@@ -596,3 +596,20 @@ fn campaigns_use_only_the_newest_alerts() {
     assert_eq!(ids.len(), MAX_ALERTS);
     assert!(!ids.contains(&json!("A0")) && ids.contains(&json!(format!("A{MAX_ALERTS}"))));
 }
+
+#[tokio::test]
+async fn sanctions_screen_finds_variants_and_validates() {
+    let t = T::new();
+    let r = t.post("/api/v2/sanctions/screen", json!({"name": "VENTHORPE, Mr Aldric"})).await;
+    assert_eq!((r["hit"].as_bool(), r["matches"][0]["list_id"].as_str(), r["matches"][0]["score"].as_f64()), (Some(true), Some("TEST-0001"), Some(1.0)));
+    assert_eq!(r["matches"][0]["program"], "FICTITIOUS-TEST");
+    let thr: Value = serde_json::from_str(&std::fs::read_to_string(paths::repo_root().join("research/out/sanctions_eval.json")).unwrap()).unwrap();
+    assert_eq!(r["threshold"], thr["threshold"], "the served threshold is the fitted one");
+    let r = t.post("/api/v2/sanctions/screen", json!({"name": "Maria Garcia", "type": "individual"})).await;
+    assert_eq!(r["hit"], false);
+    let r = t.post("/api/v2/sanctions/screen", json!({"name": "Velmora Shiping Co", "type": "entity"})).await;
+    assert!(r["matches"].as_array().unwrap().iter().all(|m| m["list_id"].as_str().unwrap() >= "TEST-0029"), "type filters the list");
+    for bad in [json!({}), json!({"name": ""}), json!({"name": "x".repeat(301)}), json!({"name": "Dr."}), json!({"name": "A B", "type": "vessel"})] {
+        assert_eq!(t.req("POST", "/api/v2/sanctions/screen", Some(bad.clone()), &[]).await.0, StatusCode::UNPROCESSABLE_ENTITY, "{bad}");
+    }
+}

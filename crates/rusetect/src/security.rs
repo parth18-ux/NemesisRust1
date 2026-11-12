@@ -93,7 +93,8 @@ fn route_is(path: &str, pattern: &str) -> bool {
 /// Access rule for one API request (`path` without the /api prefix). Demo mode is open, as the public demo needs.
 /// Otherwise a known key is required and the role sets the reach: any role reads (GET); a write needs channel or
 /// above, a review or publish needs an analyst or supervisor, and wiping state (demo reset, demo replay) a supervisor.
-/// A write route not named here falls to the channel rule, so a new route is never open to a viewer.
+/// A write route not named here falls to the channel rule, so a new route is never open to a viewer (as for
+/// /v2/sanctions/screen).
 pub fn gate(keys: &Keys, method: &str, path: &str, key: Option<&str>) -> Result<(), (u16, &'static str)> {
     if keys.demo_mode || PUBLIC_API.contains(&path) {
         return Ok(());
@@ -258,6 +259,8 @@ mod tests {
         assert_eq!(gate(&keys, "POST", "/v2/alerts/A1/customer", Some("k-viewer")).unwrap_err().0, 403);
         assert!(gate(&keys, "POST", "/v2/payment", Some("k-channel")).is_ok());
         assert!(gate(&keys, "POST", "/v2/alerts/A1/customer", Some("k-channel")).is_ok());
+        assert!(gate(&keys, "POST", "/v2/sanctions/screen", Some("k-channel")).is_ok(), "screening is a channel route");
+        assert_eq!(gate(&keys, "POST", "/v2/sanctions/screen", Some("k-viewer")).unwrap_err().0, 403);
         assert_eq!(gate(&keys, "POST", "/v2/alerts/A1/review", Some("k-channel")).unwrap_err().0, 403, "a channel never reviews");
         assert_eq!(gate(&keys, "POST", "/v2/consortium/publish", Some("k-channel")).unwrap_err().0, 403);
         assert!(gate(&keys, "POST", "/v2/alerts/A1/review", Some("k-analyst")).is_ok());

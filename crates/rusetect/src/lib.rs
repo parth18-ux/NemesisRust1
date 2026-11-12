@@ -15,6 +15,7 @@
 //!   behaviour       typing rhythm profile and verifier                                 [service/behaviour.py]
 //!   mouse_dynamics  mouse action features and per-customer model                       [service/mouse_dynamics.py]
 //!   campaigns, coordination, str_report, risk_score, branding                          [same names]
+//!   sanctions       watchlist name screening (Jaro-Winkler token alignment, Soundex tie-break)
 //!   pyfmt, pyre     Python-compatible numerics, formatting, JSON and regex semantics
 // Deliberate: comparisons are written NaN-aware (`!(a > b)`), branches mirror the Python they port line by line,
 // and min/max chains keep Python's NaN behaviour where clamp() would panic or differ.
@@ -40,6 +41,7 @@ pub mod pyfmt;
 pub mod pyre;
 pub mod review;
 pub mod risk_score;
+pub mod sanctions;
 pub mod scam_text;
 pub mod security;
 pub mod session_signals;

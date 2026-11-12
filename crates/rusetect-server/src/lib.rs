@@ -82,6 +82,8 @@ pub struct AppState {
     pub profiles: HashMap<String, TypingProfile>,
     /// PRAMAAN account-takeover authentication (allow / challenge / block); None if its model files are absent
     pub auth: Option<rusetect::pramaan::AuthEngine>,
+    /// watchlist and its hit threshold (research/out/sanctions_eval.json); None if either file is absent
+    pub sanctions: Option<(rusetect::sanctions::List, f64)>,
     pub demo: Demo,
 }
 
@@ -116,6 +118,13 @@ impl AppState {
                 None
             }
         };
+        let sanctions = match (rusetect::sanctions::List::load(&models.join("sanctions_sdn.csv")), read_json(root.join("research/out/sanctions_eval.json"))) {
+            (Ok(l), Ok(v)) if v["threshold"].is_f64() => Some((l, v["threshold"].as_f64().unwrap())),
+            _ => {
+                eprintln!("{NAME} sanctions list or threshold unavailable");
+                None
+            }
+        };
         AppState {
             verifier: Verifier::load(&models.join("typing_verifier.json")),
             root,
@@ -136,6 +145,7 @@ impl AppState {
                     None
                 }
             },
+            sanctions,
             demo: Demo { truth: truth0(), ..Default::default() },
         }
     }
@@ -273,6 +283,7 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/v2/fixtures/mule", get(v2_fixture_mule))
         .route("/v2/audit", get(v2_audit))
         .route("/v2/message", post(v2_message))
+        .route("/v2/sanctions/screen", post(v2_sanctions))
         .route("/v2/message-model", get(v2_message_model))
         .route("/v2/payments/batch", post(v2_batch))
         .route("/v2/cases", get(v2_cases))
@@ -311,6 +322,7 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/models/message_model.json", "service/models/typing_verifier.json", "service/models/benchmark_results.json",
     "service/models/sample_applications.json", "service/models/demo_stream.csv.gz",
     "service/models/hardening.json", "service/models/hardening_xgb.json", "service/models/auth_config.json", "service/models/auth_xgb.json",
+    "service/models/sanctions_sdn.csv", "research/out/sanctions_eval.json",
     "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html",
     "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
 ];
@@ -892,6 +904,32 @@ async fn v2_message(State(app): State<AppRef>, b: Bytes) -> ApiResult {
         res["alert"] = s.lures.record_message(acct.as_deref(), tmin, &res);
         res["channel"] = json!(channel);
         ok(res)
+    }).await
+}
+
+/// Watchlist name screening: the five closest list entries and whether the best reaches the fitted threshold.
+async fn v2_sanctions(State(app): State<AppRef>, b: Bytes) -> ApiResult {
+    let (name, kind) = parse_obj(&b, |o, e| {
+        let name = o.req_str(e, "name");
+        if o.get("name").map(|v| v.is_string()).unwrap_or(false) {
+            o.check_len(e, "name", name.trim(), Some(1), Some(300));
+        }
+        let kind = o.opt_str(e, "type");
+        if let Some(k) = &kind {
+            o.one_of(e, "type", k, &["individual", "entity"]);
+        }
+        (name, kind)
+    })?;
+    if rusetect::sanctions::normalise(&name).is_empty() {
+        return Err(ApiError::new(422, "name: needs at least one letter or digit besides honorifics"));
+    }
+    with_state(app, move |s| {
+        let (list, t) = s.sanctions.as_ref().ok_or_else(|| ApiError::new(503, "Sanctions list not loaded"))?;
+        let m = list.screen(&name, kind.as_deref(), 5);
+        let hit = m.first().is_some_and(|(_, sc)| *sc >= *t);
+        let matches: Vec<Value> = m.iter().map(|(e, sc)| json!({"name": e.name, "list_id": e.id, "program": e.program,
+            "score": (sc * 1e4).round() / 1e4})).collect();
+        ok(json!({"matches": matches, "hit": hit, "threshold": t}))
     }).await
 }
 

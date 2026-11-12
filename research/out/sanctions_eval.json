@@ -1,0 +1,48 @@
+{
+  "threshold": 0.927083,
+  "rule": "highest validation precision with validation recall >= 0.95",
+  "list": "service/models/sanctions_sdn.csv",
+  "list_entries": 40,
+  "list_source": "sample of fictitious test entities (program FICTITIOUS-TEST); the OFAC SDN download was blocked by the network here, so the real list must be loaded in deployment",
+  "date": "2026-11-12",
+  "seed": 0,
+  "validation": {
+    "precision": 1.0,
+    "recall": 0.9623,
+    "f1": 0.9808,
+    "tp": 51,
+    "fp": 0,
+    "fn": 2,
+    "positives": 53,
+    "negatives": 113
+  },
+  "test": {
+    "precision": 1.0,
+    "recall": 0.9231,
+    "f1": 0.96,
+    "tp": 48,
+    "fp": 0,
+    "fn": 4,
+    "positives": 52,
+    "negatives": 112
+  },
+  "train": {
+    "precision": 1.0,
+    "recall": 0.8408,
+    "f1": 0.9135,
+    "tp": 132,
+    "fp": 0,
+    "fn": 25,
+    "positives": 157,
+    "negatives": 337
+  },
+  "test_recall_by_variant": {
+    "dropped": 0.75,
+    "exact": 1.0,
+    "noise": 1.0,
+    "reordered": 1.0,
+    "translit": 0.625,
+    "typo1": 1.0,
+    "typo2": 1.0
+  }
+}
