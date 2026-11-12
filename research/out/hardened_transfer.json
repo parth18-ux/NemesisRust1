@@ -1,0 +1,171 @@
+{
+ "hismall": {
+  "label": "HI-Small (in domain)",
+  "test_rows": 1015669,
+  "test_positives": 1797,
+  "cascade": {
+   "roc_auc": 0.983,
+   "pr_auc": 0.7104
+  },
+  "hardened": {
+   "roc_auc": 0.9907,
+   "pr_auc": 0.72
+  }
+ },
+ "li_small": {
+  "label": "LI-Small (in domain: the served models also trained on LI-Small)",
+  "test_rows": 1382345,
+  "test_positives": 925,
+  "cascade": {
+   "roc_auc": 0.9431,
+   "pr_auc": 0.3432
+  },
+  "hardened": {
+   "roc_auc": 0.9771,
+   "pr_auc": 0.3677
+  }
+ },
+ "himed": {
+  "label": "HI-Medium",
+  "test_rows": 6378562,
+  "test_positives": 10642,
+  "cascade": {
+   "roc_auc": 0.9612,
+   "pr_auc": 0.7083
+  },
+  "hardened": {
+   "roc_auc": 0.99,
+   "pr_auc": 0.7422
+  }
+ },
+ "li_medium": {
+  "label": "LI-Medium",
+  "test_rows": 6254503,
+  "test_positives": 3783,
+  "cascade": {
+   "roc_auc": 0.9,
+   "pr_auc": 0.3834
+  },
+  "hardened": {
+   "roc_auc": 0.9752,
+   "pr_auc": 0.399
+  }
+ },
+ "hi_large": {
+  "label": "HI-Large",
+  "test_rows": 35969054,
+  "test_positives": 71304,
+  "cascade": {
+   "roc_auc": 0.9517,
+   "pr_auc": 0.6204
+  },
+  "hardened": {
+   "roc_auc": 0.9467,
+   "pr_auc": 0.5056
+  }
+ },
+ "li_large": {
+  "label": "LI-Large",
+  "test_rows": 35251899,
+  "test_positives": 25149,
+  "cascade": {
+   "roc_auc": 0.8748,
+   "pr_auc": 0.2541
+  },
+  "hardened": {
+   "roc_auc": 0.866,
+   "pr_auc": 0.127
+  }
+ },
+ "samld": {
+  "label": "SAML-D",
+  "test_rows": 1900971,
+  "test_positives": 2143,
+  "cascade": {
+   "roc_auc": 0.5645,
+   "pr_auc": 0.0045
+  },
+  "hardened": {
+   "roc_auc": 0.9978,
+   "pr_auc": 0.8978
+  }
+ },
+ "amlgentex": {
+  "label": "AMLgentex Sweden difficult",
+  "test_rows": 1529788,
+  "test_positives": 26285,
+  "cascade": {
+   "roc_auc": 0.5207,
+   "pr_auc": 0.018
+  },
+  "hardened": {
+   "roc_auc": 0.6744,
+   "pr_auc": 0.0858
+  }
+ },
+ "banksim": {
+  "label": "BankSim (cards)",
+  "test_rows": 118929,
+  "test_positives": 1280,
+  "cascade": {
+   "roc_auc": 0.934,
+   "pr_auc": 0.2331
+  },
+  "hardened": {
+   "roc_auc": 0.9954,
+   "pr_auc": 0.7606
+  }
+ },
+ "sparkov": {
+  "label": "Sparkov (cards)",
+  "test_rows": 370479,
+  "test_positives": 1349,
+  "cascade": {
+   "roc_auc": 0.469,
+   "pr_auc": 0.0058
+  },
+  "hardened": {
+   "roc_auc": 0.9884,
+   "pr_auc": 0.7381
+  }
+ },
+ "paysim": {
+  "label": "PaySim (mobile wallets)",
+  "test_rows": 1272524,
+  "test_positives": 4254,
+  "cascade": {
+   "roc_auc": 0.3598,
+   "pr_auc": 0.0026
+  },
+  "hardened": {
+   "roc_auc": 0.8964,
+   "pr_auc": 0.3007
+  }
+ },
+ "ieee": {
+  "label": "IEEE-CIS (real card-not-present fraud labels)",
+  "test_rows": 118108,
+  "test_positives": 4064,
+  "cascade": {
+   "roc_auc": 0.4333,
+   "pr_auc": 0.0285
+  },
+  "hardened": {
+   "roc_auc": 0.5966,
+   "pr_auc": 0.0529
+  }
+ },
+ "tabformer": {
+  "label": "TabFormer (cards)",
+  "test_rows": 4877380,
+  "test_positives": 4833,
+  "cascade": {
+   "roc_auc": 0.6354,
+   "pr_auc": 0.0031
+  },
+  "hardened": {
+   "roc_auc": 0.8327,
+   "pr_auc": 0.0346
+  }
+ }
+}

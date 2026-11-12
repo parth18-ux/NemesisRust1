@@ -20,6 +20,7 @@ ADOPTION RULE (fixed before running):
 Results: research/out/structuring_defence.json
 """
 import json, os
+from collections import deque
 import numpy as np, pandas as pd
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,14 +31,21 @@ WARM = 100_000
 
 
 def pair_noisy_or(t, key, s, window=1440):
-    """causal noisy-OR of s over the same key within the last `window` minutes, current payment included"""
+    """causal noisy-OR of s over the same key within the last `window` minutes, current payment included.
+    Linear: a running sum of log(1 - s) per key, so busy payers do not make it quadratic."""
     out = np.empty(len(s)); q = {}
+    lg = np.log(np.clip(1 - np.asarray(s, np.float64), 1e-300, None))
     for i in range(len(s)):
-        dq = q.setdefault(key[i], [])
+        e = q.get(key[i])
+        if e is None:
+            e = q[key[i]] = [deque(), 0.0]
+        dq = e[0]
         while dq and dq[0][0] <= t[i] - window:
-            dq.pop(0)
-        dq.append((t[i], s[i]))
-        out[i] = 1 - np.prod([1 - v for _, v in dq])
+            e[1] -= dq.popleft()[1]
+        if not dq:
+            e[1] = 0.0
+        dq.append((t[i], lg[i])); e[1] += lg[i]
+        out[i] = 1 - np.exp(e[1])
     return out
 
 

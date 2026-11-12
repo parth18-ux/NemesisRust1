@@ -1,0 +1,329 @@
+{
+ "rule": {
+  "G1_max_drop": 0.03,
+  "G2_min_ratio": 0.8,
+  "G3": "paired bootstrap lower bound of the mean ROC gain > 0"
+ },
+ "validation": {
+  "hismall": {
+   "current": 0.6275,
+   "candidate": 0.6564
+  },
+  "hismall_attack": {
+   "current": {
+    "Bitcoin": 0.5748,
+    "Cash": 0.5739,
+    "Cheque": 0.5741,
+    "Credit Card": 0.5732,
+    "Wire": 0.5728
+   },
+   "candidate": {
+    "Bitcoin": 0.6171,
+    "Cash": 0.6141,
+    "Cheque": 0.6143,
+    "Credit Card": 0.6137,
+    "Wire": 0.6132
+   }
+  },
+  "himed": {
+   "positives": 9052,
+   "current_roc": 0.9857,
+   "candidate_roc": 0.9879,
+   "current_pr": 0.6007,
+   "candidate_pr": 0.6325
+  },
+  "hi_large": {
+   "positives": 46210,
+   "current_roc": 0.9743,
+   "candidate_roc": 0.944,
+   "current_pr": 0.5088,
+   "candidate_pr": 0.4398
+  },
+  "li_small": {
+   "positives": 827,
+   "current_roc": 0.9729,
+   "candidate_roc": 0.9776,
+   "current_pr": 0.2821,
+   "candidate_pr": 0.3057
+  },
+  "li_medium": {
+   "positives": 4121,
+   "current_roc": 0.9712,
+   "candidate_roc": 0.9759,
+   "current_pr": 0.2276,
+   "candidate_pr": 0.2457
+  },
+  "li_large": {
+   "positives": 20898,
+   "current_roc": 0.9507,
+   "candidate_roc": 0.8876,
+   "current_pr": 0.1434,
+   "candidate_pr": 0.0946
+  },
+  "samld": {
+   "positives": 1988,
+   "current_roc": 0.7466,
+   "candidate_roc": 0.9984,
+   "current_pr": 0.0135,
+   "candidate_pr": 0.9095
+  },
+  "amlgentex": {
+   "positives": 26423,
+   "current_roc": 0.517,
+   "candidate_roc": 0.6964,
+   "current_pr": 0.0184,
+   "candidate_pr": 0.0862
+  },
+  "banksim": {
+   "positives": 1324,
+   "current_roc": 0.9441,
+   "candidate_roc": 0.9967,
+   "current_pr": 0.381,
+   "candidate_pr": 0.8066
+  },
+  "sparkov": {
+   "positives": 1901,
+   "current_roc": 0.7859,
+   "candidate_roc": 0.9899,
+   "current_pr": 0.0625,
+   "candidate_pr": 0.8013
+  },
+  "paysim": {
+   "positives": 770,
+   "current_roc": 0.276,
+   "candidate_roc": 0.896,
+   "current_pr": 0.0004,
+   "candidate_pr": 0.019
+  },
+  "tabformer": {
+   "positives": 6860,
+   "current_roc": 0.6884,
+   "candidate_roc": 0.9417,
+   "current_pr": 0.0095,
+   "candidate_pr": 0.1894
+  },
+  "ieee": {
+   "positives": 4611,
+   "current_roc": 0.4658,
+   "candidate_roc": 0.699,
+   "current_pr": 0.0385,
+   "candidate_pr": 0.0993
+  }
+ },
+ "decision": {
+  "checks": {
+   "G1": true,
+   "G2": true,
+   "G3": true
+  },
+  "adopt": true,
+  "mean_other_roc_gain": 0.1427,
+  "ci95": [
+   0.1395,
+   0.1459
+  ],
+  "note": "decided on validation parts only; test parts scored after this line"
+ },
+ "test": {
+  "hismall": {
+   "positives": 1797,
+   "cascade": {
+    "roc_auc": 0.983,
+    "pr_auc": 0.7112
+   },
+   "current_hardened": {
+    "roc_auc": 0.9882,
+    "pr_auc": 0.7175
+   },
+   "pooled_hardened": {
+    "roc_auc": 0.9907,
+    "pr_auc": 0.7175
+   }
+  },
+  "himed": {
+   "positives": 10642,
+   "cascade": {
+    "roc_auc": 0.9612,
+    "pr_auc": 0.7083
+   },
+   "current_hardened": {
+    "roc_auc": 0.9855,
+    "pr_auc": 0.7178
+   },
+   "pooled_hardened": {
+    "roc_auc": 0.99,
+    "pr_auc": 0.7422
+   }
+  },
+  "hi_large": {
+   "positives": 71304,
+   "cascade": {
+    "roc_auc": 0.9517,
+    "pr_auc": 0.6212
+   },
+   "current_hardened": {
+    "roc_auc": 0.9802,
+    "pr_auc": 0.6032
+   },
+   "pooled_hardened": {
+    "roc_auc": 0.9467,
+    "pr_auc": 0.5077
+   }
+  },
+  "li_small": {
+   "positives": 925,
+   "cascade": {
+    "roc_auc": 0.9431,
+    "pr_auc": 0.3432
+   },
+   "current_hardened": {
+    "roc_auc": 0.966,
+    "pr_auc": 0.3369
+   },
+   "pooled_hardened": {
+    "roc_auc": 0.9771,
+    "pr_auc": 0.3677
+   }
+  },
+  "li_medium": {
+   "positives": 3783,
+   "cascade": {
+    "roc_auc": 0.9,
+    "pr_auc": 0.3834
+   },
+   "current_hardened": {
+    "roc_auc": 0.9646,
+    "pr_auc": 0.3834
+   },
+   "pooled_hardened": {
+    "roc_auc": 0.9752,
+    "pr_auc": 0.399
+   }
+  },
+  "li_large": {
+   "positives": 25149,
+   "cascade": {
+    "roc_auc": 0.8747,
+    "pr_auc": 0.2527
+   },
+   "current_hardened": {
+    "roc_auc": 0.9527,
+    "pr_auc": 0.2317
+   },
+   "pooled_hardened": {
+    "roc_auc": 0.8659,
+    "pr_auc": 0.1265
+   }
+  },
+  "samld": {
+   "positives": 2143,
+   "cascade": {
+    "roc_auc": 0.5641,
+    "pr_auc": 0.0044
+   },
+   "current_hardened": {
+    "roc_auc": 0.7805,
+    "pr_auc": 0.0174
+   },
+   "pooled_hardened": {
+    "roc_auc": 0.9977,
+    "pr_auc": 0.8991
+   }
+  },
+  "amlgentex": {
+   "positives": 26285,
+   "cascade": {
+    "roc_auc": 0.5206,
+    "pr_auc": 0.018
+   },
+   "current_hardened": {
+    "roc_auc": 0.5161,
+    "pr_auc": 0.0183
+   },
+   "pooled_hardened": {
+    "roc_auc": 0.674,
+    "pr_auc": 0.0856
+   }
+  },
+  "banksim": {
+   "positives": 1280,
+   "cascade": {
+    "roc_auc": 0.934,
+    "pr_auc": 0.2331
+   },
+   "current_hardened": {
+    "roc_auc": 0.9437,
+    "pr_auc": 0.4088
+   },
+   "pooled_hardened": {
+    "roc_auc": 0.9954,
+    "pr_auc": 0.7606
+   }
+  },
+  "sparkov": {
+   "positives": 1349,
+   "cascade": {
+    "roc_auc": 0.469,
+    "pr_auc": 0.0058
+   },
+   "current_hardened": {
+    "roc_auc": 0.7776,
+    "pr_auc": 0.0457
+   },
+   "pooled_hardened": {
+    "roc_auc": 0.9884,
+    "pr_auc": 0.7381
+   }
+  },
+  "paysim": {
+   "positives": 4254,
+   "cascade": {
+    "roc_auc": 0.3598,
+    "pr_auc": 0.0026
+   },
+   "current_hardened": {
+    "roc_auc": 0.3458,
+    "pr_auc": 0.0024
+   },
+   "pooled_hardened": {
+    "roc_auc": 0.8965,
+    "pr_auc": 0.3026
+   }
+  },
+  "tabformer": {
+   "positives": 4833,
+   "cascade": {
+    "roc_auc": 0.6347,
+    "pr_auc": 0.003
+   },
+   "current_hardened": {
+    "roc_auc": 0.7043,
+    "pr_auc": 0.0054
+   },
+   "pooled_hardened": {
+    "roc_auc": 0.8328,
+    "pr_auc": 0.0367
+   }
+  },
+  "ieee": {
+   "positives": 4064,
+   "cascade": {
+    "roc_auc": 0.4333,
+    "pr_auc": 0.0285
+   },
+   "current_hardened": {
+    "roc_auc": 0.4568,
+    "pr_auc": 0.0322
+   },
+   "pooled_hardened": {
+    "roc_auc": 0.5966,
+    "pr_auc": 0.0529
+   }
+  }
+ },
+ "served_thresholds": {
+  "verify": 0.010297347791492939,
+  "hold": 0.042735349386930466,
+  "block": 0.13074204946996468
+ }
+}
