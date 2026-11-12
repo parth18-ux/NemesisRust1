@@ -105,8 +105,10 @@ generalisation: the candidate saw the training parts of the very datasets on whi
 model saw only HI-Small. The mean gain also hides losses on the two largest bank-AML sets, HI-Large and LI-Large
 (per-dataset numbers in the same file and in the report); the rule had no "no bank-AML set may get worse" check, and it
 should have. It stays served because the served risk is the larger of the cascade and this model, so the cascade still
-scores those sets, and it gains on six of the eight bank-AML sets; a pooled model trained on bank-AML data only is the
-obvious next candidate. The served engine was rebuilt and replayed against the Python results; block decisions match exactly.
+scores those sets, and it gains on six of the eight bank-AML sets; that candidate, a model trained on bank-AML data
+only, was then tested with a per-dataset guard and not adopted (`research/out/aml_hardening.json`): it fixed the ROC-AUC
+loss on HI-Large and LI-Large, but lost on AMLgentex (rule B1) and its mean bank-AML gain stayed under half a point (B2).
+The served engine was rebuilt and replayed against the Python results; block decisions match exactly.
 
 **8a. Payer window: not adopted.**
 Widening the 24 hour window from a payer-payee pair to all of a payer's payments catches parts sent to new mule accounts,
