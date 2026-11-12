@@ -102,7 +102,7 @@ pub fn score(q: &[String], c: &[String]) -> (f64, usize) {
 
 /// v2 constants, as pre-registered (research/sanctions_eval_v2.py).
 const CAP: f64 = 0.96;
-const FLOOR: f64 = 0.90;
+pub(crate) const FLOOR: f64 = 0.90;
 const PENALTY: f64 = 0.06;
 
 /// Transliteration key of a normalised token: suffix off -> ov, the digraph rules, the letter rules (each in order,
@@ -124,7 +124,7 @@ pub fn fold(t: &str) -> String {
 }
 
 /// v2 token score: the raw Jaro-Winkler, or CAP times the Jaro-Winkler of the folded keys, whichever is higher.
-fn token_v2(x: &str, y: &str) -> f64 {
+pub fn token_v2(x: &str, y: &str) -> f64 {
     jaro_winkler(x, y).max(CAP * jaro_winkler(&fold(x), &fold(y)))
 }
 

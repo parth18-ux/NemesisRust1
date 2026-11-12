@@ -56,6 +56,9 @@ fn schemas() -> Value {
             "registry": {"type": "string", "default": "mule_account"}, "identifier": s("string"), "reason": {"type": "string", "default": "confirmed mule"}}},
         "SanctionsIn": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 300},
             "type": {"type": "string", "enum": ["individual", "entity"]}}},
+        "PayeeCheckIn": {"type": "object", "required": ["entered_name", "account_name"], "properties": {
+            "entered_name": {"type": "string", "minLength": 1, "maxLength": 300}, "account_name": {"type": "string", "minLength": 1, "maxLength": 300},
+            "account_type": {"type": "string", "enum": ["individual", "business"]}}},
         "VerifyIn": {"type": "object", "required": ["signed_fields", "signature"], "properties": {"signed_fields": s("object"), "signature": s("string")}},
         "ApplicationIn": {"type": "object", "required": ["customer_age"], "additionalProperties": true,
             "description": "Account-opening application in the Feedzai BAF schema; omitted fields are treated as missing.",
@@ -93,6 +96,7 @@ const ROUTES: &[(&str, &str, &str, Option<&str>, &[(&str, &str, &str)])] = &[
     ("get", "/api/v2/audit", "Hash-chained audit log", None, &[]),
     ("post", "/api/v2/message", "L-1 lure detector. Scores the text, explains which scam workflow and tactics it matches, and applies the alert-fatigue policy (push only high-risk, deduplicated, capped). Entities in risky messages join a payee watchlist.", Some("MessageIn"), &[]),
     ("post", "/api/v2/sanctions/screen", "Watchlist name screening. Returns the five closest list entries (name, list_id, program, score in [0, 1]) and hit = best score >= threshold (fitted on validation; matcher v2 and its threshold from research/out/sanctions_eval_v2.json when adopted, else research/out/sanctions_eval.json). The bundled list is fictitious test data; load the real list in deployment.", Some("SanctionsIn"), &[]),
+    ("post", "/api/v2/payee/check", "Payee name check (confirmation of payee), against authorised push payment scams. Compares the name the payer entered with the account holder name (from the bank's records; passed in here) using the sanctions matcher v2, and returns verdict (match, close_match with suggested_name, or no_match), score in [0, 1] and a short reason. A name on the wrong account type (account_type given) is at most close_match. Thresholds fitted on validation in research/out/payee_check_eval.json.", Some("PayeeCheckIn"), &[]),
     ("get", "/api/v2/alerts/summary", "How many messages were scored, pushed, or suppressed (and why); how many payments a lure escalated.", None, &[]),
     ("get", "/api/v2/message-model", "Message model evaluation", None, &[]),
     ("post", "/api/v2/payments/batch", "Score up to 20,000 payments (sorted by timestamp)", None, &[]),

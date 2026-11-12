@@ -29,3 +29,21 @@ and whether to port. Code is copied or adapted only from permissive licences (MI
 | [AbgarSim/sieve-aml](https://github.com/AbgarSim/sieve-aml) | 15 | MIT | Sanctions list download, normalisation and screening pipeline | List pipeline reference: download, trim to names, screen |
 | [abrahamjuliot/creepjs](https://github.com/abrahamjuliot/creepjs) | 2548 | MIT | Browser fingerprint lie and spoofing detection | Idea for the device layer (spoofed fingerprints); not ported now |
 | [luizvbo/fuzzt](https://github.com/luizvbo/fuzzt) | 4 | MIT | Rust string similarity metrics including Jaro-Winkler | Jaro-Winkler reference; own implementation checked against the textbook values (MARTHA/MARHTA, DIXON/DICKSONX) |
+
+## 2026-11-12, round 3: payee name check (confirmation of payee)
+
+| Repository | Stars | Licence | What it offers | Verdict |
+|---|---|---|---|---|
+| [Linklow/coachguard](https://github.com/Linklow/coachguard) | 14 | Apache-2.0 | Coaching signals for scam payments | Idea only: RuseTect already has session coaching cues |
+| [portable-genai/app-fraud-interdiction](https://github.com/portable-genai/app-fraud-interdiction) | 0 | Apache-2.0 | In-flight APP scam rules | Idea only |
+| [BernaBilmez/FraudShield](https://github.com/BernaBilmez/FraudShield) | 0 | MIT | Explanation format for fraud decisions | Idea only: short reason strings |
+| [nadaboulaares/nameproof](https://github.com/nadaboulaares/nameproof) | 2 | Apache-2.0 | Cross-script, explainable name matching | **Used** (idea): explainable token-level reasons; matching reuses RuseTect's sanctions scorer v2, no code copied |
+| [anandh8x/payeelock](https://github.com/anandh8x/payeelock) | 0 | Apache-2.0 | Payee verification verdict states | **Used** (idea): match / close_match / no_match with a suggested name |
+| [lobbenedesign/instant-payments-core](https://github.com/lobbenedesign/instant-payments-core) | 1 | MIT | EU Verification of Payee outcome model | VoP outcome model: the same three outcomes plus the account-type check |
+| [VladBuldenko/Instant_Payments_Readiness](https://github.com/VladBuldenko/Instant_Payments_Readiness) | 0 | MIT | Threshold trade-off analysis for instant payments | Idea: the close_match band is the warning-rate vs miss-rate trade-off reported in `research/out/payee_check_eval.json` |
+| [Atrangi-Coders/Financial-Forensics-Engine](https://github.com/Atrangi-Coders/Financial-Forensics-Engine) | 4 | MIT | Mule ring features | Idea only, for the ring cases |
+| [Rupali-2507/MULE_HUNTER](https://github.com/Rupali-2507/MULE_HUNTER) | 11 | none | Mule account detection | Idea only (no licence) |
+| [Glawther/FraudGuard](https://github.com/Glawther/FraudGuard) | 2 | none | Fraud scoring service | Idea only (no licence) |
+| [devdebdeb/pix-fraud-br](https://github.com/devdebdeb/pix-fraud-br) | 1 | none | Pix (Brazil instant payments) fraud data | Data, licence unclear: not used |
+
+No open-source Pay.UK Confirmation of Payee matching rules exist; they are published only as rulebooks. RuseTect's check is its own (docs/decision.md, 8p) and copies no outside code.

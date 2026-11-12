@@ -249,6 +249,29 @@ emitted, without writing its account counters, amounts or 24 h windows again. Pa
 recognised and keep the old behaviour, and a crash between the claim and the write pipeline drops that payment's
 state writes (once rather than twice).
 
+**8p. Payee name check (confirmation of payee).** New `POST /api/v2/payee/check` (a channel route), aimed at
+authorised push payment scams: `{"entered_name", "account_name", "account_type"?}` -> `{"verdict", "score",
+"suggested_name"?, "reason"}`, where verdict is match, close_match (with the account name to show the payer) or
+no_match, and reason is a short token-level explanation ("surname matches, first name given as an initial", "the
+account is a business account but an individual's name was entered; ..."). No second matcher: `crates/rusetect/src/payee.rs`
+scores with the served sanctions matcher v2 (`score_v2`) and only adds the verdict bands, the type check and the reason.
+The account name comes from the bank's own records in deployment; here it is passed in the request. The rule was
+committed before any payee code (`research/payee_check_eval.py`): synthetic labelled pairs (300 people,
+100 businesses; exact, noise, initials, nicknames, typos, transliterations, dropped middle names and
+suffixes against same surname, same first name, same trade, unrelated, and wrong account type), split 60/20/20 by
+identity, thresholds fitted on validation only: match >= 0.9352, close_match >= 0.7967 (validation match
+precision 0.9975, same-payee coverage 0.9732). Test, once (546 same-payee
+and 320 different pairs): match precision 1.0 (0
+different pairs labelled match), same payee reaching match or close_match 0.9799 (match alone
+0.7015), so both checks of the adoption rule hold and the endpoint is served; the API reads the thresholds
+from `research/out/payee_check_eval.json` and answers 503 if `adopted` is false. The cost: 0.2094
+of different pairs get close_match, so the payer is shown someone else's name (owner-name businesses 0/20/0
+and same-trade businesses 0/20/0 as match/close/no_match); initials reach no_match in
+10 of 120 test pairs and hard nicknames (Bob/Robert) are not
+recognised. `/api/v2/assess` does not call it yet: its inputs are validated and signed as one record, so adding the two
+names there is a separate change. Limits: names are synthetic, from fixed pools; no open-source Pay.UK CoP matching
+rules exist to compare with (they are published only as rulebooks).
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

@@ -35,6 +35,7 @@ pub mod lure_fusion;
 pub mod models;
 pub mod mouse_dynamics;
 pub mod paths;
+pub mod payee;
 pub mod payment;
 pub mod pramaan;
 pub mod pyfmt;
