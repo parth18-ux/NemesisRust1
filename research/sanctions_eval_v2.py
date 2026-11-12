@@ -28,7 +28,24 @@ FRESH test set (everything below is frozen in this file):
     test; nothing is fitted on them.
   - list: the original list plus FRESH_ENTITIES, written to research/out/sanctions_fresh_list.csv by the script.
   - variants: sanctions_eval.variants() unchanged (exact, reordered, noise, typo1, typo2, translit, dropped) with
-    random.Random(FRESH_SEED = 20261112
+    random.Random(FRESH_SEED) and TRANSLIT replaced by FRESH_TRANSLIT (the v1 rewrites plus further romanisation
+    variants).
+  - positives: (variant, its own entry). Negatives: (variant, the highest-scoring other entry of the fresh list) and
+    (common name, the highest-scoring entry) for 150 names sampled with the same rng from FRESH_FIRST x FRESH_LAST,
+    pools that share no name with the v1 pools.
+  - both matchers are scored on it once: v1 at the v1 threshold, v2 at the v2 threshold.
+
+Adopt v2 (serve it, with its threshold) only if ALL hold; otherwise keep v1 and report the failed attempt:
+  a. fresh test: recall >= 0.95 and precision >= 0.98;
+  b. v1 test split, original list: recall is not below the v1 test recall in research/out/sanctions_eval.json, and
+     precision >= 0.98.
+The fresh set is read once. If v2 fails, the fresh set is spent as well: a further attempt needs another fresh set.
+Results: research/out/sanctions_eval_v2.json (both matchers, both test sets, recall by variant, the decision).
+
+Known limit, stated before the run: variants are synthetic and FRESH_TRANSLIT overlaps the folding table, so the fresh
+set measures generalisation to new names more than to unseen romanisation habits; the list is fictitious.
+"""
+FRESH_SEED = 20261112
 FRESH_ENTITIES = [  # (name, type)
     ("Leontiy Barsukhov", "individual"), ("Yevgeniya Chornovil", "individual"),
     ("Khalid Mansour Al-Dhaheri", "individual"), ("Joaquim Estrelado", "individual"),
@@ -53,8 +70,8 @@ FRESH_ENTITIES = [  # (name, type)
 ]
 FRESH_TRANSLIT = [
     ("ph", "f"), ("ou", "u"), ("ee", "i"), ("kh", "h"), ("y", "i"), ("mm", "m"), ("v", "w"), ("c", "k"), ("z", "s"),
-    ("sh", "ch"), ("oo", "u"), ("ei", "ai"), ("o", "u"), ("a", "e"), ("j", "y"), ("ov", "off"), ("iy", "y"), ("x",
-    "ks"), ("q", "k"), ("u", "ou"), ("ai", "ay"), ("f", "ph"), ("ck", "k"), ("ss", "s"),
+    ("sh", "ch"), ("oo", "u"), ("ei", "ai"), ("o", "u"), ("a", "e"), ("j", "y"), ("ov", "off"), ("iy", "y"),
+    ("x", "ks"), ("q", "k"), ("u", "ou"), ("ai", "ay"), ("f", "ph"), ("ck", "k"), ("ss", "s"),
 ]
 FRESH_FIRST = [
     "Daniel", "Sofia", "Chen", "Ananya", "Mustafa", "Natalia", "William", "Zainab", "Miguel", "Julia", "Sergei",
