@@ -184,6 +184,14 @@ is on the consortium mule registry, the engine receives 0.9 (PRAMAAN's own value
 names the flagging banks. Monotone model: a flag can only raise the risk (tested). The touch model port is blocked: the
 HMOG dataset is not reachable from this environment (HTTP 403), and the model needs it to fit its LDA projection.
 
+**8h. MIDAS-R streaming burst score (Stream-AD/MIDAS, Apache-2.0): not adopted.** MIDAS-R edge, source and destination
+scores were added as three extra features to a third L2 model and compared with the same model without them, at the
+served alert counts on the second half of HI-Small validation, under rule M1-M4 pre-registered in `research/midas_eval.py`.
+M1 and M2 failed: block-band recall was 0.6393 with MIDAS against 0.6374 for the current model and 0.6489 for the control
+without MIDAS. M3 and M4 passed (PR-AUC 0.6523 against 0.6496; worst PR-AUC under the format attack 0.6158 against 0.6171).
+The MIDAS-R score alone reached ROC-AUC 0.5 and PR-AUC 0.0011 on validation, no better than chance, so it is not ported
+(`research/out/midas_eval.json`).
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

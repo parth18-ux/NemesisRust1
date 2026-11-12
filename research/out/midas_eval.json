@@ -1,0 +1,126 @@
+{
+ "rule": {
+  "M1_min_gain_vs_current": 0.02,
+  "M2_min_gain_vs_ctrl": 0.01,
+  "M3_max_pr_auc_drop": 0.005,
+  "M4_max_attack_drop": 0.02
+ },
+ "midas": {
+  "rows": 2,
+  "cols": 4096,
+  "factor": 0.5,
+  "tick": "hour"
+ },
+ "midas_alone_validation": {
+  "roc_auc": 0.5,
+  "pr_auc": 0.0011
+ },
+ "rounds": {
+  "ctrl": 335,
+  "midas": 251
+ },
+ "alert_counts_second_half": {
+  "verify": 4904,
+  "hold": 2319,
+  "block": 652
+ },
+ "validation_second_half": {
+  "current": {
+   "pr_auc": 0.6496,
+   "attack_worst": 0.6171,
+   "bands": {
+    "verify": {
+     "flags": 4904,
+     "tp": 434,
+     "precision": 0.0885,
+     "recall": 0.8282
+    },
+    "hold": {
+     "flags": 2319,
+     "tp": 412,
+     "precision": 0.1777,
+     "recall": 0.7863
+    },
+    "block": {
+     "flags": 652,
+     "tp": 334,
+     "precision": 0.5123,
+     "recall": 0.6374
+    }
+   }
+  },
+  "mean3_ctrl": {
+   "pr_auc": 0.6601,
+   "attack_worst": 0.6191,
+   "bands": {
+    "verify": {
+     "flags": 4904,
+     "tp": 437,
+     "precision": 0.0891,
+     "recall": 0.834
+    },
+    "hold": {
+     "flags": 2319,
+     "tp": 412,
+     "precision": 0.1777,
+     "recall": 0.7863
+    },
+    "block": {
+     "flags": 652,
+     "tp": 340,
+     "precision": 0.5215,
+     "recall": 0.6489
+    }
+   }
+  },
+  "mean3_midas": {
+   "pr_auc": 0.6523,
+   "attack_worst": 0.6158,
+   "bands": {
+    "verify": {
+     "flags": 4904,
+     "tp": 437,
+     "precision": 0.0891,
+     "recall": 0.834
+    },
+    "hold": {
+     "flags": 2319,
+     "tp": 412,
+     "precision": 0.1777,
+     "recall": 0.7863
+    },
+    "block": {
+     "flags": 652,
+     "tp": 335,
+     "precision": 0.5138,
+     "recall": 0.6393
+    }
+   }
+  }
+ },
+ "decision": {
+  "checks": {
+   "M1": false,
+   "M2": false,
+   "M3": true,
+   "M4": true
+  },
+  "adopt": false,
+  "seconds": 304,
+  "note": "decided on the second half of validation only; the test part is not read by this script"
+ },
+ "midas_model_gain": {
+  "fmt_code": 69.89,
+  "new_bank_pair": 68.33,
+  "s_out_over_last_in": 44.54,
+  "new_pair": 40.95,
+  "cross_cur": 28.09,
+  "self_loop": 24.71,
+  "reciprocal": 18.91,
+  "s_fanout_24h": 17.6,
+  "dow": 16.67,
+  "cross_bank": 14.59,
+  "s_cnt_24h": 12.15,
+  "s_gap_out": 11.78
+ }
+}
