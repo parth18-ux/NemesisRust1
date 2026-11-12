@@ -222,6 +222,12 @@ loaded in deployment, and the threshold refitted on it. The threshold rule was c
 and dropped middle names (0.75) are missed most. The validation split is small (53 true variants), so the
 threshold is coarse; refit on the real list. Results: `research/out/sanctions_eval.json`, which the API reads for the threshold.
 
+**8m. Customer paths cannot undo analyst decisions.** The pause-screen answer, re-verification and duress PIN now share
+one check (`customer_may_act` in `crates/rusetect-server/src/lib.rs`): re-verification is accepted only from open,
+cooling_off, stopped_by_customer or customer_verification and otherwise returns 409 with the status unchanged. A duress PIN
+still escalates any alert to duress_hold except a blocked or released one, where the event is recorded but the status stays
+and the confirm response carries `alert_status_unchanged: true`.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
