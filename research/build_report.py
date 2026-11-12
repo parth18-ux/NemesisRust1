@@ -549,7 +549,14 @@ def transfer_short():
             f"{f(d['in_domain_xgboost_test']['roc_auc_mean'])}; trained on AMLgentex and tested on HI-Small, the ranking reverses ({f(T['amlgentex_difficult_trained_on_hi_slice_eval']['roc_auc'])}).")
 
 
-HD = J("research", "out", "hardened_eval.json") if os.path.exists(os.path.join(ROOT, "research", "out", "hardened_eval.json")) else None
+def _opt_early(name):
+    q = os.path.join(ROOT, "research", "out", name)
+    return json.load(open(q)) if os.path.exists(q) else None
+
+
+# adoption record (HI-Small-only second opinion, rules H1-H3) and the served model's numbers (pooled second opinion)
+HD0 = _opt_early("hardened_eval.json")
+HD = _opt_early("hardened_eval_served.json") or HD0
 SD = J("research", "out", "structuring_defence.json") if os.path.exists(os.path.join(ROOT, "research", "out", "structuring_defence.json")) else None
 FULL = J("research", "out", "full_hi_eval.json") if os.path.exists(os.path.join(ROOT, "research", "out", "full_hi_eval.json")) else None
 TS = J("research", "out", "transfer_samld.json") if os.path.exists(os.path.join(ROOT, "research", "out", "transfer_samld.json")) else None
@@ -644,7 +651,7 @@ def transfer_section():
 def hardening_section():
     if not (HD and SD):
         return ""
-    V, T, D = HD["validation"], HD["test"], HD["decision"]
+    V, T, D = HD["validation"], HD["test"], HD0["decision"]
     att = lambda m, k: f(min(HD[k]["attack"][m].values()) if k == "test" else min(HD["validation_attack"][m].values()))
     rows = [["Served cascade", f(V['served']['pr_auc']), f(min(HD['validation_attack']['served'].values())), f"{f(T['served']['pr_auc'])} <small>{ci(T['served']['ci95'])}</small>",
              f(T['without_sep11_18_tail']['served']['pr_auc']), f(min(T['attack']['served'].values()))],
@@ -689,7 +696,7 @@ def model_card():
     """docs/MODEL_CARD.md, generated from research/out so every number has a source file."""
     if not (HD and FULL):
         return None
-    T, U = HD["test"], _opt("unified_train.json")
+    T, U, SE, PH = HD["test"], _opt("unified_train.json"), _opt("served_eval.json"), _opt("pooled_hardening.json")
     hb, sb = T["bands"]["hardened"], T["bands"]["served"]
     ha = T["bands_under_cheque_attack"]["hardened"]["block"]
     sp = SD["scales"]["hardened_pre_calibration"]["variants"] if SD else None
@@ -705,10 +712,11 @@ def model_card():
         "## What it is",
         "",
         "A per-payment money-laundering and mule risk score for bank transfers, served by one Rust binary (`rusetect-server`).",
-        "Risk = max(calibrated cascade risk, calibrated format-free XGBoost risk). The cascade is an XGBoost gate (L1) and the mean of",
+        "Risk = max(isotonic-mapped cascade risk, isotonic-mapped format-free XGBoost risk). The cascade is an XGBoost gate (L1) and the mean of",
         "XGBoost and LightGBM (L2) on 31 causal account-history features. A 24 hour payer-to-payee aggregation raises the risk of split payments.",
         "The format-free model is trained on the training parts of every payment dataset (bank AML, card, wallet, and IEEE-CIS real card fraud).",
-        "Bands: verify, hold, block (thresholds in `service/models/hardening.json`, set to the cascade's validation alert rates).",
+        "Bands: verify, hold, block (thresholds in `service/models/hardening.json`, set to the cascade's validation alert rates; the maps are",
+        "step functions, so the served bands run slightly above that budget, see the table).",
         "",
         "## Intended use",
         "",
@@ -722,20 +730,38 @@ def model_card():
         "",
         "## Training data",
         "",
-        "IBM AMLworld HI-Small (synthetic, CDLA-Sharing-1.0), chronological split: train, validation (calibration and thresholds only), test.",
-        "No real customer data. Research datasets used for evaluation are listed on the research page (`/research`).",
+        "Cascade: IBM AMLworld HI-Small and LI-Small training weeks (synthetic, CDLA-Sharing-1.0; `cascade_config.json` `trained_on`).",
+        "Format-free second opinion: the training parts of 13 payment datasets (bank AML, card, wallet; IEEE-CIS has real card fraud labels).",
+        "Every split is chronological: train, validation (calibration and thresholds only), test. No real customer data.",
+        "The datasets and their audit: `docs/DATASET_AUDIT.md` and `docs/research/research_review.html`.",
         "",
         f"## Performance (HI-Small test, {T['hardened']['rows']:,} payments, {T['hardened']['positives']:,} laundering)",
         "",
         "| Measure | Cascade alone | Served (hardened) |",
         "|---|---|---|",
-        f"| PR-AUC [95% CI] | {f(T['served']['pr_auc'])} {ci(T['served']['ci95'])} | {f(T['hardened']['pr_auc'])} {ci(T['hardened']['ci95'])} |",
+        f"| PR-AUC [95% CI, payments resampled] | {f(T['served']['pr_auc'])} {ci(T['served']['ci95'])} | {f(T['hardened']['pr_auc'])} {ci(T['hardened']['ci95'])} |",
         f"| PR-AUC without the Sep 11 to 18 simulation tail | {f(T['without_sep11_18_tail']['served']['pr_auc'])} | {f(T['without_sep11_18_tail']['hardened']['pr_auc'])} |",
-        f"| Block band recall / precision | {pct(sb['block']['recall'])} / {pct(sb['block']['precision'])} | {pct(hb['block']['recall'])} / {pct(hb['block']['precision'])} |",
+        f"| Block band at the band thresholds: recall / precision | {pct(sb['block']['recall'])} / {pct(sb['block']['precision'])} | {pct(hb['block']['recall'])} / {pct(hb['block']['precision'])} |",
         f"| PR-AUC when laundering switches payment format (worst) | {f(min(T['attack']['served'].values()))} | {f(min(T['attack']['hardened'].values()))} |",
         f"| Block recall under the Cheque attack | {pct(T['bands_under_cheque_attack']['served']['block']['recall'])} | {pct(ha['recall'])} |",
-        "",
     ]
+    if SE:
+        A, N = SE["all"], SE["without_sep11_18_tail"]
+        bt = lambda r, m: f"{pct(r[m]['block']['recall'])} / {pct(r[m]['block']['precision'])}"
+        lines += [
+            f"| PR-AUC [95% CI, whole days resampled, {A['pr_auc_ci95_day_bootstrap']['days']} days] | {f(A['pr_auc']['cascade'])} {ci(A['pr_auc_ci95_day_bootstrap']['cascade'])} | {f(A['pr_auc']['served'])} {ci(A['pr_auc_ci95_day_bootstrap']['served'])} |",
+            f"| Block band at the design budget ({A['bands_at_design_budget']['k']['block']:,} alerts): recall / precision | {bt(A['bands_at_design_budget'], 'cascade')} | {bt(A['bands_at_design_budget'], 'served')} |",
+            f"| Same, without the tail ({N['bands_at_design_budget']['k']['block']:,} alerts) | {bt(N['bands_at_design_budget'], 'cascade')} | {bt(N['bands_at_design_budget'], 'served')} |",
+            f"| Block alerts at the band thresholds (design budget {A['bands_at_design_budget']['k']['block']:,}) | {A['bands_at_thresholds']['cascade']['block']['flags']:,} | {A['bands_at_thresholds']['served']['block']['flags']:,} |",
+            f"| Expected calibration error (20 equal-count bins); mean risk against observed rate | | {A['calibration']['ece_20_equal_count_bins']}; {pct(A['calibration']['mean_risk'], 2)} against {pct(A['calibration']['observed_rate'], 2)} |",
+            "",
+            f"Served minus cascade PR-AUC, paired, whole days resampled: {ci(A['pr_auc_ci95_day_bootstrap']['served_minus_cascade'])} (without the tail "
+            f"{ci(N['pr_auc_ci95_day_bootstrap']['served_minus_cascade'])}). The served score matches the cascade on honest traffic and closes the format attack; "
+            "it is not shown to be more accurate. The test part has few days, so the day intervals are wide; the payment-level ones are too narrow because "
+            f"laundering comes in linked chains. The last eight days hold {pct(FULL['test']['tail']['share_of_test_laundering'])} of test laundering and raise "
+            "more alerts than the budget because they hold more laundering (`research/out/served_eval.json`).",
+        ]
+    lines += [""]
     if sp:
         lines += [f"Structuring (HI-Small demo window, block recall, any part caught): clean {pct(sp['base']['pair_aggregated']['block']['laundering_recall_any_part'], 0)}, "
                   f"split in 4 {pct(sp['split4']['pair_aggregated']['block']['laundering_recall_any_part'], 0)} (was {pct(sp['split4']['per_payment']['block']['laundering_recall_any_part'], 0)}), "
@@ -744,14 +770,21 @@ def model_card():
         "## Known limitations",
         "",
         "- All payment training data is synthetic. Scores on real bank data are unmeasured.",
-        f"- Generalisation across generators is weak. The served cascade zero-shot ROC-AUC on {zs}; a model trained on all other datasets, leave-one-out ROC-AUC: {loo}." if U else "- Generalisation across generators is weak.",
+        "- The HI-Small test part has been read by many studies, some designed after earlier test results; the served model needs one",
+        "  confirmation on data no study has read (a new generator run or a bank's shadow pilot).",
+        f"- Generalisation across generators is weak. The served cascade zero-shot ROC-AUC on {zs}; a research model (29 features plus 13 indicators) trained on all other datasets, leave-one-out ROC-AUC (same-generator siblings stay in training, which flatters the IBM sets): {loo}." if U else "- Generalisation across generators is weak.",
         "- Spread-out structuring still evades most per-payment and pair checks; account-level alerts are the next step.",
+        *([f"- The multi-domain second opinion is weaker than the HI-Small-only one on the two largest bank-AML sets (test ROC-AUC HI-Large "
+           f"{f(PH['test']['hi_large']['current_hardened']['roc_auc'])} to {f(PH['test']['hi_large']['pooled_hardened']['roc_auc'])}, LI-Large "
+           f"{f(PH['test']['li_large']['current_hardened']['roc_auc'])} to {f(PH['test']['li_large']['pooled_hardened']['roc_auc'])}); its adoption rule had no per-dataset guard."]
+          if PH and PH.get("test") else []),
         "- Reasons are TreeSHAP contributions of the model that set the risk (the L2 XGBoost half, or the format-free model); the LightGBM half is not explained.",
         "- Serverless deployments (Vercel) keep state per instance; use the Redis deployment (`deploy/docker-compose.yml`) for shared state.",
         "",
         "## Governance",
         "",
-        "- Every model change is adopted only under a rule written in the script before test data is read (`research/*.py`).",
+        "- Every model change is adopted only under a rule written in its script and decided on validation before test is read (`research/*.py`);",
+        "  `docs/decision.md` lists which scripts were committed before their results and the one study that decided on test.",
         "- Thresholds and calibration are fitted on validation only; evaluations stay chronological.",
         "- The Rust engine matches the Python reference: the cascade to within 3e-8 (tests in `crates/rusetect-server/tests`); the hardened risk to rounding and the attack-stream block decisions exactly.",
         "- Fail-closed configuration: the server refuses to start without analyst keys and production secrets, or an explicit demo flag.",

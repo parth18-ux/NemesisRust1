@@ -428,10 +428,13 @@ fn production_mode_requires_secrets() {
     assert_eq!(miss(env(&[])).len(), 1, "no keys and no explicit demo flag: refuse to start");
     assert_eq!(miss(env(&[("RUSETECT_DEMO", "true")])).len(), 1, "only the exact flag opens demo mode");
     assert!(miss(env(&[("RUSETECT_DEMO", "1")])).is_empty(), "explicit demo mode needs nothing");
-    assert_eq!(miss(env(&[("RUSETECT_ANALYST_KEYS", "{}")])).len(), 3);
-    assert_eq!(miss(env(&[("RUSETECT_ANALYST_KEYS", "{}"), ("RUSETECT_SIGNING_KEY", "x"), ("RUSETECT_CONSORTIUM_SECRET", " ")])),
+    const K: &str = r#"{"0123456789abcdef": {"analyst": "asha", "role": "analyst"}}"#;
+    assert_eq!(miss(env(&[("RUSETECT_ANALYST_KEYS", "{}")])).len(), 1, "keys that cannot work stop the start-up");
+    assert_eq!(miss(env(&[("RUSETECT_ANALYST_KEYS", "")])).len(), 1);
+    assert_eq!(miss(env(&[("RUSETECT_ANALYST_KEYS", K)])).len(), 3);
+    assert_eq!(miss(env(&[("RUSETECT_ANALYST_KEYS", K), ("RUSETECT_SIGNING_KEY", "x"), ("RUSETECT_CONSORTIUM_SECRET", " ")])),
                vec!["RUSETECT_CONSORTIUM_SECRET", "RUSETECT_HASH_SALT"]);
-    assert!(miss(env(&[("RUSETECT_ANALYST_KEYS", "{}"), ("RUSETECT_SIGNING_KEY", "a"), ("RUSETECT_CONSORTIUM_SECRET", "b"), ("RUSETECT_HASH_SALT", "c")])).is_empty());
+    assert!(miss(env(&[("RUSETECT_ANALYST_KEYS", K), ("RUSETECT_SIGNING_KEY", "a"), ("RUSETECT_CONSORTIUM_SECRET", "b"), ("RUSETECT_HASH_SALT", "c")])).is_empty());
 }
 
 /// Format hardening and the structuring defence (research/hardened_eval.py, research/structuring_defence.py).
@@ -468,4 +471,42 @@ fn pair_window_expires_and_sweeps_idle_keys() {
     assert!(w.keys() >= 65_000);
     w.push(0, 5000, 0.1); // the 65,536th push, a day later, sweeps idle keys
     assert!(w.keys() <= 2, "idle pairs are swept, kept {}", w.keys());
+}
+
+#[tokio::test]
+async fn infinite_and_unicode_inputs_are_refused_cleanly() {
+    let t = T::new();
+    let mut b = pay();
+    b["amount_paid"] = json!("inf");
+    let (s, _, _) = t.req("POST", "/api/v2/payment", Some(b), &[]).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "inf would poison the account's running sums");
+    let mut b = pay();
+    b["timestamp"] = json!("２０２２-09-09 10:00");
+    let (s, _, _) = t.req("POST", "/api/v2/payment", Some(b), &[]).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "full-width digits: a 422, not a dropped connection");
+    let (s, _, _) = t.req("POST", "/api/v2/behaviour/enrol", Some(json!({"account": "T1", "digraphs": {"ab": "nan"}})), &[]).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[test]
+fn late_payments_leave_the_window_on_time() {
+    use rusetect::{Engine, Payment};
+    let mut e = Engine::new(&paths::models_dir(), false).unwrap();
+    let pay = |t: i64, to: &str| Payment { from_bank: "1".into(), from_account: "S".into(), to_bank: "2".into(), to_account: to.into(), amount_paid: 10.0,
+        payment_currency: "US Dollar".into(), receiving_currency: "US Dollar".into(), payment_format: "ACH".into(), tmin: t, eid: None };
+    e.features(&pay(10_000, "A"));
+    e.features(&pay(100, "B")); // arrives late, a week earlier
+    let f = e.features(&pay(10_100, "C"));
+    assert_eq!(f.get("s_cnt_24h"), 2.0, "the late payment is older than 24 h and must not count (as in the Redis zsets)");
+}
+
+#[test]
+fn duress_registration_cannot_be_overwritten_and_locks_out() {
+    let mut v = rusetect::intervention::DuressVault::new();
+    v.register("X", "1234", "4321", &[]).unwrap();
+    assert!(v.register("X", "9999", "8888", &["attacker".into()]).is_err());
+    for _ in 0..rusetect::intervention::MAX_FAILED_PINS {
+        v.confirm("X", "0000");
+    }
+    assert_eq!(v.confirm("X", "1234")["result"], "locked");
 }

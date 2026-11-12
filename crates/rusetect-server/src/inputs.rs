@@ -107,6 +107,12 @@ impl SessionIn {
         let mut events = vec![];
         match o.get("events") {
             None => {}
+            // a session has tens of events; the cap keeps stored alerts small
+            Some(Value::Array(a)) if a.len() > 500 => {
+                let mut loc: Vec<&str> = o.loc.iter().map(|s| s.as_str()).collect();
+                loc.push("events");
+                e.push("too_long", &loc, "List should have at most 500 items", &Value::Null);
+            }
             Some(Value::Array(a)) => {
                 for (i, ev) in a.iter().enumerate() {
                     let mut loc = o.loc.clone();
@@ -135,7 +141,7 @@ impl SessionIn {
             app_hidden_s: o.float_or(e, "app_hidden_s", 0.0),
             typing_anomaly: o.bool_or(e, "typing_anomaly", false),
             device_hash: o.opt_str(e, "device_hash"),
-            enrolled_device_hashes: o.str_list(e, "enrolled_device_hashes"),
+            enrolled_device_hashes: o.str_list(e, "enrolled_device_hashes").into_iter().take(50).collect(),
             sim_swap_hours: o.opt_float(e, "sim_swap_hours"),
             events,
         }

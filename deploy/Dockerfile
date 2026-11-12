@@ -14,4 +14,7 @@ COPY fixtures fixtures
 COPY results results
 ENV RUSETECT_ROOT=/app HOST=0.0.0.0 PORT=8000
 EXPOSE 8000
+# run as an unprivileged user
+RUN useradd --system --uid 10001 rusetect
+USER rusetect
 CMD ["rusetect-server"]

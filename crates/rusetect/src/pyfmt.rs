@@ -534,15 +534,16 @@ pub fn time_time() -> f64 {
 }
 
 static TS_DASH: std::sync::LazyLock<fancy_regex::Regex> = std::sync::LazyLock::new(|| {
-    fancy_regex::Regex::new(r"^(\d\d\d\d)-(1[0-2]|0[1-9]|[1-9])-(3[01]|[12]\d|0[1-9]|[1-9]| [1-9])[\s\x1c-\x1f]+(2[0-3]|[0-1]\d|\d):([0-5]\d|\d)$").unwrap()
+    fancy_regex::Regex::new(r"^([0-9]{4})-(1[0-2]|0[1-9]|[1-9])-(3[01]|[12][0-9]|0[1-9]|[1-9]| [1-9])[\s\x1c-\x1f]+(2[0-3]|[0-1][0-9]|[0-9]):([0-5][0-9]|[0-9])$").unwrap()
 });
 
 /// `datetime.strptime(s, "%Y-%m-%d %H:%M")` read as UTC, in minutes since the epoch.
 pub fn parse_minutes(s: &str) -> Option<i64> {
     let c = TS_DASH.captures(s).ok()??;
-    let g = |i: usize| c.get(i).unwrap().as_str().trim().parse::<u32>().unwrap();
-    let date = chrono::NaiveDate::from_ymd_opt(g(1) as i32, g(2), g(3))?;
-    let dt = date.and_hms_opt(g(4), g(5), 0)?;
+    // ASCII digits only ([0-9], not \d, which also matches other scripts' digits); never panics on input
+    let g = |i: usize| c.get(i).and_then(|m| m.as_str().trim().parse::<u32>().ok());
+    let date = chrono::NaiveDate::from_ymd_opt(g(1)? as i32, g(2)?, g(3)?)?;
+    let dt = date.and_hms_opt(g(4)?, g(5)?, 0)?;
     Some(dt.and_utc().timestamp().div_euclid(60))
 }
 
@@ -563,6 +564,13 @@ pub fn hour_dow(tmin: i64) -> (i64, i64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timestamps_with_non_ascii_digits_are_rejected_not_panicked() {
+        assert_eq!(parse_minutes("٢٠٢٤-01-01 00:00"), None);
+        assert_eq!(parse_minutes("２０２２-09-01 00:10"), None);
+        assert!(parse_minutes("2022-09-01 00:10").is_some());
+    }
 
     #[test]
     fn repr_matches_python() {

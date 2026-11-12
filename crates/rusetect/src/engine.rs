@@ -129,7 +129,9 @@ pub struct Window {
 
 impl Window {
     pub fn add(&mut self, t: i64, key: u32, usd: f64) -> (usize, usize, f64) {
-        self.q.push_back((t, key, usd));
+        // kept in time order, so a late (out-of-order) payment is evicted on time, as in the Redis zsets
+        let at = self.q.iter().rposition(|e| e.0 <= t).map_or(0, |i| i + 1);
+        self.q.insert(at, (t, key, usd));
         *self.cnt.entry(key).or_insert(0) += 1;
         self.usd += usd;
         while self.q.front().map(|e| e.0 <= t - MIN24).unwrap_or(false) {
@@ -219,8 +221,10 @@ impl CascadeConfig {
         })
     }
 
+    /// Amount in USD, capped at 1e18 so a huge amount times a rate above 1 cannot overflow to inf (which would turn
+    /// running sums into NaN for the rest of the account's history). Shared by the engine and the Redis state.
     pub fn usd(&self, amount: f64, currency: &str) -> f64 {
-        amount * self.usd_rates.get(currency).copied().unwrap_or(1.0)
+        (amount * self.usd_rates.get(currency).copied().unwrap_or(1.0)).min(1e18)
     }
 
     /// Column order of the model input vector.
@@ -288,7 +292,6 @@ fn out_features(out: &Map<String, Value>) -> Map<String, Value> {
     out.get("features").and_then(|v| v.as_object()).cloned().unwrap_or_default()
 }
 
-/// np.interp: linear between knots, clamped outside them.
 /// 24 h causal noisy-OR of risks per key, current payment included (the structuring defence). Keys idle for a day are
 /// swept every 65,536 pushes, so memory follows the last day's traffic instead of every pair ever seen.
 pub struct PairWindow<K> {
@@ -311,7 +314,8 @@ impl<K: std::hash::Hash + Eq> PairWindow<K> {
         while d.front().is_some_and(|x| x.0 <= t - 1440) {
             d.pop_front();
         }
-        d.push_back((t, r));
+        let at = d.iter().rposition(|e| e.0 <= t).map_or(0, |i| i + 1);
+        d.insert(at, (t, r));
         (d.len(), 1.0 - d.iter().map(|x| 1.0 - x.1).product::<f64>())
     }
 
@@ -330,9 +334,10 @@ impl<K: std::hash::Hash + Eq> Default for PairWindow<K> {
     }
 }
 
+/// np.interp: linear between knots, clamped outside them; NaN in, NaN out (never an index underflow).
 pub fn interp(m: &(Vec<f64>, Vec<f64>), v: f64) -> f64 {
     let (x, y) = m;
-    if x.is_empty() { return v; }
+    if x.is_empty() || v.is_nan() { return v; }
     if v <= x[0] { return y[0]; }
     if v >= x[x.len() - 1] { return y[y.len() - 1]; }
     let i = x.partition_point(|k| *k <= v);
@@ -635,6 +640,9 @@ impl Engine {
         let mut out = Map::new();
         out.insert("l1_score".into(), jf(py_round(s1, 5)));
         out.insert("features".into(), Value::Object(feats.clone()));
+        // the unrounded cascade risk goes into the structuring window and the calibration maps, as in the worker and
+        // the research code; only the reported value is rounded
+        let mut raw = s1;
         if s1 < self.cfg.l1_threshold {
             out.insert("layer_exit".into(), json!("L1"));
             out.insert("risk".into(), jf(py_round(s1, 5)));
@@ -646,6 +654,7 @@ impl Engine {
             let sx = m.l2x.predict(&x) as f64;
             let sl = m.l2l.predict_f32(&x);
             let risk = m.l2_from(&x, sx, sl);
+            raw = risk;
             // reasons are added in finish_risk, only for flagged payments (TreeSHAP is most of the scoring time)
             let reasons: Vec<Value> = Vec::new();
             let (decision, band) = self.band_for_risk(risk);
@@ -661,7 +670,7 @@ impl Engine {
             out.insert("reasons".into(), Value::Array(reasons));
             out.insert("case_id".into(), cid);
         }
-        self.finish_risk(p, &x, &mut out);
+        self.finish_risk(p, &x, raw, &mut out);
         let dec = out["decision"].as_str().unwrap().to_string();
         *self.decisions.entry(dec).or_insert(0) += 1;
         out.insert("latency_ms".into(), jf(py_round(t0.elapsed().as_secs_f64() * 1000.0, 2)));
@@ -676,8 +685,7 @@ impl Engine {
     /// max(iso_served(that cascade risk), iso_free(format-free score)) on the hardened band thresholds. Aggregating
     /// before calibration matters: the isotonic map sends small cascade risks to near zero, where a noisy-OR of
     /// calibrated parts barely moves. Both steps can only raise a decision.
-    fn finish_risk(&mut self, p: &Payment, x: &[f32], out: &mut Map<String, Value>) {
-        let cascade = out["risk"].as_f64().unwrap_or(0.0);
+    fn finish_risk(&mut self, p: &Payment, x: &[f32], cascade: f64, out: &mut Map<String, Value>) {
         let payer_window = self.models.as_ref().and_then(|m| m.hardening.as_ref()).map(|h| h.payer_window).unwrap_or(false);
         let payee = if payer_window { u32::MAX } else { self.acct_id(&p.to_bank, &p.to_account) };
         let key = (self.acct_id(&p.from_bank, &p.from_account), payee);
@@ -811,7 +819,11 @@ impl Engine {
             }
         }
         let root = self.find(&b);
-        self.case_alerts.entry(root.clone()).or_default().push(CaseEdge { from: a, to: b, amount: p.amount_paid, format: p.payment_format.clone() });
+        let edges = self.case_alerts.entry(root.clone()).or_default();
+        edges.push(CaseEdge { from: a, to: b, amount: p.amount_paid, format: p.payment_format.clone() });
+        if edges.len() > 1000 {
+            edges.remove(0); // a case keeps its latest 1,000 flagged payments
+        }
         case_id(&root)
     }
 

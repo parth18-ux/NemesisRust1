@@ -34,13 +34,32 @@ pub struct Keys {
     pub demo_mode: bool,
 }
 
+/// RUSETECT_ANALYST_KEYS: a JSON object {key: {"analyst": name, "role": role}} with at least one key, every key at least
+/// 16 characters and every entry naming an analyst and a known role. Checked at start-up (check_config), so a bad value
+/// stops the server instead of failing every request later.
+pub fn parse_keys(raw: &str) -> Result<IndexMap<String, Analyst>, String> {
+    let v: Value = serde_json::from_str(raw).map_err(|e| format!("not JSON: {e}"))?;
+    let m = v.as_object().ok_or("not a JSON object")?;
+    if m.is_empty() {
+        return Err("no keys".into());
+    }
+    m.iter().map(|(k, a)| {
+        let analyst = a["analyst"].as_str().filter(|s| !s.trim().is_empty()).ok_or(format!("key {}...: no analyst", &k[..k.len().min(4)]))?;
+        let role = a["role"].as_str().filter(|r| ROLES.contains(r)).ok_or(format!("key {}...: role must be one of {ROLES:?}", &k[..k.len().min(4)]))?;
+        if k.chars().count() < 16 {
+            return Err(format!("key {}...: shorter than 16 characters", &k[..k.len().min(4)]));
+        }
+        Ok((k.clone(), Analyst { analyst: analyst.into(), role: role.into() }))
+    }).collect()
+}
+
+/// viewer: read alerts and evidence; channel: a bank system calling the scoring and customer routes; analyst and
+/// supervisor: review decisions (supervisor also resets demo state)
+pub const ROLES: [&str; 4] = ["viewer", "channel", "analyst", "supervisor"];
+
 pub fn load_keys() -> Keys {
     if let Ok(raw) = std::env::var("RUSETECT_ANALYST_KEYS") {
-        let v: Value = serde_json::from_str(&raw).expect("RUSETECT_ANALYST_KEYS must be JSON {key: {analyst, role}}");
-        let keys = v.as_object().map(|m| m.iter().map(|(k, a)| (k.clone(), Analyst {
-            analyst: a["analyst"].as_str().unwrap_or("").into(),
-            role: a["role"].as_str().unwrap_or("").into(),
-        })).collect()).unwrap_or_default();
+        let keys = parse_keys(&raw).expect("RUSETECT_ANALYST_KEYS is checked by check_config at start-up");
         return Keys { keys, demo_mode: false };
     }
     Keys { keys: DEMO_KEYS.iter().map(|(k, a, r)| (k.to_string(), Analyst { analyst: a.to_string(), role: r.to_string() })).collect(), demo_mode: true }
@@ -50,6 +69,23 @@ pub static KEYS: LazyLock<Keys> = LazyLock::new(load_keys);
 
 pub fn analyst_for(key: Option<&str>) -> Option<Analyst> {
     KEYS.keys.get(key.unwrap_or("")).cloned()
+}
+
+/// API routes open without a key outside demo mode: liveness, the public signing key and signature checks, and model
+/// documentation. Everything else under /api names accounts, changes state or costs CPU.
+pub const PUBLIC_API: [&str; 7] = ["", "/", "/health", "/v2/keys/public", "/v2/verify", "/v2/model-card", "/v2/demo/analysts"];
+
+/// Access rule for one API request (`path` without the /api prefix). Demo mode is open, as the public demo needs.
+/// Otherwise a known key is required, and wiping state (demo reset, demo replay) needs a supervisor.
+pub fn gate(keys: &Keys, path: &str, key: Option<&str>) -> Result<(), (u16, &'static str)> {
+    if keys.demo_mode || PUBLIC_API.contains(&path) {
+        return Ok(());
+    }
+    let who = keys.keys.get(key.unwrap_or("")).ok_or((401, "missing or unknown X-Analyst-Key"))?;
+    if path.starts_with("/v2/demo/") && who.role != "supervisor" {
+        return Err((403, "demo reset and replay need a supervisor key"));
+    }
+    Ok(())
 }
 
 pub fn allowed(role: &str, action: &str) -> bool {
@@ -182,6 +218,23 @@ impl Signer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn production_gate_and_key_validation() {
+        let k = |r: &str| Analyst { analyst: "a".into(), role: r.into() };
+        let keys = Keys { keys: [("k-viewer".to_string(), k("viewer")), ("k-super".to_string(), k("supervisor"))].into_iter().collect(), demo_mode: false };
+        assert!(gate(&keys, "/health", None).is_ok());
+        assert_eq!(gate(&keys, "/v2/payment", None), Err((401, "missing or unknown X-Analyst-Key")));
+        assert_eq!(gate(&keys, "/v2/campaigns", Some("nope")).unwrap_err().0, 401);
+        assert!(gate(&keys, "/v2/payment", Some("k-viewer")).is_ok());
+        assert_eq!(gate(&keys, "/v2/demo/reset", Some("k-viewer")).unwrap_err().0, 403, "only a supervisor wipes state");
+        assert!(gate(&keys, "/v2/demo/reset", Some("k-super")).is_ok());
+        assert!(gate(&Keys { keys: IndexMap::new(), demo_mode: true }, "/v2/demo/reset", None).is_ok(), "the public demo stays open");
+        assert!(parse_keys(r#"{"0123456789abcdef": {"analyst": "asha", "role": "analyst"}}"#).is_ok());
+        for bad in ["", "[]", "{}", r#"{"short": {"analyst": "a", "role": "analyst"}}"#, r#"{"0123456789abcdef": {"analyst": "a", "role": "root"}}"#] {
+            assert!(parse_keys(bad).is_err(), "{bad:?} must be refused at start-up");
+        }
+    }
 
     #[test]
     fn signer_round_trip_and_tamper() {

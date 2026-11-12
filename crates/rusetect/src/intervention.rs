@@ -108,12 +108,17 @@ pub fn plan(final_decision: &str, reasons: &[String], identity: Option<&Value>, 
            "funds": if held { "held for analyst review" } else { "released after the cool off unless the customer stops it" }})
 }
 
-struct DuressUser {
+/// One registered customer: salted PBKDF2 hashes of both PINs. Opaque outside this module.
+pub struct DuressUser {
     salt: [u8; 16],
     normal: [u8; 32],
     duress: [u8; 32],
     contacts: Vec<String>,
+    failed: u32,
 }
+
+/// Wrong PINs in a row before confirmation is locked (a 4 digit PIN would otherwise fall to 10,000 guesses).
+pub const MAX_FAILED_PINS: u32 = 5;
 
 impl std::fmt::Debug for DuressUser {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -128,7 +133,8 @@ pub struct DuressVault {
     pub notifications: Vec<Value>,
 }
 
-fn pin_hash(pin: &str, salt: &[u8]) -> [u8; 32] {
+/// Deliberately slow (PBKDF2, 120,000 rounds): callers holding a shared lock should hash first, outside it.
+pub fn pin_hash(pin: &str, salt: &[u8]) -> [u8; 32] {
     let mut out = [0u8; 32];
     pbkdf2::pbkdf2_hmac::<sha2::Sha256>(pin.as_bytes(), salt, 120_000, &mut out);
     out
@@ -149,7 +155,8 @@ impl DuressVault {
         self.notifications.clear();
     }
 
-    pub fn register(&mut self, account: &str, normal_pin: &str, duress_pin: &str, trusted_contacts: &[String]) -> Result<Value, String> {
+    /// Validate and hash a registration. Slow; holds no state, so it can run outside any lock.
+    pub fn prepare(normal_pin: &str, duress_pin: &str, trusted_contacts: &[String]) -> Result<DuressUser, String> {
         if normal_pin == duress_pin {
             return Err("the duress PIN must differ from the normal PIN".into());
         }
@@ -159,25 +166,57 @@ impl DuressVault {
         }
         let salt: [u8; 16] = rand::random();
         let contacts: Vec<String> = trusted_contacts.iter().take(5).cloned().collect();
-        let n = contacts.len();
-        self.users.insert(account.to_string(), DuressUser { salt, normal: pin_hash(normal_pin, &salt), duress: pin_hash(duress_pin, &salt), contacts });
+        Ok(DuressUser { salt, normal: pin_hash(normal_pin, &salt), duress: pin_hash(duress_pin, &salt), contacts, failed: 0 })
+    }
+
+    /// Store a prepared registration. An account that is already registered is never overwritten: otherwise anyone
+    /// could replace a customer's PINs and trusted contacts.
+    pub fn insert(&mut self, account: &str, u: DuressUser) -> Result<Value, String> {
+        if self.users.contains_key(account) {
+            return Err("account already registered".into());
+        }
+        let n = u.contacts.len();
+        self.users.insert(account.to_string(), u);
         Ok(json!({"account": account, "trusted_contacts": n}))
     }
 
-    /// What the customer sees and what really happens. Constant time comparison.
-    pub fn confirm(&mut self, account: &str, pin: &str) -> Value {
-        let Some(u) = self.users.get(account) else { return json!({"result": "not_registered"}) };
-        let h = pin_hash(pin, &u.salt);
+    pub fn register(&mut self, account: &str, normal_pin: &str, duress_pin: &str, trusted_contacts: &[String]) -> Result<Value, String> {
+        self.insert(account, Self::prepare(normal_pin, duress_pin, trusted_contacts)?)
+    }
+
+    /// The account's salt, to hash a PIN outside the lock; None when not registered.
+    pub fn salt(&self, account: &str) -> Option<[u8; 16]> {
+        self.users.get(account).map(|u| u.salt)
+    }
+
+    /// What the customer sees and what really happens, given pin_hash(pin, salt). Constant time comparison; after
+    /// MAX_FAILED_PINS wrong PINs in a row the account is locked until it is re-registered by the bank.
+    pub fn confirm_hashed(&mut self, account: &str, h: &[u8; 32]) -> Value {
+        let Some(u) = self.users.get_mut(account) else { return json!({"result": "not_registered"}) };
+        if u.failed >= MAX_FAILED_PINS {
+            return json!({"result": "locked"});
+        }
         if bool::from(h.ct_eq(&u.duress)) {
-            self.notifications.push(json!({"at": crate::pyfmt::utc_now_z(), "account": account, "to": u.contacts,
+            u.failed = 0;
+            let contacts = u.contacts.clone();
+            self.notifications.push(json!({"at": crate::pyfmt::utc_now_z(), "account": account, "to": contacts,
                 "message": "Possible coercion: a payment was confirmed with the duress PIN. The money is on hold."}));
             return json!({"result": "duress", "shown_to_customer": "Payment successful", "funds": "held",
-                          "trusted_contacts_alerted": u.contacts.len(), "fraud_desk": "priority alert"});
+                          "trusted_contacts_alerted": contacts.len(), "fraud_desk": "priority alert"});
         }
         if bool::from(h.ct_eq(&u.normal)) {
+            u.failed = 0;
             return json!({"result": "ok"});
         }
-        json!({"result": "wrong_pin"})
+        u.failed += 1;
+        json!({"result": if u.failed >= MAX_FAILED_PINS { "locked" } else { "wrong_pin" }})
+    }
+
+    pub fn confirm(&mut self, account: &str, pin: &str) -> Value {
+        match self.salt(account) {
+            Some(salt) => self.confirm_hashed(account, &pin_hash(pin, &salt)),
+            None => json!({"result": "not_registered"}),
+        }
     }
 
     pub fn debug_dump(&self) -> String {
@@ -211,6 +250,11 @@ mod tests {
         assert_eq!(d["funds"], "held");
         assert!(!v.notifications.is_empty());
         assert_eq!(v.confirm("A1", "0000")["result"], "wrong_pin");
+        assert!(v.register("A1", "1111", "2222", &[]).is_err(), "a registration is never overwritten");
+        for _ in 1..MAX_FAILED_PINS {
+            v.confirm("A1", "0000");
+        }
+        assert_eq!(v.confirm("A1", "1234")["result"], "locked", "even the right PIN after too many wrong ones");
         assert!(v.register("A2", "1111", "1111", &[]).is_err());
         assert!(!v.debug_dump().contains("1234"));
     }

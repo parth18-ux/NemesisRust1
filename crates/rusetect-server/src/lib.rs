@@ -279,7 +279,9 @@ pub fn build_app(app: AppRef) -> Router {
         .nest("/api", api)
         .fallback(|| async { ApiError::new(404, "Not Found") })
         .method_not_allowed_fallback(|| async { ApiError::new(405, "Method Not Allowed") })
+        .layer(middleware::from_fn(require_key))
         .layer(middleware::from_fn_with_state(app.clone(), rate_limit))
+        .layer(middleware::from_fn(security_headers))
         .layer(cors)
         .with_state(app)
 }
@@ -307,8 +309,12 @@ pub const PRODUCTION_SECRETS: [&str; 3] = ["RUSETECT_SIGNING_KEY", "RUSETECT_CON
 /// asked for explicitly with RUSETECT_DEMO=1. With analyst keys the deployment is not a demo, so the hard-coded demo
 /// consortium secret, demo hash salt and per-process signing key must not be used. Returns what is missing.
 pub fn missing_production_secrets(env: impl Fn(&str) -> Option<String>) -> Vec<&'static str> {
-    if env("RUSETECT_ANALYST_KEYS").is_none() {
+    let Some(keys) = env("RUSETECT_ANALYST_KEYS") else {
         return if env("RUSETECT_DEMO").as_deref() == Some("1") { vec![] } else { vec!["RUSETECT_ANALYST_KEYS (or RUSETECT_DEMO=1 for the public demo)"] };
+    };
+    if let Err(e) = rusetect::security::parse_keys(&keys) {
+        eprintln!("RUSETECT_ANALYST_KEYS: {e}");
+        return vec!["a valid RUSETECT_ANALYST_KEYS ({key: {analyst, role}}, keys of 16+ characters)"];
     }
     PRODUCTION_SECRETS.into_iter().filter(|k| env(k).map(|v| v.trim().is_empty()).unwrap_or(true)).collect()
 }
@@ -354,6 +360,30 @@ static TRUST_PROXY: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
 });
 
 /// Requests per 10 s per client on POST /api.
+/// Accounts with a typing profile kept in memory (each holds at most 20 sessions of 1,000 key pairs).
+const MAX_PROFILES: usize = 100_000;
+
+/// Outside demo mode every /api route needs a known X-Analyst-Key except the public ones (security::gate).
+async fn require_key(req: Request, next: Next) -> Response {
+    if let Some(path) = req.uri().path().strip_prefix("/api") {
+        let key = req.headers().get("x-analyst-key").and_then(|v| v.to_str().ok());
+        if let Err((code, msg)) = rusetect::security::gate(&KEYS, path, key) {
+            return ApiError::new(code, msg).into_response();
+        }
+    }
+    next.run(req).await
+}
+
+/// Baseline response headers: no MIME sniffing, no framing (clickjacking), no referrer leaks.
+async fn security_headers(req: Request, next: Next) -> Response {
+    let mut r = next.run(req).await;
+    let h = r.headers_mut();
+    h.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
+    h.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    h.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
+    r
+}
+
 async fn rate_limit(State(app): State<AppRef>, req: Request, next: Next) -> Response {
     if req.method() == Method::POST && req.uri().path().starts_with("/api/") {
         let peer = req.extensions().get::<ConnectInfo<SocketAddr>>().map(|c| c.0.ip().to_string()).unwrap_or_else(|| "?".into());
@@ -637,15 +667,28 @@ async fn v2_duress_register(State(app): State<AppRef>, b: Bytes) -> ApiResult {
     let (account, normal, duress, contacts) = parse_obj(&b, |o, e| {
         (o.req_str(e, "account"), o.req_str(e, "normal_pin"), o.req_str(e, "duress_pin"), o.str_list(e, "trusted_contacts"))
     })?;
-    with_state(app, move |s| s.duress.register(&account, &normal, &duress, &contacts).map(|v| PyJson(StatusCode::OK, v)).map_err(|m| ApiError::new(400, m))).await
+    // PBKDF2 runs outside the shared lock, so PIN routes cannot stall every other request
+    let u = tokio::task::spawn_blocking(move || rusetect::intervention::DuressVault::prepare(&normal, &duress, &contacts)).await
+        .map_err(|e| ApiError::new(500, format!("internal error: {e}")))?.map_err(|m| ApiError::new(400, m))?;
+    with_state(app, move |s| s.duress.insert(&account, u).map(|v| PyJson(StatusCode::OK, v)).map_err(|m| ApiError::new(409, m))).await
 }
 
 /// Confirm a payment with a PIN. The duress PIN shows success to the customer but holds the money and alerts trusted
 /// contacts and the fraud desk. The response says what the customer sees and what really happened.
 async fn v2_confirm(State(app): State<AppRef>, b: Bytes) -> ApiResult {
     let (account, pin, alert_id) = parse_obj(&b, |o, e| (o.req_str(e, "account"), o.req_str(e, "pin"), o.opt_str(e, "alert_id")))?;
+    let acct = account.clone();
+    let salt = with_state(app.clone(), move |s| ok(json!(s.duress.salt(&acct).map(|b| b.to_vec())))).await?;
+    let h = match serde_json::from_value::<Option<Vec<u8>>>(salt.1.clone()).ok().flatten() {
+        Some(salt) => Some(tokio::task::spawn_blocking(move || rusetect::intervention::pin_hash(&pin, &salt)).await
+            .map_err(|e| ApiError::new(500, format!("internal error: {e}")))?),
+        None => None,
+    };
     with_state(app, move |s| {
-        let r = s.duress.confirm(&account, &pin);
+        let r = match h {
+            Some(h) => s.duress.confirm_hashed(&account, &h),
+            None => json!({"result": "not_registered"}),
+        };
         if r["result"] == "duress" {
             if let Some(aid) = alert_id.filter(|a| !a.is_empty() && s.desk.alerts.contains_key(a)) {
                 let _ = s.desk.system_event(&aid, "duress_hold", "customer", "duress PIN used: funds held, trusted contacts alerted", true);
@@ -657,7 +700,7 @@ async fn v2_confirm(State(app): State<AppRef>, b: Bytes) -> ApiResult {
 
 fn digraphs_of(m: &Map<String, Value>) -> Result<IndexMap<String, f64>, ApiError> {
     m.iter().map(|(k, v)| {
-        rusetect::pyfmt::py_float_value(v).map(|x| (k.clone(), x)).ok_or_else(|| ApiError {
+        rusetect::pyfmt::py_float_value(v).filter(|x| x.is_finite()).map(|x| (k.clone(), x)).ok_or_else(|| ApiError {
             status: 422,
             detail: json!([{"type": "float_parsing", "loc": ["body", "digraphs", k], "msg": "Input should be a valid number", "input": v}]),
         })
@@ -668,6 +711,9 @@ async fn v2_behaviour_enrol(State(app): State<AppRef>, b: Bytes) -> ApiResult {
     let (account, dg) = parse_obj(&b, |o, e| (o.req_str(e, "account"), o.req_dict(e, "digraphs")))?;
     let dg = digraphs_of(&dg)?;
     with_state(app, move |s| {
+        if s.profiles.len() >= MAX_PROFILES && !s.profiles.contains_key(&account) {
+            return Err(ApiError::new(503, "typing profiles are full"));
+        }
         let prof = s.profiles.entry(account.clone()).or_default();
         prof.enrol(dg);
         ok(json!({"account": account, "sessions": prof.sessions.len(), "ready": prof.ready()}))
@@ -706,9 +752,12 @@ async fn v2_consortium_publish(State(app): State<AppRef>, h: HeaderMap, b: Bytes
     })?;
     let key = header(&h, "x-analyst-key");
     with_state(app, move |s| {
-        if analyst_for(key.as_deref()).is_none() {
-            return Err(ApiError::new(401, "missing or unknown X-Analyst-Key"));
+        let who = analyst_for(key.as_deref()).ok_or_else(|| ApiError::new(401, "missing or unknown X-Analyst-Key"))?;
+        if !matches!(who.role.as_str(), "analyst" | "supervisor") {
+            return Err(ApiError::new(403, "publishing to the consortium needs an analyst or supervisor key"));
         }
+        // a real deployment signs only as itself; the demo lets the visitor play the other member banks
+        let bank = if KEYS.demo_mode { bank } else { THIS_BANK.to_string() };
         if !s.consortium.banks.contains_key(&bank) {
             return Err(ApiError::new(400, "unknown member bank"));
         }
@@ -798,11 +847,15 @@ async fn v2_batch(State(app): State<AppRef>, b: Bytes) -> ApiResult {
     if items.len() > 20000 {
         return Err(ApiError::new(413, "Batch too large (max 20000)"));
     }
-    let mut items = items;
-    items.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
-    let pays: Vec<Payment> = items.iter().map(payment_of).collect::<Result<_, _>>()?;
+    // in time order by the parsed minute (sorting the raw strings misorders mixed separators or unpadded months)
+    let mut pays: Vec<Payment> = items.iter().map(payment_of).collect::<Result<_, _>>()?;
+    pays.sort_by_key(|p| p.tmin);
     with_state(app, move |s| {
         s.need_engine()?;
+        // all or nothing: refuse up front rather than fail half way (a retry would then count the first half twice)
+        if s.engine.as_ref().unwrap().n_accounts() + 2 * pays.len() > *MAX_ACCOUNTS {
+            return Err(ApiError::new(503, "account state is too full for this batch; reset the demo or raise RUSETECT_MAX_ACCOUNTS"));
+        }
         let mut out = Vec::with_capacity(pays.len());
         for p in &pays {
             out.push(score_with_context(s, p)?);

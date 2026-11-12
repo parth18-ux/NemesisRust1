@@ -31,12 +31,18 @@ impl Scorer {
             let s1 = m.l1.predict(&x) as f64;
             let mut esc = s1 >= cfg.l1_threshold;
             let mut risk = if esc { m.l2(&x) } else { s1 };
-            // same structuring window and format hardening as Engine::finish_risk
+            // same structuring window and format hardening as Engine::finish_risk (the window applies with or without
+            // the hardening file, as there)
+            let payer_window = m.hardening.as_ref().is_some_and(|h| h.payer_window);
+            let payee = if payer_window { String::new() } else { format!("{}|{}", p.to_bank, p.to_account) };
+            let (n, pair) = self.state.pair_window(p, &payee, risk)?;
+            let raised = if n > 1 { pair.max(risk) } else { risk };
             if let Some(h) = m.hardening.as_ref() {
-                let payee = if h.payer_window { String::new() } else { format!("{}|{}", p.to_bank, p.to_account) };
-                let (n, pair) = self.state.pair_window(p, &payee, risk)?;
-                risk = h.risk(&x, if n > 1 { pair.max(risk) } else { risk }).0;
+                risk = h.risk(&x, raised).0;
                 esc = true;
+            } else {
+                esc |= raised > risk;
+                risk = raised;
             }
             let (vt, ht, bt) = self.eng.thresholds();
             let rank = if !esc { 0 } else if risk >= bt { 3 } else if risk >= ht { 2 } else if risk >= vt { 1 } else { 0 };
@@ -57,11 +63,15 @@ pub fn run(redis_url: &str, partition: u32, batch: usize, group: &str, prefix: &
     let _: redis::RedisResult<()> = redis::cmd("XGROUP").arg("CREATE").arg(&stream).arg(group).arg("0").arg("MKSTREAM").query(&mut con);
     let mut sc = Scorer::new(client.get_connection()?, prefix)?;
     let mut n = 0usize;
+    // start with this consumer's own unacknowledged messages (a crash between scoring and XACK), then new ones.
+    // Delivery is at-least-once: a message scored but not acknowledged before a crash is scored again.
+    let mut cursor = "0";
     loop {
         let resp: redis::Value = redis::cmd("XREADGROUP").arg("GROUP").arg(group).arg(format!("worker-{partition}")).arg("COUNT").arg(batch)
-            .arg("BLOCK").arg(2000).arg("STREAMS").arg(&stream).arg(">").query(&mut con)?;
+            .arg("BLOCK").arg(2000).arg("STREAMS").arg(&stream).arg(cursor).query(&mut con)?;
         let msgs = parse_stream(resp);
         if msgs.is_empty() {
+            cursor = ">";
             continue;
         }
         let (mut stop, mut pays, mut ids, mut enq) = (false, vec![], vec![], vec![]);
@@ -72,7 +82,15 @@ pub fn run(redis_url: &str, partition: u32, batch: usize, group: &str, prefix: &
                 continue;
             }
             let Some(pj) = fields.iter().find(|(k, _)| k == "p").map(|x| x.1.clone()) else { continue };
-            pays.push(serde_json::from_str::<Payment>(&pj)?);
+            // a malformed message goes to a dead-letter stream (and is acknowledged) instead of stopping the worker
+            match serde_json::from_str::<Payment>(&pj) {
+                Ok(p) if p.amount_paid.is_finite() && p.amount_paid > 0.0 => pays.push(p),
+                bad => {
+                    let why = bad.err().map(|e| e.to_string()).unwrap_or_else(|| "amount_paid must be finite and positive".into());
+                    redis::cmd("XADD").arg(format!("{prefix}deadletter")).arg("*").arg("id").arg(&id).arg("reason").arg(why).arg("p").arg(&pj).query::<()>(&mut con)?;
+                    continue;
+                }
+            }
             enq.push(fields.iter().find(|(k, _)| k == "enq_ns").and_then(|x| x.1.parse::<u128>().ok()).unwrap_or(0));
         }
         if !pays.is_empty() {

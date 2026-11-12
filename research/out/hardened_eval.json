@@ -16,12 +16,12 @@
    "rows": 1015669
   },
   "hardened": {
-   "pr_auc": 0.6478,
+   "pr_auc": 0.6258,
    "ci95": [
-    0.6244,
-    0.6672
+    0.6017,
+    0.6464
    ],
-   "roc_auc": 0.9882,
+   "roc_auc": 0.9861,
    "positives": 1082,
    "rows": 1015669
   }
@@ -35,11 +35,11 @@
    "Wire": 0.003
   },
   "hardened": {
-   "Bitcoin": 0.6086,
-   "Cash": 0.6056,
-   "Cheque": 0.6058,
-   "Credit Card": 0.6052,
-   "Wire": 0.6047
+   "Bitcoin": 0.5724,
+   "Cash": 0.5715,
+   "Cheque": 0.5717,
+   "Credit Card": 0.5708,
+   "Wire": 0.5704
   }
  },
  "thresholds": {
@@ -49,8 +49,8 @@
    "block": 0.001340003485387464
   },
   "hardened": {
-   "verify": 0.010297347791492939,
-   "hold": 0.042735349386930466,
+   "verify": 0.012466607615351677,
+   "hold": 0.0441527446300716,
    "block": 0.13074204946996468
   }
  },
@@ -61,7 +61,7 @@
    "H3": true
   },
   "adopt": true,
-  "decided_at_seconds": 187.9,
+  "decided_at_seconds": 272.9,
   "note": "decided on validation only; test scored after this line"
  },
  "test": {
@@ -76,12 +76,12 @@
    "rows": 1015669
   },
   "hardened": {
-   "pr_auc": 0.72,
+   "pr_auc": 0.7163,
    "ci95": [
-    0.6989,
-    0.7367
+    0.6951,
+    0.7353
    ],
-   "roc_auc": 0.9907,
+   "roc_auc": 0.9882,
    "positives": 1797,
    "rows": 1015669
   },
@@ -97,12 +97,12 @@
     "rows": 1014561
    },
    "hardened": {
-    "pr_auc": 0.5798,
+    "pr_auc": 0.5787,
     "ci95": [
-     0.5512,
-     0.6068
+     0.5513,
+     0.6072
     ],
-    "roc_auc": 0.9858,
+    "roc_auc": 0.982,
     "positives": 1142,
     "rows": 1014561
    }
@@ -116,11 +116,11 @@
     "Wire": 0.0045
    },
    "hardened": {
-    "Bitcoin": 0.6907,
-    "Cash": 0.69,
-    "Cheque": 0.6899,
-    "Credit Card": 0.688,
-    "Wire": 0.6874
+    "Bitcoin": 0.684,
+    "Cash": 0.6832,
+    "Cheque": 0.683,
+    "Credit Card": 0.6819,
+    "Wire": 0.6814
    }
   },
   "bands": {
@@ -146,22 +146,22 @@
    },
    "hardened": {
     "verify": {
-     "flags": 15523,
-     "tp": 1603,
-     "precision": 0.1033,
-     "recall": 0.892
+     "flags": 16378,
+     "tp": 1601,
+     "precision": 0.0978,
+     "recall": 0.8909
     },
     "hold": {
-     "flags": 6649,
-     "tp": 1510,
-     "precision": 0.2271,
-     "recall": 0.8403
+     "flags": 6337,
+     "tp": 1482,
+     "precision": 0.2339,
+     "recall": 0.8247
     },
     "block": {
-     "flags": 2075,
-     "tp": 1253,
-     "precision": 0.6039,
-     "recall": 0.6973
+     "flags": 2304,
+     "tp": 1271,
+     "precision": 0.5516,
+     "recall": 0.7073
     }
    }
   },
@@ -188,25 +188,24 @@
    },
    "hardened": {
     "verify": {
-     "flags": 15484,
-     "tp": 1564,
-     "precision": 0.101,
-     "recall": 0.8703
+     "flags": 16331,
+     "tp": 1554,
+     "precision": 0.0952,
+     "recall": 0.8648
     },
     "hold": {
-     "flags": 6609,
-     "tp": 1470,
-     "precision": 0.2224,
-     "recall": 0.818
+     "flags": 6280,
+     "tp": 1425,
+     "precision": 0.2269,
+     "recall": 0.793
     },
     "block": {
-     "flags": 2005,
-     "tp": 1183,
-     "precision": 0.59,
-     "recall": 0.6583
+     "flags": 2245,
+     "tp": 1212,
+     "precision": 0.5399,
+     "recall": 0.6745
     }
    }
   }
- },
- "source": "service/models/hardening.json as served: written by research/pooled_hardening.py; risk = max(iso_served(cascade), iso_free(pooled 29-feature XGBoost))"
+ }
 }
