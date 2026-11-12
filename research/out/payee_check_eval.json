@@ -1,0 +1,277 @@
+{
+  "rule": "ADOPTION RULE in research/payee_check_eval.py (pre-registered)",
+  "date": "2026-11-12",
+  "scorer": "Rust sanctions score_v2 (crates/rusetect/src/sanctions.rs) via crates/rusetect/src/payee.rs and the payee_dump example; no Python mirror",
+  "seed": 20261113,
+  "people": 300,
+  "businesses": 100,
+  "threshold_rule": "fitted on validation only: T_HI lowest with match precision >= 0.995 (and above); T_LO highest <= T_HI with same-pair coverage >= 0.97",
+  "t_hi": 0.9352,
+  "t_lo": 0.7967,
+  "train": {
+    "pairs": 2592,
+    "same_pairs": 1632,
+    "different_pairs": 960,
+    "match_precision": 1.0,
+    "different_labelled_match": 0,
+    "same_match_or_close": 0.9798,
+    "same_match": 0.6998,
+    "different_close_match_share": 0.224,
+    "verdicts_by_category": {
+      "different:business_entered": {
+        "match": 0,
+        "close_match": 6,
+        "no_match": 174
+      },
+      "different:owner_name": {
+        "match": 0,
+        "close_match": 60,
+        "no_match": 0
+      },
+      "different:person_entered": {
+        "match": 0,
+        "close_match": 0,
+        "no_match": 60
+      },
+      "different:same_first": {
+        "match": 0,
+        "close_match": 38,
+        "no_match": 142
+      },
+      "different:same_surname": {
+        "match": 0,
+        "close_match": 49,
+        "no_match": 131
+      },
+      "different:same_trade": {
+        "match": 0,
+        "close_match": 60,
+        "no_match": 0
+      },
+      "different:unrelated": {
+        "match": 0,
+        "close_match": 2,
+        "no_match": 238
+      },
+      "same:exact": {
+        "match": 240,
+        "close_match": 0,
+        "no_match": 0
+      },
+      "same:initial": {
+        "match": 0,
+        "close_match": 338,
+        "no_match": 22
+      },
+      "same:middle_dropped": {
+        "match": 63,
+        "close_match": 0,
+        "no_match": 0
+      },
+      "same:nickname": {
+        "match": 11,
+        "close_match": 47,
+        "no_match": 11
+      },
+      "same:noise": {
+        "match": 420,
+        "close_match": 0,
+        "no_match": 0
+      },
+      "same:suffix_dropped": {
+        "match": 0,
+        "close_match": 60,
+        "no_match": 0
+      },
+      "same:translit": {
+        "match": 177,
+        "close_match": 3,
+        "no_match": 0
+      },
+      "same:typo": {
+        "match": 231,
+        "close_match": 9,
+        "no_match": 0
+      }
+    }
+  },
+  "validation": {
+    "pairs": 880,
+    "same_pairs": 560,
+    "different_pairs": 320,
+    "match_precision": 0.9975,
+    "different_labelled_match": 1,
+    "same_match_or_close": 0.9732,
+    "same_match": 0.7,
+    "different_close_match_share": 0.1906,
+    "verdicts_by_category": {
+      "different:business_entered": {
+        "match": 0,
+        "close_match": 1,
+        "no_match": 59
+      },
+      "different:owner_name": {
+        "match": 0,
+        "close_match": 20,
+        "no_match": 0
+      },
+      "different:person_entered": {
+        "match": 0,
+        "close_match": 0,
+        "no_match": 20
+      },
+      "different:same_first": {
+        "match": 0,
+        "close_match": 7,
+        "no_match": 53
+      },
+      "different:same_surname": {
+        "match": 1,
+        "close_match": 12,
+        "no_match": 47
+      },
+      "different:same_trade": {
+        "match": 0,
+        "close_match": 20,
+        "no_match": 0
+      },
+      "different:unrelated": {
+        "match": 0,
+        "close_match": 1,
+        "no_match": 79
+      },
+      "same:exact": {
+        "match": 80,
+        "close_match": 0,
+        "no_match": 0
+      },
+      "same:initial": {
+        "match": 0,
+        "close_match": 110,
+        "no_match": 10
+      },
+      "same:middle_dropped": {
+        "match": 31,
+        "close_match": 0,
+        "no_match": 0
+      },
+      "same:nickname": {
+        "match": 3,
+        "close_match": 21,
+        "no_match": 5
+      },
+      "same:noise": {
+        "match": 140,
+        "close_match": 0,
+        "no_match": 0
+      },
+      "same:suffix_dropped": {
+        "match": 0,
+        "close_match": 20,
+        "no_match": 0
+      },
+      "same:translit": {
+        "match": 59,
+        "close_match": 1,
+        "no_match": 0
+      },
+      "same:typo": {
+        "match": 79,
+        "close_match": 1,
+        "no_match": 0
+      }
+    }
+  },
+  "test": {
+    "pairs": 866,
+    "same_pairs": 546,
+    "different_pairs": 320,
+    "match_precision": 1.0,
+    "different_labelled_match": 0,
+    "same_match_or_close": 0.9799,
+    "same_match": 0.7015,
+    "different_close_match_share": 0.2094,
+    "verdicts_by_category": {
+      "different:business_entered": {
+        "match": 0,
+        "close_match": 4,
+        "no_match": 56
+      },
+      "different:owner_name": {
+        "match": 0,
+        "close_match": 20,
+        "no_match": 0
+      },
+      "different:person_entered": {
+        "match": 0,
+        "close_match": 0,
+        "no_match": 20
+      },
+      "different:same_first": {
+        "match": 0,
+        "close_match": 10,
+        "no_match": 50
+      },
+      "different:same_surname": {
+        "match": 0,
+        "close_match": 13,
+        "no_match": 47
+      },
+      "different:same_trade": {
+        "match": 0,
+        "close_match": 20,
+        "no_match": 0
+      },
+      "different:unrelated": {
+        "match": 0,
+        "close_match": 0,
+        "no_match": 80
+      },
+      "same:exact": {
+        "match": 80,
+        "close_match": 0,
+        "no_match": 0
+      },
+      "same:initial": {
+        "match": 0,
+        "close_match": 110,
+        "no_match": 10
+      },
+      "same:middle_dropped": {
+        "match": 25,
+        "close_match": 0,
+        "no_match": 0
+      },
+      "same:nickname": {
+        "match": 4,
+        "close_match": 16,
+        "no_match": 1
+      },
+      "same:noise": {
+        "match": 140,
+        "close_match": 0,
+        "no_match": 0
+      },
+      "same:suffix_dropped": {
+        "match": 0,
+        "close_match": 20,
+        "no_match": 0
+      },
+      "same:translit": {
+        "match": 58,
+        "close_match": 2,
+        "no_match": 0
+      },
+      "same:typo": {
+        "match": 76,
+        "close_match": 4,
+        "no_match": 0
+      }
+    }
+  },
+  "checks": {
+    "a_test_match_precision_ge_0.99": true,
+    "b_test_same_match_or_close_ge_0.95": true
+  },
+  "adopted": true
+}

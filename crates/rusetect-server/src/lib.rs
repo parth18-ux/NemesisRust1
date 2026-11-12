@@ -84,6 +84,8 @@ pub struct AppState {
     pub auth: Option<rusetect::pramaan::AuthEngine>,
     /// watchlist and its hit threshold (research/out/sanctions_eval_v2.json when v2 was adopted, else sanctions_eval.json); None if absent
     pub sanctions: Option<(rusetect::sanctions::List, f64)>,
+    /// payee name check thresholds (t_hi, t_lo) from research/out/payee_check_eval.json; None unless it was adopted
+    pub payee: Option<(f64, f64)>,
     pub demo: Demo,
 }
 
@@ -131,6 +133,8 @@ impl AppState {
                 None
             }
         };
+        let payee = read_json(root.join("research/out/payee_check_eval.json")).ok().filter(|v| v["adopted"] == true)
+            .and_then(|v| Some((v["t_hi"].as_f64()?, v["t_lo"].as_f64()?)));
         AppState {
             verifier: Verifier::load(&models.join("typing_verifier.json")),
             root,
@@ -152,6 +156,7 @@ impl AppState {
                 }
             },
             sanctions,
+            payee,
             demo: Demo { truth: truth0(), ..Default::default() },
         }
     }
@@ -290,6 +295,7 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/v2/audit", get(v2_audit))
         .route("/v2/message", post(v2_message))
         .route("/v2/sanctions/screen", post(v2_sanctions))
+        .route("/v2/payee/check", post(v2_payee_check))
         .route("/v2/message-model", get(v2_message_model))
         .route("/v2/payments/batch", post(v2_batch))
         .route("/v2/cases", get(v2_cases))
@@ -329,6 +335,7 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/models/sample_applications.json", "service/models/demo_stream.csv.gz",
     "service/models/hardening.json", "service/models/hardening_xgb.json", "service/models/auth_config.json", "service/models/auth_xgb.json",
     "service/models/sanctions_sdn.csv", "research/out/sanctions_eval.json", "research/out/sanctions_eval_v2.json",
+    "research/out/payee_check_eval.json",
     "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html",
     "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
 ];
@@ -950,6 +957,39 @@ async fn v2_sanctions(State(app): State<AppRef>, b: Bytes) -> ApiResult {
         let matches: Vec<Value> = m.iter().map(|(e, sc)| json!({"name": e.name, "list_id": e.id, "program": e.program,
             "score": (sc * 1e4).round() / 1e4})).collect();
         ok(json!({"matches": matches, "hit": hit, "threshold": t}))
+    }).await
+}
+
+/// Payee name check (confirmation of payee): the name the payer typed against the account holder name.
+async fn v2_payee_check(State(app): State<AppRef>, b: Bytes) -> ApiResult {
+    let (entered, account, kind) = parse_obj(&b, |o, e| {
+        let mut name = |k: &str| {
+            let v = o.req_str(e, k);
+            if o.get(k).map(|v| v.is_string()).unwrap_or(false) {
+                o.check_len(e, k, v.trim(), Some(1), Some(300));
+            }
+            v
+        };
+        let (entered, account) = (name("entered_name"), name("account_name"));
+        let kind = o.opt_str(e, "account_type");
+        if let Some(k) = &kind {
+            o.one_of(e, "account_type", k, &["individual", "business"]);
+        }
+        (entered, account, kind)
+    })?;
+    for (k, v) in [("entered_name", &entered), ("account_name", &account)] {
+        if rusetect::sanctions::normalise(v).is_empty() {
+            return Err(ApiError::new(422, format!("{k}: needs at least one letter or digit besides honorifics")));
+        }
+    }
+    with_state(app, move |s| {
+        let (t_hi, t_lo) = s.payee.ok_or_else(|| ApiError::new(503, "Payee check thresholds not loaded"))?;
+        let r = rusetect::payee::check(&entered, &account, kind.as_deref(), t_hi, t_lo);
+        let mut out = json!({"verdict": r.verdict, "score": r.score, "reason": r.reason});
+        if let Some(n) = r.suggested_name {
+            out["suggested_name"] = json!(n);
+        }
+        ok(out)
     }).await
 }
 

@@ -625,6 +625,26 @@ fn campaigns_use_only_the_newest_alerts() {
 }
 
 #[tokio::test]
+async fn payee_check_verdicts_and_validation() {
+    let t = T::new();
+    let ev: Value = serde_json::from_str(&std::fs::read_to_string(paths::repo_root().join("research/out/payee_check_eval.json")).unwrap()).unwrap();
+    assert_eq!(ev["adopted"], true, "the endpoint is served only when the pre-registered evaluation adopted it");
+    let r = t.post("/api/v2/payee/check", json!({"entered_name": "Mr John Smith", "account_name": "John Smith", "account_type": "individual"})).await;
+    assert_eq!(r, json!({"verdict": "match", "score": 1.0, "reason": "exact match"}));
+    let r = t.post("/api/v2/payee/check", json!({"entered_name": "J Smith", "account_name": "John Smith"})).await;
+    assert_eq!((r["verdict"].as_str(), r["suggested_name"].as_str()), (Some("close_match"), Some("John Smith")));
+    let r = t.post("/api/v2/payee/check", json!({"entered_name": "John Smith", "account_name": "John Smith Trading Ltd", "account_type": "business"})).await;
+    assert_eq!(r["verdict"], "close_match");
+    assert!(r["reason"].as_str().unwrap().starts_with("the account is a business account"));
+    let r = t.post("/api/v2/payee/check", json!({"entered_name": "Aldric Venthorpe", "account_name": "Mary Jones"})).await;
+    assert_eq!((r["verdict"].as_str(), r.get("suggested_name")), (Some("no_match"), None));
+    for bad in [json!({}), json!({"entered_name": "A"}), json!({"entered_name": "", "account_name": "B"}), json!({"entered_name": "x".repeat(301), "account_name": "B"}),
+                json!({"entered_name": "Dr.", "account_name": "B"}), json!({"entered_name": "A", "account_name": "B", "account_type": "trust"})] {
+        assert_eq!(t.req("POST", "/api/v2/payee/check", Some(bad.clone()), &[]).await.0, StatusCode::UNPROCESSABLE_ENTITY, "{bad}");
+    }
+}
+
+#[tokio::test]
 async fn sanctions_screen_finds_variants_and_validates() {
     let t = T::new();
     let r = t.post("/api/v2/sanctions/screen", json!({"name": "VENTHORPE, Mr Aldric"})).await;
