@@ -115,6 +115,27 @@ button.primary{background:var(--olive);border-color:var(--olive);color:var(--oli
 .panel{border-radius:16px}
 :focus-visible{outline:2px solid var(--olive);outline-offset:3px}
 </style>
+<style id="motion">
+/* shared motion layer: fluid type, reveal on scroll, count-up numbers, hover depth; all motion off under reduced motion */
+html{scroll-padding-top:84px;-webkit-text-size-adjust:100%}
+img,svg,video,canvas{max-width:100%}
+.tbl,.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.wrap>header h1,body>.wrap h1{font-size:clamp(22px,1.4vw + 16px,32px)}
+.scroll-progress{position:fixed;inset:0 0 auto 0;height:2px;transform-origin:0 50%;transform:scaleX(var(--p,0));background:var(--olive,var(--accent,#3c4a14));z-index:1000;pointer-events:none}
+@media (max-width:640px){.truth,.kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media (prefers-reduced-motion:no-preference){
+  body{animation:m-page .55s cubic-bezier(.2,.7,.2,1) both}
+  @keyframes m-page{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .m-rv{opacity:0;transform:translateY(22px);transition:opacity .75s cubic-bezier(.2,.7,.2,1),transform .75s cubic-bezier(.2,.7,.2,1);transition-delay:var(--m-d,0s)}
+  .m-rv.m-in{opacity:1;transform:none}
+  a,button,.pill,.chip,.card,.kpi,.spec,.find,.fstep,.t{transition:transform .28s cubic-bezier(.2,.7,.2,1),box-shadow .28s,background-color .2s,color .2s,border-color .2s,opacity .2s}
+  .card:hover,.kpi:hover,.spec:hover,.find:hover{transform:translateY(-3px);box-shadow:0 14px 30px -18px rgba(20,30,10,.35)}
+  .pill:hover,button:not(:disabled):hover{transform:translateY(-1px)}
+  .pill:active,button:not(:disabled):active{transform:translateY(0) scale(.97)}
+  .links a{background:linear-gradient(currentColor,currentColor) 0 100%/0 1px no-repeat;transition:background-size .3s cubic-bezier(.2,.7,.2,1),color .2s}
+  .links a:hover{background-size:100% 1px}
+}
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -195,7 +216,7 @@ async function api(path, opts = {}) {
 }
 
 async function boot() {
-  try { const h = await api("/api/"); $("status").textContent = h.engine_loaded ? "Engine: models loaded" : "Engine: models missing"; }
+  try { const h = await api("/api/health"); $("status").textContent = h.engine_loaded ? "Engine: models loaded" : "Engine: models missing"; }
   catch (e) { $("status").textContent = "Engine: API not reachable"; }
 }
 
@@ -316,6 +337,46 @@ $("msgPayScam").onclick = () => lastMsg && payAfter("upi", lastMsg.entities.upi_
 
 $("obMule").onclick = () => onboard("mule"); $("obGen").onclick = () => onboard("genuine");
 boot();
+</script>
+<script id="motion-js">
+(() => {
+  const bar = document.createElement("div"); bar.className = "scroll-progress"; document.body.appendChild(bar);
+  const h = document.documentElement;
+  const tick = () => { const m = h.scrollHeight - h.clientHeight; bar.style.setProperty("--p", m > 0 ? h.scrollTop / m : 0); };
+  addEventListener("scroll", tick, {passive: true}); addEventListener("resize", tick); tick();
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) return;
+  // reveal: only elements that start below the fold, so nothing visible on load flickers
+  const sel = "main > section, section > .wrap > *, section > h2, section > p, .card, .kpi, .spec, .find, .stat, table, .tbl";
+  const seen = new Set();
+  const items = [...document.querySelectorAll(sel)].filter(e => {
+    if (e.closest("header, nav, .hero") || [...seen].some(s => s.contains(e))) return false;
+    const r = e.getBoundingClientRect();
+    if (!r.height || !r.width || r.top < innerHeight * 0.92) return false;  // hidden or already in view: leave as is
+    seen.add(e); return true;
+  });
+  const sib = new Map();
+  items.forEach(e => { const i = sib.get(e.parentNode) || 0; sib.set(e.parentNode, i + 1); e.style.setProperty("--m-d", Math.min(i, 5) * 0.07 + "s"); e.classList.add("m-rv"); });
+  const io = new IntersectionObserver(es => es.forEach(x => { if (x.isIntersecting) { x.target.classList.add("m-in"); io.unobserve(x.target); } }), {rootMargin: "0px 0px -8% 0px"});
+  items.forEach(e => io.observe(e));
+  // anything scrolled past too fast to intersect (jump links, restored scroll) is shown, never left invisible
+  addEventListener("scroll", () => items.forEach(e => { if (!e.classList.contains("m-in") && e.getBoundingClientRect().top < innerHeight) { e.classList.add("m-in"); io.unobserve(e); } }), {passive: true});
+  // count-up: the leading number of a stat (keeps decimals, thousands separators and any suffix)
+  const nums = document.querySelectorAll(".stat.num, .kpi .v");
+  const run = el => {
+    const node = [...el.childNodes].find(n => n.nodeType === 3 && /\d/.test(n.textContent));
+    if (!node) return;
+    const m = node.textContent.match(/^(\D*)([\d,]*\.?\d+)(.*)$/s);
+    if (!m) return;
+    const [, pre, raw, post] = m, target = parseFloat(raw.replace(/,/g, "")), dec = (raw.split(".")[1] || "").length, comma = raw.includes(",");
+    if (!isFinite(target)) return;
+    const fmt = v => { let s = v.toFixed(dec); if (comma) { const [a, b] = s.split("."); s = a.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (b ? "." + b : ""); } return pre + s + post; };
+    const t0 = performance.now(), dur = 1100;
+    const step = t => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); node.textContent = fmt(target * e); if (k < 1) requestAnimationFrame(step); else node.textContent = pre + raw + post; };
+    requestAnimationFrame(step);
+  };
+  const nio = new IntersectionObserver(es => es.forEach(x => { if (x.isIntersecting) { run(x.target); nio.unobserve(x.target); } }), {threshold: 0.6});
+  nums.forEach(e => nio.observe(e));
+})();
 </script>
 </body>
 </html>
