@@ -99,6 +99,9 @@ impl ReviewDesk {
             return Err(ReviewError::Invalid("analyst id is required".into()));
         }
         let a = self.alerts.get_mut(alert_id).unwrap();
+        if a["status"] == "blocked" || a["status"] == "released" {
+            return Err(ReviewError::Invalid("alert is final".into()));
+        }
         if action == "approve_block" {
             let appr = a["block_approvals"].as_array_mut().unwrap();
             if appr.iter().any(|x| x == analyst) {
@@ -108,6 +111,7 @@ impl ReviewDesk {
             let n = appr.len();
             a["status"] = json!(if n >= 2 { "blocked" } else { "block_pending_second_approval" });
         } else {
+            a["block_approvals"] = json!([]); // a later block needs two fresh approvals
             a["status"] = json!(match action {
                 "release" => "released",
                 "verify" => "customer_verification",

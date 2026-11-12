@@ -273,6 +273,17 @@ recognised. `/api/v2/assess` does not call it yet: its inputs are validated and 
 names there is a separate change. Limits: names are synthetic, from fixed pools; no open-source Pay.UK CoP matching
 rules exist to compare with (they are published only as rulebooks).
 
+**8q. Review fixes 2: bounded name matching, final review states, challenge eviction.** (1) The v2 subset rule
+searched every one-to-one token alignment, factorial in the token count, on caller-supplied names and under the
+service lock (13 against 14 identical tokens is about 14! steps). It now runs only when the list name has at most 8
+tokens; longer names use the symmetric score alone. No evaluated name is that long: re-running
+`research/sanctions_eval_v2.py` and `research/payee_check_eval.py` leaves every file in `research/out` unchanged.
+(2) A blocked or released alert is final: further analyst actions are refused ("alert is final"), so a two-analyst
+block already published to the consortium cannot be released by one analyst. Any release, verify or hold clears the
+block approvals, so an approval given before a release cannot combine with one given after it. (3) PRAMAAN pending
+challenges were stored only while fewer than 100,000 were pending, so once full every new challenge failed to verify;
+now the oldest pending challenge is dropped to make room.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

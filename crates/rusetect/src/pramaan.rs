@@ -22,8 +22,10 @@ const TRUST_AFTER_USES: u32 = 3;
 const MAX_PAYEES: usize = 300;
 const PRIOR_LOG_AMT: f64 = 6.908754779315221; // ln(1 + 1000)
 const PRIOR_SD: f64 = 1.2;
-/// Bounds on remembered state (users, devices, IP addresses, pending challenges); new keys beyond them are not stored.
+/// Bounds on remembered state (users, devices, IP addresses); new keys beyond them are not stored.
 const MAX_KEYS: usize = 2_000_000;
+/// Pending challenges kept; when full the oldest is dropped, so new customers can always be challenged.
+const MAX_PENDING: usize = 100_000;
 
 /// (name, family, English reason, Hindi reason). Hindi to be reviewed by a native speaker before user-facing use.
 pub const SPEC: [(&str, &str, &str, &str); 27] = [
@@ -186,6 +188,13 @@ pub struct AuthState {
 }
 
 impl AuthState {
+    fn add_pending(&mut self, id: String, p: Pending, cap: usize) {
+        if self.pending.len() >= cap && !self.pending.contains_key(&id) {
+            self.pending.shift_remove_index(0);
+        }
+        self.pending.insert(id, p);
+    }
+
     fn user(&self, uid: &str) -> User {
         self.users.get(uid).cloned().unwrap_or_default()
     }
@@ -490,10 +499,10 @@ impl AuthEngine {
         self.state.record_attempt(&uid, text(dev, "device_id"), text(net, "ip"), now);
         if decision == "allow" {
             self.state.commit(&uid, req, now, false);
-        } else if decision == "challenge" && (self.state.pending.len() < 100_000 || self.state.pending.contains_key(&decision_id)) {
+        } else if decision == "challenge" {
             let slim = json!({"user_id": uid, "ts": now, "device": req.get("device").cloned().unwrap_or(json!({})),
                               "network": req.get("network").cloned().unwrap_or(json!({})), "transaction": req.get("transaction").cloned().unwrap_or(json!({}))});
-            self.state.pending.insert(decision_id.clone(), Pending { req: slim, challenge_type: challenge.unwrap() });
+            self.state.add_pending(decision_id.clone(), Pending { req: slim, challenge_type: challenge.unwrap() }, MAX_PENDING);
         }
         let coached = (f[fi("unknown_call_active")] != 0.0 || f[fi("screen_share_active")] != 0.0) && ctx.device_trusted;
         let (en, hi) = message(decision, challenge, coached);
@@ -564,5 +573,15 @@ mod tests {
         assert_eq!(p.choose_challenge(&f, &ctx), "passkey");
         let (a, c, _, _) = p.decide(0.3, 50_000.0, &f, &ctx);
         assert_eq!((a, c), ("challenge", Some("passkey")));
+    }
+
+    #[test]
+    fn full_pending_evicts_the_oldest() {
+        let mut st = AuthState::default();
+        for i in 0..4 {
+            st.add_pending(format!("d{i}"), Pending { req: json!({}), challenge_type: "otp" }, 3);
+        }
+        assert!(st.pending.contains_key("d3") && !st.pending.contains_key("d0"));
+        assert_eq!(st.pending.len(), 3);
     }
 }

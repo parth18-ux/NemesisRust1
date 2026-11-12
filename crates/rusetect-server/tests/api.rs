@@ -192,6 +192,28 @@ async fn alert_review_audit_evidence() {
 }
 
 #[tokio::test]
+async fn block_and_release_are_final() {
+    let t = T::new();
+    t.post("/api/v2/demo/reset?warm=false", json!({})).await;
+    let mut ids = vec![];
+    for acct in ["RF1", "RF2"] {
+        let r = t.post("/api/v2/assess", json!({"timestamp": "2022-09-09 10:00", "from_bank": "070", "from_account": acct, "to_bank": "011",
+                                               "to_account": "RM1", "amount_paid": 9300, "payment_format": "ACH", "message": S09, "consent": true})).await;
+        ids.push(r["alert_id"].as_str().unwrap().to_string());
+    }
+    // a two-analyst block cannot be released afterwards
+    t.review(&ids[0], Some("demo-analyst-1"), "approve_block", None).await;
+    t.review(&ids[0], Some("demo-analyst-2"), "approve_block", None).await;
+    assert_eq!(t.review(&ids[0], Some("demo-analyst-1"), "release", None).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(t.get(&format!("/api/v2/alerts/{}/evidence", ids[0])).await["alert"]["status"], "blocked");
+    // an approval before a release cannot combine with one after it
+    t.review(&ids[1], Some("demo-analyst-1"), "approve_block", None).await;
+    t.review(&ids[1], Some("demo-analyst-1"), "release", None).await;
+    assert_eq!(t.review(&ids[1], Some("demo-analyst-2"), "approve_block", None).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(t.get(&format!("/api/v2/alerts/{}/evidence", ids[1])).await["alert"]["status"], "released");
+}
+
+#[tokio::test]
 async fn customer_answer_cannot_overwrite_an_analyst_hold() {
     let t = T::new();
     t.post("/api/v2/demo/reset?warm=false", json!({})).await;
