@@ -284,6 +284,31 @@ block approvals, so an approval given before a release cannot combine with one g
 challenges were stored only while fewer than 100,000 were pending, so once full every new challenge failed to verify;
 now the oldest pending challenge is dropped to make room.
 
+**8r. Payee check v2 (nicknames, surname-anchored close match): not adopted.** v1 (8p) showed the payer someone else's
+name on 0.2094 of different-person test pairs and missed hard nicknames. v2, behind a switch in
+`crates/rusetect/src/payee.rs` (`check(.., v2)`), for individual accounts only: a hand-written table of
+56 common English diminutives maps to canonical given names (Bob/Rob/Robbie to Robert, Bill/Will to William, Ted to
+Edward, ...; written for this project, no external list) on the account's given names, and an entered token is mapped
+only onto one of them; close_match also needs an entered token matching the account surname at the match threshold.
+Business names are scored as before. The rule was committed before any v2 code (`research/payee_check_eval_v2.py`): a
+fresh set from the v1 generator with a new seed (20261114) and name pools disjoint from v1's, v2 thresholds fitted on
+its validation split only (match >= 0.94, close_match >= 0.7333; v1 keeps 0.9352 /
+0.7967). Fresh test, v1 against v2: match precision 0.9948 against
+0.995 (2 and 2 different pairs labelled
+match), same payee reaching match or close_match 0.978 against 0.9853,
+different pairs labelled close_match 0.2375 against 0.3438.
+Nicknames improve (match/close/no_match 3/18/4 against 23/2/0) and the
+surname anchor removes same-first-name close matches (1/16/43 against
+1/0/59), but the lower fitted close threshold lets same-surname pairs through
+(1/15/44 against 1/46/13) and a business name typed for a
+person's account carries the surname (0/5/55 against
+0/21/39). Checks failed: a_fresh_test_v2_match_precision_eq_1, c_fresh_test_v2_different_close_le_half_v1, so v1 stays served (the API reads
+`research/out/payee_check_eval_v2.json` and switches only if `adopted` is true). On the old test split: v1 / v2 close
+match on different pairs 0.2094 / 0.3625, same payee covered
+0.9799 / 0.9799. Stated before the run: same-trade and owner-name business
+pairs are all close_match and unchanged by design, so the halving check was hard to reach; the nickname pairs and
+the table share an author, so nickname recall is not an independent measure.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
