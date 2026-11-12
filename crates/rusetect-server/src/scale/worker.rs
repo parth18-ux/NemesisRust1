@@ -30,7 +30,7 @@ impl Scorer {
             let x = self.eng.vec(&f);
             let s1 = m.l1.predict(&x) as f64;
             let mut esc = s1 >= cfg.l1_threshold;
-            let mut risk = if esc { (m.l2x.predict(&x) as f64 + m.l2l.predict_f32(&x)) / 2.0 } else { s1 };
+            let mut risk = if esc { m.l2(&x) } else { s1 };
             // same structuring window and format hardening as Engine::finish_risk
             if let Some(h) = m.hardening.as_ref() {
                 let payee = if h.payer_window { String::new() } else { format!("{}|{}", p.to_bank, p.to_account) };

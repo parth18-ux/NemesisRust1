@@ -246,6 +246,25 @@ pub struct Models {
     pub l0: LiteBooster,
     pub l0cfg: L0Config,
     pub hardening: Option<Hardening>,
+    /// a third L2 model trained on HI-Small, HI-Medium and HI-Large (research/l3_eval.py), served only when
+    /// cascade_config.json names its "l2_mode": "mean3" averages it with the two L2 models, "l3_only" replaces them
+    pub l3: Option<(XgbBooster, bool)>,
+}
+
+impl Models {
+    /// the L2 score of an escalated payment, as research/l3_eval.py computes it
+    pub fn l2(&self, x: &[f32]) -> f64 {
+        self.l2_from(x, self.l2x.predict(x) as f64, self.l2l.predict_f32(x))
+    }
+
+    /// the same, given the two L2 members' scores already computed
+    pub fn l2_from(&self, x: &[f32], sx: f64, sl: f64) -> f64 {
+        match &self.l3 {
+            None => (sx + sl) / 2.0,
+            Some((b, true)) => b.predict(x) as f64,
+            Some((b, false)) => (sx + sl + b.predict(x) as f64) / 3.0,
+        }
+    }
 }
 
 /// Format-hardened risk (research/hardened_eval.py, adopted under its pre-registered rule): a launderer who re-sends a
@@ -366,6 +385,7 @@ impl Models {
             l0: LiteBooster::load(&dir.join("l0_onboarding_lgbm.json"))?,
             l0cfg,
             hardening: None,
+            l3: None,
         })
     }
 }
@@ -417,6 +437,10 @@ impl Engine {
         let models = if load_models {
             let mut m = Models::load(models_dir)?;
             m.hardening = Hardening::load(models_dir, &cfg.features)?;
+            m.l3 = match cfg.raw["l2_mode"].as_str() {
+                Some(mode @ ("mean3" | "l3_only")) => Some((XgbBooster::load(&models_dir.join("l3_xgb.json"))?, mode == "l3_only")),
+                _ => None,
+            };
             Some(m)
         } else {
             None
@@ -621,7 +645,7 @@ impl Engine {
         } else {
             let sx = m.l2x.predict(&x) as f64;
             let sl = m.l2l.predict_f32(&x);
-            let risk = (sx + sl) / 2.0;
+            let risk = m.l2_from(&x, sx, sl);
             // reasons are added in finish_risk, only for flagged payments (TreeSHAP is most of the scoring time)
             let reasons: Vec<Value> = Vec::new();
             let (decision, band) = self.band_for_risk(risk);

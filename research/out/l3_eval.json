@@ -1,0 +1,100 @@
+{
+ "rule": {
+  "L1_min_block_recall_gain": 0.02,
+  "L2_max_pr_auc_drop": 0.005,
+  "L3_max_attack_drop": 0.02
+ },
+ "train": {
+  "rounds": 467
+ },
+ "validation_alert_rates": {
+  "verify": 0.009961906881080352,
+  "hold": 0.004792900049130179,
+  "block": 0.0014108927219399234
+ },
+ "validation": {
+  "current": {
+   "pr_auc": 0.6478,
+   "attack_worst": 0.6047,
+   "bands": {
+    "verify": {
+     "flags": 10118,
+     "tp": 896,
+     "precision": 0.0886,
+     "recall": 0.8281
+    },
+    "hold": {
+     "flags": 4868,
+     "tp": 856,
+     "precision": 0.1758,
+     "recall": 0.7911
+    },
+    "block": {
+     "flags": 1433,
+     "tp": 700,
+     "precision": 0.4885,
+     "recall": 0.647
+    }
+   }
+  },
+  "mean3": {
+   "pr_auc": 0.6554,
+   "attack_worst": 0.6108,
+   "bands": {
+    "verify": {
+     "flags": 10520,
+     "tp": 902,
+     "precision": 0.0857,
+     "recall": 0.8336
+    },
+    "hold": {
+     "flags": 4885,
+     "tp": 856,
+     "precision": 0.1752,
+     "recall": 0.7911
+    },
+    "block": {
+     "flags": 1464,
+     "tp": 703,
+     "precision": 0.4802,
+     "recall": 0.6497
+    }
+   }
+  },
+  "l3_only": {
+   "pr_auc": 0.6397,
+   "attack_worst": 0.6032,
+   "bands": {
+    "verify": {
+     "flags": 12744,
+     "tp": 899,
+     "precision": 0.0705,
+     "recall": 0.8309
+    },
+    "hold": {
+     "flags": 5499,
+     "tp": 861,
+     "precision": 0.1566,
+     "recall": 0.7957
+    },
+    "block": {
+     "flags": 1508,
+     "tp": 701,
+     "precision": 0.4649,
+     "recall": 0.6479
+    }
+   }
+  }
+ },
+ "decision": {
+  "candidate": "mean3",
+  "checks": {
+   "L1": false,
+   "L2": true,
+   "L3": true
+  },
+  "adopt": false,
+  "decided_at_seconds": 316,
+  "note": "decided on validation only; test scored after this line"
+ }
+}
