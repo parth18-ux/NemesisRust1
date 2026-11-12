@@ -82,7 +82,7 @@ pub struct AppState {
     pub profiles: HashMap<String, TypingProfile>,
     /// PRAMAAN account-takeover authentication (allow / challenge / block); None if its model files are absent
     pub auth: Option<rusetect::pramaan::AuthEngine>,
-    /// watchlist and its hit threshold (research/out/sanctions_eval.json); None if either file is absent
+    /// watchlist and its hit threshold (research/out/sanctions_eval_v2.json when v2 was adopted, else sanctions_eval.json); None if absent
     pub sanctions: Option<(rusetect::sanctions::List, f64)>,
     pub demo: Demo,
 }
@@ -118,8 +118,14 @@ impl AppState {
                 None
             }
         };
-        let sanctions = match (rusetect::sanctions::List::load(&models.join("sanctions_sdn.csv")), read_json(root.join("research/out/sanctions_eval.json"))) {
-            (Ok(l), Ok(v)) if v["threshold"].is_f64() => Some((l, v["threshold"].as_f64().unwrap())),
+        // matcher v2 is served only when its pre-registered evaluation adopted it (research/out/sanctions_eval_v2.json)
+        let v2 = read_json(root.join("research/out/sanctions_eval_v2.json")).ok().filter(|v| v["adopted"] == true);
+        let thr = match &v2 { Some(v) => Ok(v["v2"].clone()), None => read_json(root.join("research/out/sanctions_eval.json")) };
+        let sanctions = match (rusetect::sanctions::List::load(&models.join("sanctions_sdn.csv")), thr) {
+            (Ok(mut l), Ok(v)) if v["threshold"].is_f64() => {
+                l.v2 = v2.is_some();
+                Some((l, v["threshold"].as_f64().unwrap()))
+            }
             _ => {
                 eprintln!("{NAME} sanctions list or threshold unavailable");
                 None
@@ -322,7 +328,7 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/models/message_model.json", "service/models/typing_verifier.json", "service/models/benchmark_results.json",
     "service/models/sample_applications.json", "service/models/demo_stream.csv.gz",
     "service/models/hardening.json", "service/models/hardening_xgb.json", "service/models/auth_config.json", "service/models/auth_xgb.json",
-    "service/models/sanctions_sdn.csv", "research/out/sanctions_eval.json",
+    "service/models/sanctions_sdn.csv", "research/out/sanctions_eval.json", "research/out/sanctions_eval_v2.json",
     "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html",
     "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
 ];

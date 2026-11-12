@@ -630,8 +630,11 @@ async fn sanctions_screen_finds_variants_and_validates() {
     let r = t.post("/api/v2/sanctions/screen", json!({"name": "VENTHORPE, Mr Aldric"})).await;
     assert_eq!((r["hit"].as_bool(), r["matches"][0]["list_id"].as_str(), r["matches"][0]["score"].as_f64()), (Some(true), Some("TEST-0001"), Some(1.0)));
     assert_eq!(r["matches"][0]["program"], "FICTITIOUS-TEST");
-    let thr: Value = serde_json::from_str(&std::fs::read_to_string(paths::repo_root().join("research/out/sanctions_eval.json")).unwrap()).unwrap();
-    assert_eq!(r["threshold"], thr["threshold"], "the served threshold is the fitted one");
+    let thr: Value = serde_json::from_str(&std::fs::read_to_string(paths::repo_root().join("research/out/sanctions_eval_v2.json")).unwrap()).unwrap();
+    assert_eq!(thr["adopted"], true);
+    assert_eq!(r["threshold"], thr["v2"]["threshold"], "the served threshold is the fitted v2 one");
+    let r = t.post("/api/v2/sanctions/screen", json!({"name": "Rafael Montecervo"})).await;
+    assert_eq!((r["hit"].as_bool(), r["matches"][0]["list_id"].as_str()), (Some(true), Some("TEST-0009")), "v2 matches a dropped middle name");
     let r = t.post("/api/v2/sanctions/screen", json!({"name": "Maria Garcia", "type": "individual"})).await;
     assert_eq!(r["hit"], false);
     let r = t.post("/api/v2/sanctions/screen", json!({"name": "Velmora Shiping Co", "type": "entity"})).await;

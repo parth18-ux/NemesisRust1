@@ -81,3 +81,123 @@ FRESH_LAST = [
     "Jones", "Martinez", "Li", "Gupta", "Hussain", "Sokolova", "Taylor", "Rahman", "Costa", "Schmidt", "Volkov",
     "Chen", "Williams", "Ibrahim", "Fernandez", "Kowalski", "Park", "Gomez", "Singh", "Tran",
 ]
+
+# ---- evaluation (written after the pre-registration commit; the rule and frozen set above are unchanged) ----
+# Scores come from the Rust scorer itself (crates/rusetect/examples/sanctions_dump, `--v2` for score_v2), so no Python
+# mirror and no parity check is needed.
+#     cargo build --release -p rusetect --example sanctions_dump && python3 -I research/sanctions_eval_v2.py
+import csv, json, os, random, subprocess, sys
+from datetime import date
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sanctions_eval as se  # noqa: E402
+
+FRESH_LIST = os.path.join(se.ROOT, "research", "out", "sanctions_fresh_list.csv")
+OUT = os.path.join(se.ROOT, "research", "out", "sanctions_eval_v2.json")
+
+
+def dump(names, path, v2):
+    args = [se.BIN, path] + (["--v2"] if v2 else [])
+    r = subprocess.run(args, input="\n".join(names) + "\n", capture_output=True, text=True, check=True)
+    return [[float(x) for x in line.split("\t")] for line in r.stdout.splitlines()]
+
+
+def rows_of(queries, sc):
+    """Per split: positive (variant, own entry) and negatives (variant, best other entry), (common name, best entry)."""
+    rows, by_kind = {}, {}
+    for (part, kind, _, i), s in zip(queries, sc):
+        r = rows.setdefault(part, [])
+        if i is None:
+            r.append((max(s), 0))
+        else:
+            r.append((s[i], 1))
+            r.append((max(x for k, x in enumerate(s) if k != i), 0))
+            by_kind.setdefault(part, {}).setdefault(kind, []).append(s[i])
+    return rows, by_kind
+
+
+def recall_by_kind(by_kind, t):
+    return {k: round(sum(x >= t for x in v) / len(v), 4) for k, v in sorted(by_kind.items())}
+
+
+def v1_queries():
+    """The v1 splits and queries, rebuilt with the same rng sequence as sanctions_eval.main()."""
+    rng = random.Random(se.SEED)
+    with open(se.LIST, newline="") as f:
+        entries = list(csv.DictReader(f))
+    common = rng.sample(sorted({f"{a} {b}" for a in se.FIRST for b in se.LAST}), 300)
+    ent_split, com_split = se.split3(range(len(entries)), rng), se.split3(common, rng)
+    queries = []
+    for part, idx in ent_split.items():
+        for i in idx:
+            queries += [(part, kind, v, i) for kind, v in se.variants(entries[i]["name"], rng).items()]
+    for part, names in com_split.items():
+        queries += [(part, "common", n, None) for n in names]
+    return entries, queries
+
+
+def fresh_queries(entries):
+    """The frozen fresh set: original list + FRESH_ENTITIES, variants with FRESH_TRANSLIT, 150 fresh common names."""
+    rng = random.Random(FRESH_SEED)
+    se.TRANSLIT = FRESH_TRANSLIT
+    common = rng.sample(sorted({f"{a} {b}" for a in FRESH_FIRST for b in FRESH_LAST}), 150)
+    rows = [dict(e) for e in entries] + [{"id": f"FRESH-{k + 1:04d}", "name": n, "type": t, "program": "FICTITIOUS-TEST"}
+                                         for k, (n, t) in enumerate(FRESH_ENTITIES)]
+    with open(FRESH_LIST, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["id", "name", "type", "program"])
+        w.writeheader()
+        w.writerows(rows)
+    queries = []
+    for i in range(len(entries), len(rows)):
+        queries += [("fresh", kind, v, i) for kind, v in se.variants(rows[i]["name"], rng).items()]
+    queries += [("fresh", "common", n, None) for n in common]
+    return queries
+
+
+def fit(val):
+    ok = [t for t in sorted({s for s, _ in val}) if se.metrics(val, t)["recall"] >= 0.95]
+    return max(ok, key=lambda t: (se.metrics(val, t)["precision"], t))
+
+
+def main():
+    v1_res = json.load(open(os.path.join(se.ROOT, "research", "out", "sanctions_eval.json")))
+    t1 = v1_res["threshold"]
+    entries, q_old = v1_queries()
+    names_old = [q[2] for q in q_old]
+    old1, kind_old1 = rows_of(q_old, dump(names_old, se.LIST, False))
+    old2, kind_old2 = rows_of(q_old, dump(names_old, se.LIST, True))
+    assert se.metrics(old1["test"], t1) == v1_res["test"], "v1 splits must reproduce research/out/sanctions_eval.json"
+    t2 = round(fit(old2["validation"]), 6)
+
+    q_fresh = fresh_queries(entries)
+    names_fresh = [q[2] for q in q_fresh]
+    fr1, kind_fr1 = rows_of(q_fresh, dump(names_fresh, FRESH_LIST, False))
+    fr2, kind_fr2 = rows_of(q_fresh, dump(names_fresh, FRESH_LIST, True))
+
+    m = {"v1": {"threshold": t1, "validation": se.metrics(old1["validation"], t1), "old_test": se.metrics(old1["test"], t1),
+                "fresh_test": se.metrics(fr1["fresh"], t1),
+                "old_test_recall_by_variant": recall_by_kind(kind_old1["test"], t1),
+                "fresh_test_recall_by_variant": recall_by_kind(kind_fr1["fresh"], t1)},
+         "v2": {"threshold": t2, "validation": se.metrics(old2["validation"], t2), "old_test": se.metrics(old2["test"], t2),
+                "fresh_test": se.metrics(fr2["fresh"], t2),
+                "old_test_recall_by_variant": recall_by_kind(kind_old2["test"], t2),
+                "fresh_test_recall_by_variant": recall_by_kind(kind_fr2["fresh"], t2)}}
+    fresh, old = m["v2"]["fresh_test"], m["v2"]["old_test"]
+    checks = {"a_fresh_recall_ge_0.95": fresh["recall"] >= 0.95, "a_fresh_precision_ge_0.98": fresh["precision"] >= 0.98,
+              "b_old_recall_not_below_v1": old["recall"] >= v1_res["test"]["recall"],
+              "b_old_precision_ge_0.98": old["precision"] >= 0.98}
+    res = {"rule": "ADOPTION RULE v2 in research/sanctions_eval_v2.py (pre-registered)", "date": date.today().isoformat(),
+           "scorer": "Rust (crates/rusetect/src/sanctions.rs via the sanctions_dump example; no Python mirror)",
+           "constants": {"cap": 0.96, "floor": 0.90, "penalty": 0.06},
+           "threshold_rule": "v2 threshold fitted on the v1 validation split only: highest precision with recall >= 0.95",
+           "fresh_list": os.path.relpath(FRESH_LIST, se.ROOT), "fresh_seed": FRESH_SEED,
+           "fresh_entities": len(FRESH_ENTITIES), "fresh_common_names": 150,
+           **m, "checks": checks, "adopted": all(checks.values())}
+    with open(OUT, "w") as f:
+        json.dump(res, f, indent=2)
+        f.write("\n")
+    json.dump(res, sys.stdout, indent=2)
+
+
+if __name__ == "__main__":
+    main()

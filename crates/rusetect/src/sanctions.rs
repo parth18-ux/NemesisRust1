@@ -5,6 +5,9 @@
 //! other side, and the score is the mean of both directions, in [0, 1]. A Soundex key per token breaks ties between
 //! equal scores. The hit threshold is fitted on validation pairs in research/sanctions_eval.py.
 //! Jaro-Winkler and Soundex are written from their published definitions (Winkler 1990; Russell and Odell's Soundex).
+//!
+//! v2 (`score_v2`, pre-registered in research/sanctions_eval_v2.py) adds transliteration folding per token and a subset
+//! rule for dropped middle names. `List::v2` selects it; the server turns it on only when the v2 evaluation adopted it.
 use std::path::Path;
 use unicode_normalization::{char::is_combining_mark, UnicodeNormalization};
 
@@ -76,12 +79,12 @@ pub fn soundex(s: &str) -> String {
     format!("{out:0<4}")
 }
 
-/// Mean over `a`'s tokens of the best Jaro-Winkler against `b`'s tokens, and how many of those best pairs share a Soundex key.
-fn align(a: &[String], b: &[String]) -> (f64, usize) {
+/// Mean over `a`'s tokens of the best token score against `b`'s tokens, and how many of those best pairs share a Soundex key.
+fn align(a: &[String], b: &[String], sim: fn(&str, &str) -> f64) -> (f64, usize) {
     let mut sum = 0.0;
     let mut phon = 0;
     for x in a {
-        let (s, y) = b.iter().map(|y| (jaro_winkler(x, y), y)).fold((0.0, None), |acc, (s, y)| if s > acc.0 { (s, Some(y)) } else { acc });
+        let (s, y) = b.iter().map(|y| (sim(x, y), y)).fold((0.0, None), |acc, (s, y)| if s > acc.0 { (s, Some(y)) } else { acc });
         sum += s;
         phon += y.is_some_and(|y| soundex(x) == soundex(y)) as usize;
     }
@@ -93,8 +96,71 @@ pub fn score(q: &[String], c: &[String]) -> (f64, usize) {
     if q.is_empty() || c.is_empty() {
         return (0.0, 0);
     }
-    let ((s1, p1), (s2, p2)) = (align(q, c), align(c, q));
+    let ((s1, p1), (s2, p2)) = (align(q, c, jaro_winkler), align(c, q, jaro_winkler));
     ((s1 + s2) / 2.0, p1 + p2)
+}
+
+/// v2 constants, as pre-registered (research/sanctions_eval_v2.py).
+const CAP: f64 = 0.96;
+const FLOOR: f64 = 0.90;
+const PENALTY: f64 = 0.06;
+
+/// Transliteration key of a normalised token: suffix off -> ov, the digraph rules, the letter rules (each in order,
+/// every occurrence), then doubled letters collapsed. "Yevgeniy" and "Evgeni" both fold to "ivganii" / "avgani".
+pub fn fold(t: &str) -> String {
+    let mut s = match t.strip_suffix("off") { Some(p) => format!("{p}ov"), None => t.to_string() };
+    for (a, b) in [("sch", "sh"), ("ch", "sh"), ("ph", "f"), ("kh", "h"), ("gh", "g"), ("ck", "k"), ("ou", "u"), ("oo", "u"),
+        ("ee", "i"), ("ei", "ai"), ("ay", "ai"), ("iy", "i"), ("x", "ks"), ("w", "v"), ("z", "s"), ("c", "k"), ("q", "k"),
+        ("y", "i"), ("j", "i"), ("o", "u"), ("e", "a")] {
+        s = s.replace(a, b);
+    }
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if !out.ends_with(c) {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// v2 token score: the raw Jaro-Winkler, or CAP times the Jaro-Winkler of the folded keys, whichever is higher.
+fn token_v2(x: &str, y: &str) -> f64 {
+    jaro_winkler(x, y).max(CAP * jaro_winkler(&fold(x), &fold(y)))
+}
+
+/// Subset score for a query that drops list tokens: the best one-to-one alignment of every query token to a distinct list
+/// token with each pair >= FLOOR, scored as the pair mean minus PENALTY per unmatched list token. None when not applicable.
+fn subset(q: &[String], c: &[String]) -> Option<f64> {
+    fn best(q: &[String], c: &[String], used: &mut [bool]) -> Option<f64> {
+        let Some((x, rest)) = q.split_first() else { return Some(0.0) };
+        let mut top: Option<f64> = None;
+        for j in 0..c.len() {
+            let s = if used[j] { 0.0 } else { token_v2(x, &c[j]) };
+            if s < FLOOR {
+                continue;
+            }
+            used[j] = true;
+            if let Some(r) = best(rest, c, used) {
+                top = Some(top.map_or(s + r, |t| t.max(s + r)));
+            }
+            used[j] = false;
+        }
+        top
+    }
+    if q.len() < 2 || q.len() >= c.len() {
+        return None;
+    }
+    best(q, c, &mut vec![false; c.len()]).map(|s| s / q.len() as f64 - PENALTY * (c.len() - q.len()) as f64)
+}
+
+/// v2 similarity: the v1 symmetric alignment on v2 token scores, or the subset score when it is higher.
+pub fn score_v2(q: &[String], c: &[String]) -> (f64, usize) {
+    if q.is_empty() || c.is_empty() {
+        return (0.0, 0);
+    }
+    let ((s1, p1), (s2, p2)) = (align(q, c, token_v2), align(c, q, token_v2));
+    let sym = (s1 + s2) / 2.0;
+    (subset(q, c).map_or(sym, |s| s.max(sym)), p1 + p2)
 }
 
 pub struct Entry {
@@ -107,6 +173,8 @@ pub struct Entry {
 
 pub struct List {
     pub entries: Vec<Entry>,
+    /// score with `score_v2` instead of `score`
+    pub v2: bool,
 }
 
 impl List {
@@ -118,13 +186,14 @@ impl List {
             let g = |i: usize| r.get(i).unwrap_or("").to_string();
             Ok(Entry { tokens: normalise(&g(1)), id: g(0), name: g(1), kind: g(2), program: g(3) })
         }).collect::<anyhow::Result<Vec<_>>>()?;
-        Ok(List { entries })
+        Ok(List { entries, v2: false })
     }
 
     /// Scores of `name` against every entry, in list order.
     pub fn scores(&self, name: &str) -> Vec<(f64, usize)> {
         let q = normalise(name);
-        self.entries.iter().map(|e| score(&q, &e.tokens)).collect()
+        let f = if self.v2 { score_v2 } else { score };
+        self.entries.iter().map(|e| f(&q, &e.tokens)).collect()
     }
 
     /// The `top` best entries (of `kind` when given), highest score first, Soundex agreement breaking ties.
@@ -159,6 +228,32 @@ mod tests {
         assert!(s("Aldrik Venthrope", "Aldric Venthorpe") > 0.9, "small typos still match");
         assert!(s("Muhammad Khalil Al Farzani", "Mohammed Khaleel Al-Farzani") > 0.85, "transliteration");
         assert!(s("Maria Garcia", "Aldric Venthorpe") < 0.6, "unrelated names stay low");
+    }
+
+    #[test]
+    fn fold_rules() {
+        assert_eq!(fold("ivanoff"), "ivanuv");
+        assert_eq!(fold("ivanov"), "ivanuv");
+        assert_eq!(fold("schmidt"), fold("shmidt"));
+        assert_eq!(fold("khaleel"), "halil");
+        assert_eq!(fold("yousef"), fold("jusef"));
+        assert_eq!(fold("maxim"), "maksim");
+        assert_eq!(fold("hammond"), "hamund", "doubled letters collapse");
+    }
+
+    #[test]
+    fn v2_folding_and_subset() {
+        let s2 = |a: &str, b: &str| score_v2(&normalise(a), &normalise(b)).0;
+        assert_eq!(s2("Aldric Venthorpe", "Aldric Venthorpe"), 1.0, "exact still scores 1");
+        assert!(s2("Yousef Khaleel", "Jusef Halil") > s("Yousef Khaleel", "Jusef Halil"), "folding lifts transliterations");
+        assert!(s2("Yousef Khaleel", "Jusef Halil") <= CAP, "a folded match never beats an exact one");
+        // dropped middle name: two exact pairs, one unmatched list token
+        let (q, c) = (normalise("Khalid Dhaheri"), normalise("Khalid Mansour Dhaheri"));
+        assert!((subset(&q, &c).unwrap() - (1.0 - PENALTY)).abs() < 1e-12);
+        assert!(s2("Khalid Dhaheri", "Khalid Mansour Dhaheri") > s("Khalid Dhaheri", "Khalid Mansour Dhaheri"));
+        assert_eq!(subset(&normalise("Khalid"), &normalise("Khalid Mansour Dhaheri")), None, "single-token queries never use it");
+        assert_eq!(subset(&normalise("Khalid Smith"), &normalise("Khalid Mansour Dhaheri")), None, "every pair must reach FLOOR");
+        assert_eq!(subset(&normalise("Khalid Khalid"), &normalise("Khalid Mansour Dhaheri")), None, "one-to-one alignment");
     }
 
     #[test]
