@@ -246,8 +246,9 @@ the fresh rewrites overlap the folding table, and the list is fictitious, so ref
 **8o. Redis workers count each payment once.** Delivery stays at-least-once, so `RedisState::features` now claims
 `seen:{eid}` with SET NX (26 h) and a redelivered payment is rescored from the current state, so a decision is still
 emitted, without writing its account counters, amounts or 24 h windows again. Payments without an eid cannot be
-recognised and keep the old behaviour, and a crash between the claim and the write pipeline drops that payment's
-state writes (once rather than twice).
+recognised and keep the old behaviour. The claim and the account-state writes now run as one Lua script (EVAL), so a
+crash leaves both or neither; the script spans payer, payee and global keys in different hash slots, so it needs a single
+Redis node rather than Redis Cluster.
 
 **8p. Payee name check (confirmation of payee).** New `POST /api/v2/payee/check` (a channel route), aimed at
 authorised push payment scams: `{"entered_name", "account_name", "account_type"?}` -> `{"verdict", "score",

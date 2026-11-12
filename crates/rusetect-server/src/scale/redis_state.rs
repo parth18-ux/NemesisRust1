@@ -8,7 +8,10 @@
 //!   bp          set    bank corridors seen
 //!   pr:{acct}>payee  zset  cascade risks of this payer->payee pair in the last 24 h (structuring window), member "eid|risk"
 //!   seen:{eid}  string  set once per payment eid (26 h), so a redelivered payment does not write account state twice
-//! Per payment: one pipelined read round trip, features computed exactly as Engine::features, one pipelined write.
+//! Per payment: one pipelined read round trip, features computed exactly as Engine::features, then one Lua script that
+//! claims seen:{eid} and applies the writes atomically (a crash cannot leave the claim without the writes).
+//! The script touches payer, payee, bp and seen keys, which sit in different hash slots: it needs a single Redis node
+//! (or a proxy that does not split scripts), not Redis Cluster.
 use rusetect::engine::{fx, CascadeConfig, Features, MIN24};
 use rusetect::payment::Payment;
 use rusetect::pyfmt::{hour_dow, py_repr};
@@ -85,14 +88,6 @@ impl RedisState {
         let eid = p.eid.map(|e| e.to_string()).unwrap_or_else(|| format!("{t}.{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let lo = format!("({}", t - MIN24);
         let bpk = format!("{}bp", self.px);
-        // At-least-once delivery replays a payment scored before a crash: it is scored again from the current state
-        // (so a decision is still emitted) but its account-state writes are skipped. A payment without an eid has no
-        // identity to dedupe on and always writes, as before.
-        let first = match p.eid {
-            Some(e) => redis::cmd("SET").arg(self.k("seen", &e.to_string())).arg(1).arg("NX").arg("EX").arg(26 * 3600)
-                .query::<Option<String>>(&mut self.con)?.is_some(),
-            None => true,
-        };
         let (sa, da): (Vec<Option<String>>, Vec<Option<String>>);
         let (seen, recip, bp_seen): (bool, bool, bool);
         let (wo, wi, wi_s): (Vec<String>, Vec<String>, Vec<String>);
@@ -146,35 +141,46 @@ impl RedisState {
         f[D_CNT_24H] = b as f64;
         f[RECIPROCAL] = recip as i64 as f64;
         f[NEW_BANK_PAIR] = (!bp_seen) as i64 as f64;
-        if !first {
-            return Ok(Features(f));
-        }
-        // ---- writes
-        let (ka_s, ka_d) = (self.k("a", &s), self.k("a", &d));
-        let u = py_repr(usd);
-        let mut w = redis::pipe();
-        w.cmd("HSETNX").arg(&ka_s).arg("first_out_t").arg(t).ignore()
-            .cmd("HINCRBY").arg(&ka_s).arg("out_n").arg(1).ignore()
-            .cmd("HINCRBYFLOAT").arg(&ka_s).arg("out_usd").arg(&u).ignore()
-            .cmd("HSET").arg(&ka_s).arg("last_out_t").arg(t).ignore();
+        // ---- writes, as one script: claim seen:{eid} with SET NX, then apply every write, or nothing when the claim
+        // exists. At-least-once delivery replays a payment scored before a crash: it is rescored from the current state
+        // (so a decision is still emitted) without writing again. A payment without an eid has no identity to dedupe
+        // on and always writes. ARGV after the TTL is a flat list of commands, each prefixed by its word count.
+        const CLAIM_AND_WRITE: &str = "if KEYS[1] and not redis.call('SET', KEYS[1], 1, 'NX', 'EX', ARGV[1]) then return 0 end \
+            local i = 2 while i <= #ARGV do local n = tonumber(ARGV[i]) redis.call(unpack(ARGV, i + 1, i + n)) i = i + n + 1 end return 1";
+        let (ka_s, ka_d, ko_s, ki_d) = (self.k("a", &s), self.k("a", &d), self.k("wo", &s), self.k("wi", &d));
+        let (u, ts, old) = (py_repr(usd), t.to_string(), (t - MIN24).to_string());
+        let (mo, mi) = (format!("{eid}|{d}|{u}"), format!("{eid}|{s}|{u}"));
+        let mut w: Vec<Vec<&str>> = vec![
+            vec!["HSETNX", &ka_s, "first_out_t", &ts],
+            vec!["HINCRBY", &ka_s, "out_n", "1"],
+            vec!["HINCRBYFLOAT", &ka_s, "out_usd", &u],
+            vec!["HSET", &ka_s, "last_out_t", &ts],
+        ];
+        let kp_s = self.k("p", &s);
         if !seen {
-            w.cmd("SADD").arg(self.k("p", &s)).arg(&d).ignore()
-                .cmd("HINCRBY").arg(&ka_s).arg("uniq_dst").arg(1).ignore()
-                .cmd("HINCRBY").arg(&ka_d).arg("uniq_src").arg(1).ignore();
+            w.extend([vec!["SADD", &kp_s, &d], vec!["HINCRBY", &ka_s, "uniq_dst", "1"], vec!["HINCRBY", &ka_d, "uniq_src", "1"]]);
         }
-        w.cmd("HINCRBY").arg(&ka_d).arg("in_n").arg(1).ignore()
-            .cmd("HINCRBYFLOAT").arg(&ka_d).arg("in_usd").arg(&u).ignore()
-            .cmd("HSET").arg(&ka_d).arg("last_in_t").arg(t).arg("last_in_usd").arg(&u).ignore()
-            .cmd("ZADD").arg(self.k("wo", &s)).arg(t).arg(format!("{eid}|{d}|{u}")).ignore()
-            .cmd("ZADD").arg(self.k("wi", &d)).arg(t).arg(format!("{eid}|{s}|{u}")).ignore()
-            .cmd("ZREMRANGEBYSCORE").arg(self.k("wo", &s)).arg("-inf").arg(t - MIN24).ignore()
-            .cmd("ZREMRANGEBYSCORE").arg(self.k("wi", &d)).arg("-inf").arg(t - MIN24).ignore()
-            .cmd("EXPIRE").arg(self.k("wo", &s)).arg(2 * 86400).ignore()
-            .cmd("EXPIRE").arg(self.k("wi", &d)).arg(2 * 86400).ignore();
+        w.extend([
+            vec!["HINCRBY", &ka_d, "in_n", "1"],
+            vec!["HINCRBYFLOAT", &ka_d, "in_usd", &u],
+            vec!["HSET", &ka_d, "last_in_t", &ts, "last_in_usd", &u],
+            vec!["ZADD", &ko_s, &ts, &mo],
+            vec!["ZADD", &ki_d, &ts, &mi],
+            vec!["ZREMRANGEBYSCORE", &ko_s, "-inf", &old],
+            vec!["ZREMRANGEBYSCORE", &ki_d, "-inf", &old],
+            vec!["EXPIRE", &ko_s, "172800"],
+            vec!["EXPIRE", &ki_d, "172800"],
+        ]);
         if !bp_seen {
-            w.cmd("SADD").arg(&bpk).arg(&bp).ignore();
+            w.push(vec!["SADD", &bpk, &bp]);
         }
-        w.query::<()>(&mut self.con)?;
+        let seen_key = p.eid.map(|e| self.k("seen", &e.to_string()));
+        let mut c = redis::cmd("EVAL");
+        c.arg(CLAIM_AND_WRITE).arg(seen_key.is_some() as i32).arg(&seen_key).arg(26 * 3600);
+        for x in &w {
+            c.arg(x.len()).arg(x);
+        }
+        c.query::<i64>(&mut self.con)?;
         Ok(Features(f))
     }
 
