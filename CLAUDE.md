@@ -21,3 +21,25 @@ It is cheaper in tokens and covers code, docs and the research review in one pla
 - Evaluations stay chronological; thresholds are fitted on validation only.
 - Commits: author Parth Sharma <parth18-ux@users.noreply.github.com>, no AI co-author lines. Batch work into few
   commits and push only when the work is finished and the user agrees.
+
+## How to work (the user's standing rules)
+
+- Never do the work yourself. Always dispatch a sub-agent.
+- Don't always use Fable. Use Opus 5.5 for easier tasks.
+
+### Model routing
+
+- Fable 5.1: architecture, hard bugs, review
+- Opus 5.5: edits, tests, docs, refactors
+- Haiku 4.5: lookups and summaries
+- Pass `model` on every Agent call (`fable`, `opus`, `haiku`)
+
+### Delegation
+
+- One sub-agent per task, plan first
+- Run independent sub-agents in parallel
+- Read the report, never the files
+
+### Skills
+
+- Use graphify and ponytail on every task: navigate with graphify first; ponytail for the smallest complete change.
