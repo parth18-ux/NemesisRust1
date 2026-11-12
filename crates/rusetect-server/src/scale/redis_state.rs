@@ -7,6 +7,7 @@
 //!   wi:{acct}   zset   incoming payments in the last 24 h
 //!   bp          set    bank corridors seen
 //!   pr:{acct}>payee  zset  cascade risks of this payer->payee pair in the last 24 h (structuring window), member "eid|risk"
+//!   seen:{eid}  string  set once per payment eid (26 h), so a redelivered payment does not write account state twice
 //! Per payment: one pipelined read round trip, features computed exactly as Engine::features, one pipelined write.
 use rusetect::engine::{fx, CascadeConfig, Features, MIN24};
 use rusetect::payment::Payment;
@@ -84,6 +85,14 @@ impl RedisState {
         let eid = p.eid.map(|e| e.to_string()).unwrap_or_else(|| format!("{t}.{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let lo = format!("({}", t - MIN24);
         let bpk = format!("{}bp", self.px);
+        // At-least-once delivery replays a payment scored before a crash: it is scored again from the current state
+        // (so a decision is still emitted) but its account-state writes are skipped. A payment without an eid has no
+        // identity to dedupe on and always writes, as before.
+        let first = match p.eid {
+            Some(e) => redis::cmd("SET").arg(self.k("seen", &e.to_string())).arg(1).arg("NX").arg("EX").arg(26 * 3600)
+                .query::<Option<String>>(&mut self.con)?.is_some(),
+            None => true,
+        };
         let (sa, da): (Vec<Option<String>>, Vec<Option<String>>);
         let (seen, recip, bp_seen): (bool, bool, bool);
         let (wo, wi, wi_s): (Vec<String>, Vec<String>, Vec<String>);
@@ -137,6 +146,9 @@ impl RedisState {
         f[D_CNT_24H] = b as f64;
         f[RECIPROCAL] = recip as i64 as f64;
         f[NEW_BANK_PAIR] = (!bp_seen) as i64 as f64;
+        if !first {
+            return Ok(Features(f));
+        }
         // ---- writes
         let (ka_s, ka_d) = (self.k("a", &s), self.k("a", &d));
         let u = py_repr(usd);

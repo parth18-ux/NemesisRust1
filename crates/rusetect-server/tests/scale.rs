@@ -143,3 +143,20 @@ fn malformed_messages_go_to_dead_letter() {
     let n: usize = redis::cmd("XLEN").arg("deadletter").query(&mut con).unwrap();
     assert_eq!(n, 2, "bad JSON and an unknown payment format are both dead-lettered");
 }
+
+#[test]
+fn redelivered_payment_counts_once() {
+    let Some(r) = start() else { return };
+    let cfg = Engine::new(&paths::models_dir(), false).unwrap().cfg.clone();
+    let rs = |px: &str| RedisState::new(redis::Client::open(r.url.as_str()).unwrap().get_connection().unwrap(), cfg.clone(), px);
+    let a = rows(1)[0].clone();
+    let b = Payment { to_account: format!("{}x", a.to_account), tmin: a.tmin + 5, eid: Some(1_000_000), ..a.clone() };
+    let (mut dup, mut once) = (rs("dup:"), rs("once:"));
+    dup.features(&a).unwrap();
+    dup.features(&a).unwrap();
+    once.features(&a).unwrap();
+    let (x, y) = (dup.features(&b).unwrap(), once.features(&b).unwrap());
+    for k in 0..31 {
+        assert!(x.0[k] == y.0[k] || (x.0[k].is_nan() && y.0[k].is_nan()), "feature {}", rusetect::engine::FEATURES[k]);
+    }
+}

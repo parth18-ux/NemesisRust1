@@ -243,6 +243,12 @@ fresh transliterations 1.0 (v1 0.55) and dropped middle names 0.9545 (v1 0.2273)
 `research/out/sanctions_eval_v2.json` and falls back to v1 when `adopted` is false. Limits: variants are synthetic,
 the fresh rewrites overlap the folding table, and the list is fictitious, so refit on the real list.
 
+**8o. Redis workers count each payment once.** Delivery stays at-least-once, so `RedisState::features` now claims
+`seen:{eid}` with SET NX (26 h) and a redelivered payment is rescored from the current state, so a decision is still
+emitted, without writing its account counters, amounts or 24 h windows again. Payments without an eid cannot be
+recognised and keep the old behaviour, and a crash between the claim and the write pipeline drops that payment's
+state writes (once rather than twice).
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
