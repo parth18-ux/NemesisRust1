@@ -47,17 +47,20 @@ def count_rows(path):
 
 def load(name, path, src):
     """train / val / test parts with sampled genuine rows and weights; ids of payer and payee for the unseen-account test"""
-    n = count_rows(path)
+    # the Large files are pre-sampled while streaming (all positives, a share of genuine rows); the sidecar keeps the true totals
+    side = json.load(open(path + ".json")) if os.path.exists(path + ".json") else {"rows": count_rows(path), "neg_rate": 1.0}
+    n, pre = side["rows"], side["neg_rate"]
     tr_end, va_end = int(n * 0.6), int(n * 0.8)
-    rates = {"tr": min(1.0, NEG_TRAIN / tr_end), "va": min(1.0, NEG_EVAL / (va_end - tr_end)), "te": min(1.0, NEG_EVAL / (n - va_end))}
+    # overall keep rate per part, never above the pre-sampling rate; load() samples the remaining factor
+    rates = {"tr": min(pre, NEG_TRAIN / tr_end), "va": min(pre, NEG_EVAL / (va_end - tr_end)), "te": min(pre, NEG_EVAL / (n - va_end))}
     cols = ["row", "y", "l1", "l2x", "l2l"] + BASE + NEW
     ids = pd.read_csv(src, usecols=["fa", "ta"], dtype=str) if src else None
     parts = {k: [] for k in rates}
-    for ch in pd.read_csv(path, usecols=cols, chunksize=1_000_000, dtype=np.float32):
+    for ch in pd.read_csv(path, usecols=cols, chunksize=1_000_000, dtype={c: (np.int64 if c == "row" else np.float32) for c in cols}):
         r = ch.row.values.astype(np.int64); y = ch.y.values.astype(np.int8)
         u = RNG.random(len(ch))
         for k, m in (("tr", r < tr_end), ("va", (r >= tr_end) & (r < va_end)), ("te", r >= va_end)):
-            keep = m & ((y == 1) | (u < rates[k]))
+            keep = m & ((y == 1) | (u < rates[k] / pre))
             if keep.any():
                 served = np.where(ch.l1.values[keep] < L1T, ch.l1.values[keep], (ch.l2x.values[keep] + ch.l2l.values[keep]) / 2)
                 parts[k].append((ch[BASE + NEW].values[keep], y[keep], np.where(y[keep] == 1, 1.0, 1.0 / rates[k]), served, r[keep]))
@@ -152,6 +155,9 @@ def main():
     names_all = BASE + NEW
     R["top_features_gain"] = [names_all[int(k[1:])] for k, _ in sorted(imp.items(), key=lambda kv: -kv[1])[:12]]
     models["pooled_base_new"].save_model(os.path.join(OUT, "unified_pooled_xgb.json"))
+    # the 29-feature pooled model uses only engine features, so it can serve as a format-free second opinion
+    models["pooled_base"].save_model(os.path.join(OUT, "unified_pooled_base_xgb.json"))
+    json.dump({n: {"val": [len(D[n]["va"][1]), int(D[n]["va"][1].sum())]} for n in names}, open(os.path.join(OUT, "unified_val_sizes.json"), "w"))
     json.dump(R, open(os.path.join(OUT, "unified_train.json"), "w"), indent=1)
     print(json.dumps(R, indent=1)[:6000])
 

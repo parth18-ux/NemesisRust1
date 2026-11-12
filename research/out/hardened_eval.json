@@ -1,0 +1,212 @@
+{
+ "rule": {
+  "H1_max_drop": 0.03,
+  "H2_min_ratio": 0.8,
+  "H3_served_max_ratio": 0.5
+ },
+ "validation": {
+  "served": {
+   "pr_auc": 0.6321,
+   "ci95": [
+    0.6064,
+    0.6563
+   ],
+   "roc_auc": 0.9741,
+   "positives": 1082,
+   "rows": 1015669
+  },
+  "hardened": {
+   "pr_auc": 0.6478,
+   "ci95": [
+    0.6244,
+    0.6672
+   ],
+   "roc_auc": 0.9882,
+   "positives": 1082,
+   "rows": 1015669
+  }
+ },
+ "validation_attack": {
+  "served": {
+   "Bitcoin": 0.1334,
+   "Cash": 0.0055,
+   "Cheque": 0.0055,
+   "Credit Card": 0.0044,
+   "Wire": 0.003
+  },
+  "hardened": {
+   "Bitcoin": 0.6086,
+   "Cash": 0.6056,
+   "Cheque": 0.6058,
+   "Credit Card": 0.6052,
+   "Wire": 0.6047
+  }
+ },
+ "thresholds": {
+  "served_validation_alert_rates": {
+   "verify": 0.009457805643373974,
+   "hold": 0.0044315618572586144,
+   "block": 0.001340003485387464
+  },
+  "hardened": {
+   "verify": 0.010297347791492939,
+   "hold": 0.042735349386930466,
+   "block": 0.13074204946996468
+  }
+ },
+ "decision": {
+  "checks": {
+   "H1": true,
+   "H2": true,
+   "H3": true
+  },
+  "adopt": true,
+  "decided_at_seconds": 187.9,
+  "note": "decided on validation only; test scored after this line"
+ },
+ "test": {
+  "served": {
+   "pr_auc": 0.7104,
+   "ci95": [
+    0.6932,
+    0.7275
+   ],
+   "roc_auc": 0.983,
+   "positives": 1797,
+   "rows": 1015669
+  },
+  "hardened": {
+   "pr_auc": 0.72,
+   "ci95": [
+    0.6989,
+    0.7367
+   ],
+   "roc_auc": 0.9907,
+   "positives": 1797,
+   "rows": 1015669
+  },
+  "without_sep11_18_tail": {
+   "served": {
+    "pr_auc": 0.5808,
+    "ci95": [
+     0.5556,
+     0.6063
+    ],
+    "roc_auc": 0.9738,
+    "positives": 1142,
+    "rows": 1014561
+   },
+   "hardened": {
+    "pr_auc": 0.5798,
+    "ci95": [
+     0.5512,
+     0.6068
+    ],
+    "roc_auc": 0.9858,
+    "positives": 1142,
+    "rows": 1014561
+   }
+  },
+  "attack": {
+   "served": {
+    "Bitcoin": 0.2124,
+    "Cash": 0.009,
+    "Cheque": 0.0088,
+    "Credit Card": 0.006,
+    "Wire": 0.0045
+   },
+   "hardened": {
+    "Bitcoin": 0.6907,
+    "Cash": 0.69,
+    "Cheque": 0.6899,
+    "Credit Card": 0.688,
+    "Wire": 0.6874
+   }
+  },
+  "bands": {
+   "served": {
+    "verify": {
+     "flags": 15319,
+     "tp": 1592,
+     "precision": 0.1039,
+     "recall": 0.8859
+    },
+    "hold": {
+     "flags": 6773,
+     "tp": 1457,
+     "precision": 0.2151,
+     "recall": 0.8108
+    },
+    "block": {
+     "flags": 1840,
+     "tp": 1173,
+     "precision": 0.6375,
+     "recall": 0.6528
+    }
+   },
+   "hardened": {
+    "verify": {
+     "flags": 15523,
+     "tp": 1603,
+     "precision": 0.1033,
+     "recall": 0.892
+    },
+    "hold": {
+     "flags": 6649,
+     "tp": 1510,
+     "precision": 0.2271,
+     "recall": 0.8403
+    },
+    "block": {
+     "flags": 2075,
+     "tp": 1253,
+     "precision": 0.6039,
+     "recall": 0.6973
+    }
+   }
+  },
+  "bands_under_cheque_attack": {
+   "served": {
+    "verify": {
+     "flags": 13961,
+     "tp": 234,
+     "precision": 0.0168,
+     "recall": 0.1302
+    },
+    "hold": {
+     "flags": 5422,
+     "tp": 106,
+     "precision": 0.0195,
+     "recall": 0.059
+    },
+    "block": {
+     "flags": 703,
+     "tp": 36,
+     "precision": 0.0512,
+     "recall": 0.02
+    }
+   },
+   "hardened": {
+    "verify": {
+     "flags": 15484,
+     "tp": 1564,
+     "precision": 0.101,
+     "recall": 0.8703
+    },
+    "hold": {
+     "flags": 6609,
+     "tp": 1470,
+     "precision": 0.2224,
+     "recall": 0.818
+    },
+    "block": {
+     "flags": 2005,
+     "tp": 1183,
+     "precision": 0.59,
+     "recall": 0.6583
+    }
+   }
+  }
+ },
+ "source": "service/models/hardening.json as served: written by research/pooled_hardening.py; risk = max(iso_served(cascade), iso_free(pooled 29-feature XGBoost))"
+}

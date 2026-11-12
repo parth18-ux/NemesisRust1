@@ -1,0 +1,257 @@
+{
+ "datasets": {
+  "ieee": {
+   "rows": 590540,
+   "train_positives": 11988,
+   "test_positives": 4064
+  },
+  "sparkov": {
+   "rows": 1852394,
+   "train_positives": 6401,
+   "test_positives": 1349
+  },
+  "banksim": {
+   "rows": 594643,
+   "train_positives": 4596,
+   "test_positives": 1280
+  },
+  "tabformer": {
+   "rows": 24386900,
+   "train_positives": 18064,
+   "test_positives": 4833
+  }
+ },
+ "arms": {
+  "real_only": [
+   "ieee"
+  ],
+  "synthetic_only": [
+   "sparkov",
+   "banksim",
+   "tabformer"
+  ],
+  "hybrid": [
+   "ieee",
+   "sparkov",
+   "banksim",
+   "tabformer"
+  ]
+ },
+ "validation": {
+  "real_only": {
+   "ieee": {
+    "pr_auc": 0.1839,
+    "roc_auc": 0.7893,
+    "f1_threshold": 0.1392318606376648
+   },
+   "sparkov": {
+    "pr_auc": 0.004,
+    "roc_auc": 0.4195,
+    "f1_threshold": 0.020427562296390533
+   },
+   "banksim": {
+    "pr_auc": 0.0253,
+    "roc_auc": 0.6115,
+    "f1_threshold": 0.24734270572662354
+   },
+   "tabformer": {
+    "pr_auc": 0.0012,
+    "roc_auc": 0.4263,
+    "f1_threshold": 0.8131640553474426
+   }
+  },
+  "synthetic_only": {
+   "ieee": {
+    "pr_auc": 0.0553,
+    "roc_auc": 0.5476,
+    "f1_threshold": 0.010385098867118359
+   },
+   "sparkov": {
+    "pr_auc": 0.8213,
+    "roc_auc": 0.9908,
+    "f1_threshold": 0.32431191205978394
+   },
+   "banksim": {
+    "pr_auc": 0.8383,
+    "roc_auc": 0.9957,
+    "f1_threshold": 0.6266284584999084
+   },
+   "tabformer": {
+    "pr_auc": 0.2573,
+    "roc_auc": 0.9615,
+    "f1_threshold": 0.22105662524700165
+   }
+  },
+  "hybrid": {
+   "ieee": {
+    "pr_auc": 0.104,
+    "roc_auc": 0.6838,
+    "f1_threshold": 0.047034427523612976
+   },
+   "sparkov": {
+    "pr_auc": 0.8307,
+    "roc_auc": 0.9904,
+    "f1_threshold": 0.3135192394256592
+   },
+   "banksim": {
+    "pr_auc": 0.8674,
+    "roc_auc": 0.9969,
+    "f1_threshold": 0.4972475469112396
+   },
+   "tabformer": {
+    "pr_auc": 0.2447,
+    "roc_auc": 0.9557,
+    "f1_threshold": 0.1809895932674408
+   }
+  }
+ },
+ "decision": {
+  "selected": "real_only",
+  "ieee_validation_pr_auc": {
+   "real_only": 0.1839,
+   "synthetic_only": 0.0553,
+   "hybrid": 0.104
+  },
+  "mean_synthetic_validation_roc": {
+   "real_only": 0.4858,
+   "synthetic_only": 0.9827,
+   "hybrid": 0.981
+  },
+  "note": "decided on validation only; test scored after this line"
+ },
+ "test": {
+  "real_only": {
+   "ieee": {
+    "pr_auc": 0.1003,
+    "roc_auc": 0.7376,
+    "precision": 0.1415,
+    "recall": 0.1966,
+    "f1": 0.1646,
+    "fpr": 0.04249
+   },
+   "ieee_unseen_payers": {
+    "positives": 2,
+    "pr_auc": 0.0064,
+    "roc_auc": 0.7364,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "fpr": 0.02897
+   },
+   "sparkov": {
+    "pr_auc": 0.0031,
+    "roc_auc": 0.4746,
+    "precision": 0.0038,
+    "recall": 0.8688,
+    "f1": 0.0076,
+    "fpr": 0.8324
+   },
+   "banksim": {
+    "pr_auc": 0.0249,
+    "roc_auc": 0.6394,
+    "precision": 0.036,
+    "recall": 0.0641,
+    "f1": 0.0461,
+    "fpr": 0.01866
+   },
+   "tabformer": {
+    "pr_auc": 0.0008,
+    "roc_auc": 0.4023,
+    "precision": 0.0006,
+    "recall": 0.0019,
+    "f1": 0.001,
+    "fpr": 0.00288
+   }
+  },
+  "synthetic_only": {
+   "ieee": {
+    "pr_auc": 0.0394,
+    "roc_auc": 0.5141,
+    "precision": 0.0461,
+    "recall": 0.1184,
+    "f1": 0.0663,
+    "fpr": 0.0873
+   },
+   "ieee_unseen_payers": {
+    "positives": 2,
+    "pr_auc": 0.0095,
+    "roc_auc": 0.7074,
+    "precision": 0.0042,
+    "recall": 0.5,
+    "f1": 0.0083,
+    "fpr": 0.27578
+   },
+   "sparkov": {
+    "pr_auc": 0.744,
+    "roc_auc": 0.9881,
+    "precision": 0.7226,
+    "recall": 0.6642,
+    "f1": 0.6922,
+    "fpr": 0.00093
+   },
+   "banksim": {
+    "pr_auc": 0.7986,
+    "roc_auc": 0.9943,
+    "precision": 0.8444,
+    "recall": 0.6234,
+    "f1": 0.7173,
+    "fpr": 0.00125
+   },
+   "tabformer": {
+    "pr_auc": 0.0479,
+    "roc_auc": 0.8877,
+    "precision": 0.1077,
+    "recall": 0.107,
+    "f1": 0.1073,
+    "fpr": 0.00088
+   }
+  },
+  "hybrid": {
+   "ieee": {
+    "pr_auc": 0.0516,
+    "roc_auc": 0.572,
+    "precision": 0.066,
+    "recall": 0.127,
+    "f1": 0.0869,
+    "fpr": 0.06402
+   },
+   "ieee_unseen_payers": {
+    "positives": 2,
+    "pr_auc": 0.025,
+    "roc_auc": 0.8488,
+    "precision": 0.0097,
+    "recall": 0.5,
+    "f1": 0.019,
+    "fpr": 0.11819
+   },
+   "sparkov": {
+    "pr_auc": 0.7442,
+    "roc_auc": 0.9865,
+    "precision": 0.7072,
+    "recall": 0.6679,
+    "f1": 0.687,
+    "fpr": 0.00101
+   },
+   "banksim": {
+    "pr_auc": 0.8298,
+    "roc_auc": 0.9956,
+    "precision": 0.8352,
+    "recall": 0.6969,
+    "f1": 0.7598,
+    "fpr": 0.0015
+   },
+   "tabformer": {
+    "pr_auc": 0.0383,
+    "roc_auc": 0.8639,
+    "precision": 0.0868,
+    "recall": 0.0954,
+    "f1": 0.0909,
+    "fpr": 0.001
+   }
+  },
+  "served_cascade_zero_shot_on_ieee": {
+   "pr_auc": 0.0285,
+   "roc_auc": 0.4333
+  }
+ }
+}

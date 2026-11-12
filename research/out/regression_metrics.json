@@ -1,0 +1,19 @@
+{
+ "rows": 1015669,
+ "positives": 1797,
+ "cascade_uncalibrated": {
+  "MAE": 0.012775,
+  "RMSE": 0.058004,
+  "R2": -0.905
+ },
+ "served_hardened_calibrated": {
+  "MAE": 0.001696,
+  "RMSE": 0.027083,
+  "R2": 0.5847
+ },
+ "base_rate_constant": {
+  "MAE": 0.003532,
+  "RMSE": 0.042026,
+  "R2": 0.0
+ }
+}

@@ -1,0 +1,114 @@
+{
+ "rule": {
+  "A1_max_drop": 0.03,
+  "A2_min_ratio": 1.5,
+  "A3_max_alert_ratio": 1.5
+ },
+ "validation_pr_auc": {
+  "pair_served": 0.5136,
+  "payer": 0.0064
+ },
+ "payer_thresholds": {
+  "verify": 1.0,
+  "hold": 1.0,
+  "block": 1.0
+ },
+ "demo_window": {
+  "base": {
+   "pair_served": {
+    "block_recall": 0.3711,
+    "block_alerts": 54
+   },
+   "payer": {
+    "block_recall": 0.1546,
+    "block_alerts": 6204
+   }
+  },
+  "cheque": {
+   "pair_served": {
+    "block_recall": 0.0206,
+    "block_alerts": 20
+   },
+   "payer": {
+    "block_recall": 0.1031,
+    "block_alerts": 6198
+   }
+  },
+  "amount_minus10": {
+   "pair_served": {
+    "block_recall": 0.134,
+    "block_alerts": 31
+   },
+   "payer": {
+    "block_recall": 0.1134,
+    "block_alerts": 6199
+   }
+  },
+  "amount_jitter": {
+   "pair_served": {
+    "block_recall": 0.0722,
+    "block_alerts": 25
+   },
+   "payer": {
+    "block_recall": 0.1134,
+    "block_alerts": 6199
+   }
+  },
+  "delay_6h": {
+   "pair_served": {
+    "block_recall": 0.0103,
+    "block_alerts": 19
+   },
+   "payer": {
+    "block_recall": 0.1031,
+    "block_alerts": 6198
+   }
+  },
+  "split4_spread": {
+   "pair_served": {
+    "block_recall": 0.1443,
+    "block_alerts": 40
+   },
+   "payer": {
+    "block_recall": 0.1134,
+    "block_alerts": 6230
+   }
+  },
+  "split4_new_payees": {
+   "pair_served": {
+    "block_recall": 0.0,
+    "block_alerts": 18
+   },
+   "payer": {
+    "block_recall": 0.1031,
+    "block_alerts": 6228
+   }
+  },
+  "cheque_split4": {
+   "pair_served": {
+    "block_recall": 0.0,
+    "block_alerts": 18
+   },
+   "payer": {
+    "block_recall": 0.1031,
+    "block_alerts": 6228
+   }
+  }
+ },
+ "decision": {
+  "checks": {
+   "A1": false,
+   "A2": true,
+   "A3": false
+  },
+  "adopt": false,
+  "mean_attack_block_recall": {
+   "pair_served": 0.0545,
+   "payer": 0.1075
+  },
+  "clean_block_alerts": {
+   "pair_served": 54,
+   "payer": 6204
+  }
+ }
+}

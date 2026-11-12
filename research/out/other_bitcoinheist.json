@@ -1,0 +1,33 @@
+{
+ "dataset": "BitcoinHeist (UCI 526), real Bitcoin addresses, ransomware labels",
+ "rows": 2916697,
+ "ransomware": 41413,
+ "split": "by date 60/20/20",
+ "dates": {
+  "train_end": 806279,
+  "test_start": 806913
+ },
+ "positives": {
+  "train": 21637,
+  "validation": 18788,
+  "test": 988
+ },
+ "xgboost": {
+  "rows": 583340,
+  "positives": 988,
+  "pr_auc": 0.0021,
+  "pr_auc_ci95": [
+   0.002,
+   0.0022
+  ],
+  "roc_auc": 0.6031,
+  "f1_at_0.5": 0.0,
+  "at_validation_f1_threshold": {
+   "precision": 0.0016,
+   "recall": 0.084,
+   "f1": 0.0032,
+   "fpr": 0.088258
+  }
+ },
+ "note": "address-day graph features only; ransomware families change over time, so the time split is a drift test"
+}

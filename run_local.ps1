@@ -19,5 +19,6 @@ if ($HistoryGlob) {
 }
 
 $env:RUSETECT_ROOT = $PSScriptRoot
+$env:RUSETECT_DEMO = "1"  # local demo: published demo keys; set RUSETECT_ANALYST_KEYS for real use
 Start-Job -ScriptBlock { param($p) Start-Sleep 3; Start-Process "http://localhost:$p/" } -ArgumentList $Port | Out-Null
 & .\target\release\rusetect-server.exe --host 127.0.0.1 --port $Port

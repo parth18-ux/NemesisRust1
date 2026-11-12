@@ -3,6 +3,7 @@ models can be run on them (the audit's "card benchmarks" used as extra generator
 
     python3 -I research/card_convert.py banksim <bs140513_032310.csv> <out.csv.gz>
     python3 -I research/card_convert.py sparkov <train.csv> <test.csv> <out.csv.gz>
+    python3 -I research/card_convert.py ieee <train_transaction.csv> <out.csv.gz>
 
 BankSim (Lopez-Rojas & Axelsson 2014): customer -> payer, merchant -> payee, step -> day, currency Euro, format Credit Card.
 Sparkov (simulated US cards): cc_num -> payer, merchant -> payee, minute timestamps, US Dollar, Credit Card; train and
@@ -32,6 +33,21 @@ def sparkov(tr, te, dst):
     out.to_csv(dst, index=False, compression="gzip"); print("sparkov", len(out), int(out.y.sum()))
 
 
+
+
+def ieee(src, dst):
+    """IEEE-CIS (Vesta, real card-not-present e-commerce payments with real fraud labels). There are no account ids, so
+    the payer is the usual card proxy (card1, card2, card3, card5, addr1) and the payee is the product line plus the
+    purchaser e-mail domain (a merchant proxy). TransactionDT is seconds from an unknown start; 2017-12-01 is used."""
+    c = ["TransactionDT", "TransactionAmt", "ProductCD", "card1", "card2", "card3", "card5", "addr1", "P_emaildomain", "isFraud"]
+    d = pd.read_csv(src, usecols=c).sort_values("TransactionDT", kind="stable").reset_index(drop=True)
+    ts = (pd.Timestamp("2017-12-01") + pd.to_timedelta(d.TransactionDT, unit="s")).dt.strftime("%Y/%m/%d %H:%M")
+    payer = d[["card1", "card2", "card3", "card5", "addr1"]].fillna(-1).astype("int64").astype(str).agg("-".join, axis=1)
+    payee = d.ProductCD.astype(str) + "-" + d.P_emaildomain.fillna("none").astype(str)
+    amt = d.TransactionAmt.map(lambda x: f"{max(x, 0.01):.2f}")
+    out = pd.DataFrame({"ts": ts, "fb": "card", "fa": payer, "tb": "merchant", "ta": payee, "amt_recv": amt, "cur_recv": "US Dollar",
+                        "amt_paid": amt, "cur_paid": "US Dollar", "fmt": "Credit Card", "y": d.isFraud})
+    out.to_csv(dst, index=False, compression="gzip"); print("ieee", len(out), int(out.y.sum()))
 
 
 def paysim(src, dst):
@@ -66,4 +82,4 @@ def tabformer(src, dst):
 
 
 if __name__ == "__main__":
-    {"banksim": banksim, "sparkov": sparkov, "paysim": paysim, "amlgentex": amlgentex, "tabformer": tabformer}[sys.argv[1]](*sys.argv[2:])
+    {"banksim": banksim, "sparkov": sparkov, "ieee": ieee, "paysim": paysim, "amlgentex": amlgentex, "tabformer": tabformer}[sys.argv[1]](*sys.argv[2:])

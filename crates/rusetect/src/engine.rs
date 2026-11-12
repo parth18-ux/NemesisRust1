@@ -245,6 +245,66 @@ pub struct Models {
     pub l2l: LiteBooster,
     pub l0: LiteBooster,
     pub l0cfg: L0Config,
+    pub hardening: Option<Hardening>,
+}
+
+/// Format-hardened risk (research/hardened_eval.py, adopted under its pre-registered rule): a launderer who re-sends a
+/// payment in another format drops the cascade's PR-AUC from 0.71 to under 0.01, so a format-free XGBoost gives a
+/// second opinion. risk = max(iso_served(cascade risk), iso_free(format-free score)); both maps were fitted on
+/// validation and the band thresholds keep the cascade's validation alert rates.
+pub struct Hardening {
+    pub model: XgbBooster,
+    /// positions of the model's features in the engine's feature vector
+    pub cols: Vec<usize>,
+    pub iso_served: (Vec<f64>, Vec<f64>),
+    pub iso_free: (Vec<f64>, Vec<f64>),
+    pub verify: f64,
+    pub hold: f64,
+    pub block: f64,
+    /// aggregate over all of a payer's payments ("payer", research/account_aggregation.py) instead of each pair
+    pub payer_window: bool,
+}
+
+fn out_features(out: &Map<String, Value>) -> Map<String, Value> {
+    out.get("features").and_then(|v| v.as_object()).cloned().unwrap_or_default()
+}
+
+/// np.interp: linear between knots, clamped outside them.
+pub fn interp(m: &(Vec<f64>, Vec<f64>), v: f64) -> f64 {
+    let (x, y) = m;
+    if x.is_empty() { return v; }
+    if v <= x[0] { return y[0]; }
+    if v >= x[x.len() - 1] { return y[y.len() - 1]; }
+    let i = x.partition_point(|k| *k <= v);
+    let (x0, x1, y0, y1) = (x[i - 1], x[i], y[i - 1], y[i]);
+    if x1 == x0 { y1 } else { y0 + (y1 - y0) * (v - x0) / (x1 - x0) }
+}
+
+impl Hardening {
+    /// Loads service/models/hardening.json if present (None when the file is absent).
+    pub fn load(dir: &Path, features: &[String]) -> Result<Option<Self>> {
+        let path = dir.join("hardening.json");
+        if !path.exists() {
+            return Ok(None);
+        }
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&path)?)?;
+        let nums = |a: &Value| -> Vec<f64> { a.as_array().map(|a| a.iter().filter_map(|x| x.as_f64()).collect()).unwrap_or_default() };
+        let iso = |k: &str| (nums(&v[k]["x"]), nums(&v[k]["y"]));
+        let cols = v["features"].as_array().ok_or_else(|| anyhow::anyhow!("hardening.json: features"))?.iter()
+            .map(|n| n.as_str().and_then(|n| features.iter().position(|f| f == n)).ok_or_else(|| anyhow::anyhow!("hardening.json: unknown feature {n}")))
+            .collect::<Result<Vec<_>>>()?;
+        let thr = |k: &str| v["thresholds"][k].as_f64().ok_or_else(|| anyhow::anyhow!("hardening.json: thresholds.{k}"));
+        Ok(Some(Hardening { model: XgbBooster::load(&dir.join(v["model"].as_str().unwrap_or("hardening_xgb.json")))?, cols,
+                            iso_served: iso("iso_served"), iso_free: iso("iso_free"), verify: thr("verify")?, hold: thr("hold")?, block: thr("block")?,
+                            payer_window: v["window"].as_str() == Some("payer") }))
+    }
+
+    /// (hardened risk, calibrated format-free score) for the engine's feature vector and the cascade's risk.
+    pub fn risk(&self, x: &[f32], served: f64) -> (f64, f64) {
+        let sub: Vec<f32> = self.cols.iter().map(|&i| x[i]).collect();
+        let free = interp(&self.iso_free, self.model.predict(&sub) as f64);
+        (interp(&self.iso_served, served).max(free), free)
+    }
 }
 
 impl Models {
@@ -264,6 +324,7 @@ impl Models {
             l2l: LiteBooster::load(&dir.join("l2_lgbm.json"))?,
             l0: LiteBooster::load(&dir.join("l0_onboarding_lgbm.json"))?,
             l0cfg,
+            hardening: None,
         })
     }
 }
@@ -288,6 +349,8 @@ pub struct Engine {
     pub case_alerts: IndexMap<String, Vec<CaseEdge>>,
     pub n_seen: u64,
     pub decisions: IndexMap<String, i64>,
+    /// served risks of each payer->payee pair in the last 24 h (structuring defence)
+    pair_risks: HashMap<(u32, u32), VecDeque<(i64, f64)>>,
     pub models: Option<Models>,
 }
 
@@ -310,7 +373,13 @@ pub fn decision_rank(d: &str) -> usize {
 impl Engine {
     pub fn new(models_dir: &Path, load_models: bool) -> Result<Self> {
         let cfg = CascadeConfig::load(models_dir)?;
-        let models = if load_models { Some(Models::load(models_dir)?) } else { None };
+        let models = if load_models {
+            let mut m = Models::load(models_dir)?;
+            m.hardening = Hardening::load(models_dir, &cfg.features)?;
+            Some(m)
+        } else {
+            None
+        };
         Ok(Self::with_config(cfg, models))
     }
 
@@ -328,6 +397,7 @@ impl Engine {
             case_alerts: IndexMap::new(),
             n_seen: 0,
             decisions: IndexMap::new(),
+            pair_risks: HashMap::new(),
             models,
         }
     }
@@ -347,10 +417,16 @@ impl Engine {
         self.case_alerts.clear();
         self.n_seen = 0;
         self.decisions.clear();
+        self.pair_risks.clear();
     }
 
     pub fn n_accounts(&self) -> usize {
         self.accts.len()
+    }
+
+    /// Whether an account already has state (scoring it adds no memory).
+    pub fn knows(&self, bank: &str, acct: &str) -> bool {
+        self.ids.contains_key(&(bank.to_string(), acct.to_string()))
     }
 
     fn acct_id(&mut self, bank: &str, acct: &str) -> u32 {
@@ -462,12 +538,21 @@ impl Engine {
         self.col.iter().map(|&i| f.0[i] as f32).collect()
     }
 
+    /// (verify, hold, block) thresholds on the risk the engine reports: the hardened scale when hardening is loaded.
+    pub fn thresholds(&self) -> (f64, f64, f64) {
+        match self.models.as_ref().and_then(|m| m.hardening.as_ref()) {
+            Some(h) => (h.verify, h.hold, h.block),
+            None => (self.cfg.verify_threshold, self.cfg.hold_threshold, self.cfg.block_threshold),
+        }
+    }
+
     pub fn band_for_risk(&self, risk: f64) -> (&'static str, &'static str) {
-        if risk >= self.cfg.block_threshold {
+        let (vt, ht, bt) = self.thresholds();
+        if risk >= bt {
             ("Block + STR draft", "high")
-        } else if risk >= self.cfg.hold_threshold {
+        } else if risk >= ht {
             ("Hold for analyst", "med")
-        } else if risk >= self.cfg.verify_threshold {
+        } else if risk >= vt {
             ("Step-up verification", "med")
         } else {
             ("Approve", "safe")
@@ -496,21 +581,12 @@ impl Engine {
             let sx = m.l2x.predict(&x) as f64;
             let sl = m.l2l.predict_f32(&x);
             let risk = (sx + sl) / 2.0;
-            let contrib = m.l2x.contributions(&x);
-            let nf = x.len();
-            let mut order: Vec<usize> = (0..nf).collect();
-            order.sort_by(|a, b| contrib[*b].partial_cmp(&contrib[*a]).unwrap_or(std::cmp::Ordering::Equal));
-            let mut reasons = Vec::new();
-            for &i in order.iter().take(4) {
-                if contrib[i] > 0.0 {
-                    let k = &self.cfg.features[i];
-                    let v = feats.get(k).cloned().unwrap_or(Value::Null);
-                    reasons.push(json!({"feature": readable(k), "value": v, "display": self.display(k, &v),
-                                        "impact": py_round(contrib[i] as f64, 3)}));
-                }
-            }
+            // reasons are added in finish_risk, only for flagged payments (TreeSHAP is most of the scoring time)
+            let reasons: Vec<Value> = Vec::new();
             let (decision, band) = self.band_for_risk(risk);
-            let cid = if band == "high" { Value::String(self.link(p)) } else { Value::Null };
+            // with hardening the final band is decided in finish_risk, which links the case then
+            let hardened = self.models.as_ref().map(|m| m.hardening.is_some()).unwrap_or(false);
+            let cid = if band == "high" && !hardened { Value::String(self.link(p)) } else { Value::Null };
             out.insert("layer_exit".into(), json!("L2"));
             out.insert("risk".into(), jf(py_round(risk, 5)));
             out.insert("l2_xgb".into(), jf(py_round(sx, 5)));
@@ -520,10 +596,100 @@ impl Engine {
             out.insert("reasons".into(), Value::Array(reasons));
             out.insert("case_id".into(), cid);
         }
+        self.finish_risk(p, &x, &mut out);
         let dec = out["decision"].as_str().unwrap().to_string();
         *self.decisions.entry(dec).or_insert(0) += 1;
         out.insert("latency_ms".into(), jf(py_round(t0.elapsed().as_secs_f64() * 1000.0, 2)));
         out
+    }
+
+    /// Format hardening and the structuring defence, after the cascade has set `risk`.
+    ///
+    /// Structuring (research/structuring_defence.py): a sum split into several payments to the same payee scores lower
+    /// per part, so the cascade risk is raised to the noisy-OR of the cascade risks of this pair's payments in the last
+    /// 24 h, current one included. Hardening (research/hardened_eval.py): the final risk is
+    /// max(iso_served(that cascade risk), iso_free(format-free score)) on the hardened band thresholds. Aggregating
+    /// before calibration matters: the isotonic map sends small cascade risks to near zero, where a noisy-OR of
+    /// calibrated parts barely moves. Both steps can only raise a decision.
+    fn finish_risk(&mut self, p: &Payment, x: &[f32], out: &mut Map<String, Value>) {
+        let cascade = out["risk"].as_f64().unwrap_or(0.0);
+        let payer_window = self.models.as_ref().and_then(|m| m.hardening.as_ref()).map(|h| h.payer_window).unwrap_or(false);
+        let payee = if payer_window { u32::MAX } else { self.acct_id(&p.to_bank, &p.to_account) };
+        let key = (self.acct_id(&p.from_bank, &p.from_account), payee);
+        let (n, pair) = {
+            let q = self.pair_risks.entry(key).or_default();
+            while q.front().map(|x| x.0 <= p.tmin - 1440).unwrap_or(false) {
+                q.pop_front();
+            }
+            q.push_back((p.tmin, cascade));
+            (q.len(), 1.0 - q.iter().map(|x| 1.0 - x.1).product::<f64>())
+        };
+        let raised = if n > 1 { pair.max(cascade) } else { cascade };
+        let (risk, before, free) = match self.models.as_ref().and_then(|m| m.hardening.as_ref()) {
+            Some(h) => {
+                let (r, f) = h.risk(x, raised);
+                (r, interp(&h.iso_served, cascade).max(f), Some((f, interp(&h.iso_served, raised))))
+            }
+            None => (raised, cascade, None),
+        };
+        let (decision, band) = self.band_for_risk(risk);
+        if let Some((f, _)) = free {
+            out.insert("cascade_risk".into(), jf(py_round(cascade, 5)));
+            out.insert("format_free_risk".into(), jf(py_round(f, 5)));
+        }
+        if n > 1 {
+            out.insert("pair_risk".into(), jf(py_round(pair, 5)));
+        }
+        out.insert("risk".into(), jf(py_round(risk, 5)));
+        out.insert("decision".into(), json!(decision));
+        out.insert("band".into(), json!(band));
+        // reasons from the model that set the risk: the format-free model's SHAP if it did, else the cascade's L2 XGBoost
+        let reasons = match free {
+            _ if band == "safe" => None,
+            Some((f, s)) if f > s => Some(self.free_reasons(x, out_features(out))),
+            _ => Some(self.cascade_reasons(x, out_features(out))),
+        };
+        if let Some(Value::Array(r)) = out.get_mut("reasons") {
+            if let Some(fr) = reasons {
+                *r = fr;
+            }
+            if self.band_for_risk(before).0 != decision && raised > cascade {
+                let what = if payer_window { "Risky payments by this payer in 24 h" } else { "Repeated payments to this payee in 24 h" };
+                r.insert(0, json!({"feature": what, "value": n,
+                                   "display": format!("{n} payments"), "impact": py_round(risk - before, 3)}));
+            }
+        }
+        if band == "high" && out["case_id"].is_null() {
+            let cid = self.link(p);
+            out.insert("case_id".into(), Value::String(cid));
+        }
+    }
+
+    /// Top four positive SHAP contributions of the cascade's L2 XGBoost half.
+    fn cascade_reasons(&self, x: &[f32], feats: Map<String, Value>) -> Vec<Value> {
+        let Some(m) = self.models.as_ref() else { return vec![] };
+        let contrib = m.l2x.contributions(x);
+        let mut order: Vec<usize> = (0..x.len()).collect();
+        order.sort_by(|a, b| contrib[*b].partial_cmp(&contrib[*a]).unwrap_or(std::cmp::Ordering::Equal));
+        order.into_iter().take(4).filter(|&i| contrib[i] > 0.0).map(|i| {
+            let k = &self.cfg.features[i];
+            let v = feats.get(k).cloned().unwrap_or(Value::Null);
+            json!({"feature": readable(k), "value": v, "display": self.display(k, &v), "impact": py_round(contrib[i] as f64, 3)})
+        }).collect()
+    }
+
+    /// Top four positive SHAP contributions of the format-free model, in the same shape as the cascade's reasons.
+    fn free_reasons(&self, x: &[f32], feats: Map<String, Value>) -> Vec<Value> {
+        let Some(h) = self.models.as_ref().and_then(|m| m.hardening.as_ref()) else { return vec![] };
+        let sub: Vec<f32> = h.cols.iter().map(|&i| x[i]).collect();
+        let contrib = h.model.contributions(&sub);
+        let mut order: Vec<usize> = (0..sub.len()).collect();
+        order.sort_by(|a, b| contrib[*b].partial_cmp(&contrib[*a]).unwrap_or(std::cmp::Ordering::Equal));
+        order.into_iter().take(4).filter(|&i| contrib[i] > 0.0).map(|i| {
+            let k = &self.cfg.features[h.cols[i]];
+            let v = feats.get(k).cloned().unwrap_or(Value::Null);
+            json!({"feature": readable(k), "value": v, "display": self.display(k, &v), "impact": py_round(contrib[i] as f64, 3), "model": "format-free"})
+        }).collect()
     }
 
     /// Human-readable value for a reason chip.
