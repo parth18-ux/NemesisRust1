@@ -23,7 +23,7 @@ pub mod validate;
 
 use axum::body::{Body, Bytes};
 use axum::extract::{ConnectInfo, Path, Query, Request, State};
-use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -425,15 +425,22 @@ async fn security_headers(req: Request, next: Next) -> Response {
     r
 }
 
-/// Requests per 10 s per client on POST /api.
+/// Rate-limit identity. X-Forwarded-For is client controlled unless a proxy we trust sets it; trusting it
+/// unconditionally let any caller pick a fresh identity per request and bypass the limit. An appending proxy adds the
+/// address it saw last, so only the rightmost entry is trustworthy (Vercel overwrites the header with one address).
+fn client_key(forwarded: Option<&str>, peer: String, trust_proxy: bool) -> String {
+    match forwarded.filter(|_| trust_proxy) {
+        Some(f) => f.rsplit(',').next().unwrap_or("").trim().to_string(),
+        None => peer,
+    }
+}
+
+/// Requests per 10 s per client on every /api method (GETs such as /v2/consortium and /v2/audit do work that grows
+/// with stored state).
 async fn rate_limit(State(app): State<AppRef>, req: Request, next: Next) -> Response {
-    if req.method() == Method::POST && req.uri().path().starts_with("/api/") {
+    if req.uri().path().starts_with("/api/") {
         let peer = req.extensions().get::<ConnectInfo<SocketAddr>>().map(|c| c.0.ip().to_string()).unwrap_or_else(|| "?".into());
-        // X-Forwarded-For is client controlled unless a proxy we trust overwrites it; trusting it unconditionally let any
-        // caller pick a fresh identity per request and bypass the limit.
-        let forwarded = if *TRUST_PROXY { req.headers().get("x-forwarded-for").and_then(|v| v.to_str().ok()) } else { None };
-        let client = forwarded.map(String::from).unwrap_or(peer);
-        let client = client.split(',').next().unwrap_or("").trim().to_string();
+        let client = client_key(req.headers().get("x-forwarded-for").and_then(|v| v.to_str().ok()), peer, *TRUST_PROXY);
         if !app.rate.lock().unwrap_or_else(|p| p.into_inner()).allow(&client) {
             return PyJson(StatusCode::TOO_MANY_REQUESTS, json!({"detail": "rate limit: too many requests, slow down"})).into_response();
         }
@@ -736,6 +743,9 @@ async fn v2_authenticate(State(app): State<AppRef>, b: Bytes) -> ApiResult {
         if o.get(k).is_some_and(|v| !v.is_object() && !v.is_null()) {
             return Err(ApiError::new(422, format!("{k}: must be an object")));
         }
+        if o.get(k).is_some_and(has_long_str) {
+            return Err(ApiError::new(422, format!("{k}: strings must be at most 512 characters")));
+        }
     }
     let id = o.get("request_id").and_then(|v| v.as_str()).filter(|r| !r.is_empty() && r.len() <= 64).map(String::from)
         .unwrap_or_else(|| (0..16).map(|_| format!("{:x}", rand::random::<u8>() % 16)).collect());
@@ -760,6 +770,16 @@ async fn v2_authenticate(State(app): State<AppRef>, b: Bytes) -> ApiResult {
         out["payee_flagged_by_consortium"] = flagged_by;
         ok(out)
     }).await
+}
+
+/// Any string (at any depth) over 512 characters: the authenticator keeps device and payee ids per account.
+fn has_long_str(v: &Value) -> bool {
+    match v {
+        Value::String(s) => s.chars().count() > 512,
+        Value::Array(a) => a.iter().any(has_long_str),
+        Value::Object(m) => m.values().any(has_long_str),
+        _ => false,
+    }
 }
 
 /// The outcome of the challenge a decision asked for: passed -> allow (a passkey or bank call-back also trusts the
@@ -1242,4 +1262,18 @@ async fn demo_next(State(app): State<AppRef>, Query(q): Query<NQ>) -> ApiResult 
 pub fn description() -> String {
     format!("{TAGLINE}. Live path: L1 XGBoost gatekeeper, L2 XGBoost + LightGBM average, L4 ring linker; L0 LightGBM scores account applications. \
              Trained and evaluated on synthetic datasets (IBM AMLworld, Feedzai BAF).")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::client_key;
+
+    #[test]
+    fn client_key_takes_the_rightmost_forwarded_address_only_behind_a_trusted_proxy() {
+        let peer = || "10.0.0.1".to_string();
+        assert_eq!(client_key(Some("6.6.6.6, 1.2.3.4"), peer(), true), "1.2.3.4", "the spoofable left entry is ignored");
+        assert_eq!(client_key(Some("1.2.3.4"), peer(), true), "1.2.3.4", "Vercel overwrites the header with one address");
+        assert_eq!(client_key(Some("1.2.3.4"), peer(), false), "10.0.0.1");
+        assert_eq!(client_key(None, peer(), true), "10.0.0.1");
+    }
 }

@@ -307,7 +307,24 @@ person's account carries the surname (0/5/55 against
 match on different pairs 0.2094 / 0.3625, same payee covered
 0.9799 / 0.9799. Stated before the run: same-trade and owner-name business
 pairs are all close_match and unchanged by design, so the halving check was hard to reach; the nickname pairs and
-the table share an author, so nickname recall is not an independent measure.
+the table share an author, so nickname recall is not an independent measure. The served v1 itself labelled 2
+different-person pairs as "match" on the fresh test (match precision 0.9948, `research/out/payee_check_eval_v2.json`),
+so its earlier test precision of 1.0 overstated it.
+
+**8s. Security review 2: string caps, bounded ledger and desk, GET rate limit, proxy header.** (1) Every string field
+the API validates is refused above 5,000 characters (`validate::MAX_STR`, the message cap) with the
+`string_too_long` error, list items included, before it is copied into engine state or a stored alert; bank and
+account ids are capped at 128. `/v2/authenticate` reads raw JSON, so any string over 512 characters inside its
+device, network, behaviour or transaction objects is a 422. (2) The demo consortium ledger stops at
+`consortium::MAX_LEDGER` = 10,000 entries (a publish beyond it is an error), since every GET `/v2/consortium`
+re-verifies all signatures and every check scans the ledger. The review desk keeps at most `review::MAX_ALERTS` =
+10,000 alerts: beyond it the oldest final (released or blocked) alert is dropped first, and the oldest alert only when
+none is final, because refusing new alerts would hide fraud. The hash-chained audit log is not trimmed (dropping its
+head breaks `verify_chain`), so it still grows with traffic; it is bounded only by the rate limit and restarts.
+(3) The rate limit now covers every `/api` method with the same per-client budget (240 per 10 s by default), not only
+POST. (4) With `RUSETECT_TRUST_PROXY=1` the client key is the rightmost X-Forwarded-For entry, the one the trusted proxy
+appended; the leftmost is whatever the caller sent. Vercel overwrites the header with one address, so it is unchanged
+there.
 
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.

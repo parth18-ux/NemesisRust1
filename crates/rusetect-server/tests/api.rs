@@ -685,3 +685,28 @@ async fn sanctions_screen_finds_variants_and_validates() {
         assert_eq!(t.req("POST", "/api/v2/sanctions/screen", Some(bad.clone()), &[]).await.0, StatusCode::UNPROCESSABLE_ENTITY, "{bad}");
     }
 }
+
+#[tokio::test]
+async fn oversized_strings_are_refused_before_they_reach_state() {
+    let t = T::new();
+    let before = t.get("/api/v2/stats").await["accounts_tracked"].clone();
+    let mut b = pay();
+    b["from_account"] = json!("A".repeat(129));
+    let (s, v, _) = t.req("POST", "/api/v2/assess", Some(b), &[]).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(v["detail"][0]["type"], "string_too_long");
+    assert_eq!(t.get("/api/v2/stats").await["accounts_tracked"], before);
+    let auth = json!({"user_id": "u1", "ts": 1.767e9, "device": {"device_id": "d".repeat(600)}});
+    assert_eq!(t.req("POST", "/api/v2/authenticate", Some(auth), &[]).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn gets_are_rate_limited_too() {
+    let shared = rusetect_server::new_shared();
+    *shared.rate.lock().unwrap() = rusetect::security::RateLimiter::new(3, 10.0);
+    let t = T { app: rusetect_server::build_app(shared) };
+    for _ in 0..3 {
+        assert_eq!(t.req("GET", "/api/v2/consortium", None, &[]).await.0, StatusCode::OK);
+    }
+    assert_eq!(t.req("GET", "/api/v2/consortium", None, &[]).await.0, StatusCode::TOO_MANY_REQUESTS);
+}
