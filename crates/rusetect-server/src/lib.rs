@@ -645,9 +645,18 @@ async fn v2_review(State(app): State<AppRef>, Path(alert_id): Path<String>, h: H
             let p = &a["payment"];
             let ident = format!("{}:{}", p["to_bank"].as_str().unwrap_or(""), p["to_account"].as_str().unwrap_or(""));
             let pack_hash = s.desk.evidence(&alert_id).and_then(|e| e["pack_hash"].as_str().map(String::from));
-            let e = s.consortium.publish(THIS_BANK, "mule_account", &ident, "block approved by two analysts", pack_hash.as_deref()).map_err(|m| ApiError::new(400, m))?;
-            s.desk.set_field(&alert_id, "published", e["seq"].clone());
-            s.desk.system_event(&alert_id, "consortium_published", "system", &format!("ledger entry {}", e["seq"]), false).map_err(review_err)?;
+            // the block stands even when the ledger refuses the entry (e.g. full); the alert records why it was not shared
+            match s.consortium.publish(THIS_BANK, "mule_account", &ident, "block approved by two analysts", pack_hash.as_deref()) {
+                Ok(e) => {
+                    s.desk.set_field(&alert_id, "published", e["seq"].clone());
+                    s.desk.system_event(&alert_id, "consortium_published", "system", &format!("ledger entry {}", e["seq"]), false).map_err(review_err)?;
+                }
+                Err(m) => {
+                    s.desk.set_field(&alert_id, "published", json!(false));
+                    s.desk.set_field(&alert_id, "publish_error", json!(m));
+                    s.desk.system_event(&alert_id, "consortium_publish_failed", "system", &m, false).map_err(review_err)?;
+                }
+            }
         }
         ok(s.desk.alerts[&alert_id].clone())
     }).await

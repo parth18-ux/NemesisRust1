@@ -1,12 +1,16 @@
 //! Flagged sender network rule (port of service/coordination.py): a payee that keeps receiving money from accounts
 //! RuseTect itself flagged recently is collecting from many victims or laundering hops. The LOCAL count is off by
 //! default (RUSETECT_COORDINATION=1 turns it on); cross-bank consortium flags stay on.
-use std::collections::{HashMap, HashSet, VecDeque};
+use indexmap::IndexMap;
+use std::collections::{HashSet, VecDeque};
 
 /// least noisy setting in the fusion test (7 days, senders held for an analyst, 3 of them); results/coordination_eval.json
 pub const WINDOW_MIN: i64 = 7 * 24 * 60;
 pub const FLAG_RANK: usize = 2;
 pub const K: usize = 3;
+/// Payees (and flagged senders) tracked; the oldest is dropped first.
+// shortcut: in-memory and capped, upgrade to a real store (windowed counts in a database) for multi-bank volume
+pub const MAX_TRACKED: usize = if cfg!(test) { 3 } else { 100_000 };
 
 pub fn enabled_from_env() -> bool {
     std::env::var("RUSETECT_COORDINATION").map(|v| v == "1").unwrap_or(false)
@@ -17,8 +21,8 @@ pub struct CoordinationTracker {
     pub flag_rank: usize,
     pub k: usize,
     pub enabled: bool,
-    flagged_at: HashMap<String, i64>,
-    incoming: HashMap<String, VecDeque<(i64, String)>>,
+    flagged_at: IndexMap<String, i64>,
+    incoming: IndexMap<String, VecDeque<(i64, String)>>,
 }
 
 impl Default for CoordinationTracker {
@@ -29,7 +33,7 @@ impl Default for CoordinationTracker {
 
 impl CoordinationTracker {
     pub fn new(window_min: i64, flag_rank: usize, k: usize, enabled: bool) -> Self {
-        CoordinationTracker { window: window_min, flag_rank, k, enabled, flagged_at: HashMap::new(), incoming: HashMap::new() }
+        CoordinationTracker { window: window_min, flag_rank, k, enabled, flagged_at: IndexMap::new(), incoming: IndexMap::new() }
     }
 
     pub fn reset(&mut self) {
@@ -57,7 +61,14 @@ impl CoordinationTracker {
     /// After scoring: remember the payment and whether its sender was flagged.
     pub fn record(&mut self, sender: &str, payee: &str, t: i64, final_rank: usize) {
         if final_rank >= self.flag_rank {
+            self.flagged_at.shift_remove(sender); // re-insert at the back so the order stays oldest-first
+            if self.flagged_at.len() >= MAX_TRACKED {
+                self.flagged_at.shift_remove_index(0);
+            }
             self.flagged_at.insert(sender.to_string(), t);
+        }
+        if !self.incoming.contains_key(payee) && self.incoming.len() >= MAX_TRACKED {
+            self.incoming.shift_remove_index(0);
         }
         self.incoming.entry(payee.to_string()).or_default().push_back((t, sender.to_string()));
     }
@@ -75,5 +86,15 @@ mod tests {
         assert!(!t.coordinated("P", 10));
         t.enabled = true;
         assert!(t.coordinated("P", 10));
+    }
+
+    #[test]
+    fn tracked_payees_are_capped() {
+        let mut t = CoordinationTracker::new(1000, 1, 2, true);
+        for (i, p) in ["P1", "P2", "P3", "P4"].iter().enumerate() {
+            t.record(&format!("s{i}"), p, i as i64, 2);
+        }
+        assert_eq!(t.incoming.keys().cloned().collect::<Vec<_>>(), vec!["P2", "P3", "P4"]);
+        assert_eq!(t.flagged_at.len(), MAX_TRACKED);
     }
 }

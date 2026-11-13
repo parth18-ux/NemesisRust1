@@ -117,6 +117,12 @@ pub struct DuressUser {
     failed: u32,
 }
 
+/// Registered duress users; new registrations are refused when full (a registered user is never dropped silently).
+// shortcut: in-memory and capped, upgrade to a real store (encrypted database) before enrolling real customers
+pub const MAX_DURESS_USERS: usize = if cfg!(test) { 2 } else { 100_000 };
+/// Duress notifications kept; the oldest is dropped first.
+pub const MAX_NOTIFICATIONS: usize = if cfg!(test) { 2 } else { 100_000 };
+
 /// Wrong PINs in a row before confirmation is locked (a 4 digit PIN would otherwise fall to 10,000 guesses).
 pub const MAX_FAILED_PINS: u32 = 5;
 
@@ -175,6 +181,9 @@ impl DuressVault {
         if self.users.contains_key(account) {
             return Err("account already registered".into());
         }
+        if self.users.len() >= MAX_DURESS_USERS {
+            return Err(format!("duress registry is full ({MAX_DURESS_USERS} accounts)"));
+        }
         let n = u.contacts.len();
         self.users.insert(account.to_string(), u);
         Ok(json!({"account": account, "trusted_contacts": n}))
@@ -199,6 +208,9 @@ impl DuressVault {
         if bool::from(h.ct_eq(&u.duress)) {
             u.failed = 0;
             let contacts = u.contacts.clone();
+            if self.notifications.len() >= MAX_NOTIFICATIONS {
+                self.notifications.remove(0);
+            }
             self.notifications.push(json!({"at": crate::pyfmt::utc_now_z(), "account": account, "to": contacts,
                 "message": "Possible coercion: a payment was confirmed with the duress PIN. The money is on hold."}));
             return json!({"result": "duress", "shown_to_customer": "Payment successful", "funds": "held",
@@ -257,5 +269,18 @@ mod tests {
         assert_eq!(v.confirm("A1", "1234")["result"], "locked", "even the right PIN after too many wrong ones");
         assert!(v.register("A2", "1111", "1111", &[]).is_err());
         assert!(!v.debug_dump().contains("1234"));
+    }
+
+    #[test]
+    fn duress_vault_is_capped() {
+        let mut v = DuressVault::new();
+        v.register("A1", "1234", "4321", &[]).unwrap();
+        v.register("A2", "1234", "4321", &[]).unwrap();
+        assert!(v.register("A3", "1234", "4321", &[]).unwrap_err().contains("full"), "refused, nobody evicted");
+        assert_eq!(v.confirm("A1", "1234")["result"], "ok");
+        for _ in 0..3 {
+            v.confirm("A2", "4321");
+        }
+        assert_eq!(v.notifications.len(), MAX_NOTIFICATIONS);
     }
 }

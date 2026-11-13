@@ -326,6 +326,15 @@ POST. (4) With `RUSETECT_TRUST_PROXY=1` the client key is the rightmost X-Forwar
 appended; the leftmost is whatever the caller sent. Vercel overwrites the header with one address, so it is unchanged
 there.
 
+**8t. Ledger-full blocks succeed; bounded watchlist, coordination and duress maps.** (1) When the consortium ledger is
+full, a two-analyst block still stands and the review call returns 200: the alert gets `"published": false`, a
+`publish_error` with the reason, and a `consortium_publish_failed` system event, instead of the publish error turning
+the review into a 400. (2) The lure payee watchlist keeps at most `lure_fusion::MAX_WATCH` = 100,000 entries and the
+coordination tracker at most `coordination::MAX_TRACKED` = 100,000 payees and 100,000 flagged senders, each dropping
+the oldest first. The duress vault refuses new registrations (409) beyond `intervention::MAX_DURESS_USERS` = 100,000
+rather than evicting a registered customer, and keeps the newest `MAX_NOTIFICATIONS` = 100,000 notifications. All are
+in-memory shortcuts; a real deployment moves them to a store. The per-account lure event and push maps are not capped.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
