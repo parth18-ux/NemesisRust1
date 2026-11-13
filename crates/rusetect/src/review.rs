@@ -23,6 +23,10 @@ pub enum ReviewError {
     Invalid(String),
 }
 
+/// Alerts kept in memory. Beyond it the oldest final (released or blocked) alert is dropped, or the oldest alert when
+/// none is final; the hash-chained log is kept whole, since trimming its head would break verify_chain.
+pub const MAX_ALERTS: usize = 10_000;
+
 #[derive(Default)]
 pub struct ReviewDesk {
     pub alerts: IndexMap<String, Value>,
@@ -70,6 +74,12 @@ impl ReviewDesk {
         let a = json!({"alert_id": aid, "status": "open", "shown_decision": shown, "payment": payment, "assessed": assessed,
                        "actions": [], "block_approvals": []});
         self.alerts.insert(aid.clone(), a.clone());
+        if self.alerts.len() > MAX_ALERTS {
+            let is_final = |a: &Value| matches!(a["status"].as_str(), Some("released" | "blocked"));
+            let old = self.alerts.iter().find(|(_, a)| is_final(a)).map(|(k, _)| k.clone())
+                .unwrap_or_else(|| self.alerts.keys().next().cloned().unwrap_or_default());
+            self.alerts.shift_remove(&old);
+        }
         let mut ev = Map::new();
         ev.insert("type".into(), json!("alert_opened"));
         ev.insert("alert_id".into(), json!(aid));
@@ -197,5 +207,20 @@ mod tests {
         assert!(d.verify_chain());
         d.log[0]["type"] = json!("edited");
         assert!(!d.verify_chain());
+    }
+
+    #[test]
+    fn alerts_are_capped_evicting_final_ones_first() {
+        let mut d = ReviewDesk::new();
+        let hold = json!({"final_decision": "Hold"});
+        for _ in 0..MAX_ALERTS {
+            d.open_alert(&Map::new(), &hold);
+        }
+        d.alerts["A00005"]["status"] = json!("released");
+        d.open_alert(&Map::new(), &hold);
+        assert_eq!(d.alerts.len(), MAX_ALERTS);
+        assert!(!d.alerts.contains_key("A00005") && d.alerts.contains_key("A00001"), "the final alert goes first");
+        d.open_alert(&Map::new(), &hold);
+        assert!(!d.alerts.contains_key("A00001") && d.verify_chain(), "then the oldest; the log stays whole");
     }
 }

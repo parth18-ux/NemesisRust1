@@ -30,6 +30,8 @@ pub struct Obj<'a> {
 }
 
 const MISSING: Value = Value::Null;
+/// Longest string any field takes (the message cap); longer ones are refused before they are copied or stored.
+pub const MAX_STR: usize = 5000;
 
 impl<'a> Obj<'a> {
     pub fn new(v: &'a Value, loc: Vec<String>, errs: &mut Errors) -> Option<Self> {
@@ -67,6 +69,10 @@ impl<'a> Obj<'a> {
     // ---------------------------------------------------------------- strings
     fn as_str(&self, errs: &mut Errors, f: &str, v: &Value) -> Option<String> {
         match v {
+            Value::String(s) if s.chars().count() > MAX_STR => {
+                self.err(errs, "string_too_long", f, &format!("String should have at most {MAX_STR} characters"), v);
+                None
+            }
             Value::String(s) => Some(s.clone()),
             _ => {
                 self.err(errs, "string_type", f, "Input should be a valid string", v);
@@ -228,16 +234,17 @@ impl<'a> Obj<'a> {
     pub fn str_list(&self, errs: &mut Errors, f: &str) -> Vec<String> {
         match self.m.get(f) {
             None => vec![],
-            Some(Value::Array(a)) => a.iter().enumerate().filter_map(|(i, x)| match x {
-                Value::String(s) => Some(s.clone()),
-                _ => {
-                    let l = self.loc(f);
-                    let mut r: Vec<String> = l;
-                    r.push(i.to_string());
-                    let rr: Vec<&str> = r.iter().map(|s| s.as_str()).collect();
-                    errs.push("string_type", &rr, "Input should be a valid string", x);
-                    None
-                }
+            Some(Value::Array(a)) => a.iter().enumerate().filter_map(|(i, x)| {
+                let (kind, msg) = match x {
+                    Value::String(s) if s.chars().count() <= MAX_STR => return Some(s.clone()),
+                    Value::String(_) => ("string_too_long", format!("String should have at most {MAX_STR} characters")),
+                    _ => ("string_type", "Input should be a valid string".to_string()),
+                };
+                let mut r = self.loc(f);
+                r.push(i.to_string());
+                let rr: Vec<&str> = r.iter().map(|s| s.as_str()).collect();
+                errs.push(kind, &rr, &msg, x);
+                None
             }).collect(),
             Some(v) => {
                 self.err(errs, "list_type", f, "Input should be a valid list", v);

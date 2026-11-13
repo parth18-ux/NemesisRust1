@@ -13,6 +13,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
+/// Ledger entries kept: verify() and check() walk the whole ledger on every read, so it must stay bounded.
+pub const MAX_LEDGER: usize = 10_000;
+
 pub const REGISTRIES: [&str; 3] = ["fraud_device", "mule_account", "sim_swap_takeover"]; // sorted
 
 pub struct Bank {
@@ -62,6 +65,9 @@ impl Consortium {
             return Err(format!("registry must be one of ['{}']", REGISTRIES.join("', '")));
         }
         let bank = self.banks.get(bank_id).ok_or_else(|| format!("unknown member bank {bank_id}"))?;
+        if self.ledger.len() >= MAX_LEDGER {
+            return Err(format!("consortium ledger is full ({MAX_LEDGER} entries)"));
+        }
         let prev = self.ledger.last().and_then(|e| e["hash"].as_str()).map(String::from).unwrap_or_else(|| "0".repeat(64));
         let body = json!({"seq": self.ledger.len() + 1, "at": utc_now_z(), "bank": bank_id, "registry": registry,
                           "token": self.token(registry, identifier), "reason": take_chars(reason, 120), "evidence_sha256": evidence_sha256,
@@ -132,5 +138,16 @@ mod tests {
         assert!(!serde_json::to_string(&con.ledger).unwrap().contains("MULE9") && con.verify());
         con.ledger[0]["reason"] = json!("edited");
         assert!(!con.verify());
+    }
+
+    #[test]
+    fn ledger_is_capped() {
+        let mut con = Consortium::new(Some("t"), &["BANK-A"]);
+        for i in 1..MAX_LEDGER {
+            con.publish("BANK-A", "mule_account", &i.to_string(), "r", None).unwrap();
+        }
+        assert!(con.publish("BANK-A", "mule_account", "last", "r", None).is_ok());
+        assert!(con.publish("BANK-A", "mule_account", "one too many", "r", None).is_err());
+        assert_eq!(con.ledger.len(), MAX_LEDGER);
     }
 }

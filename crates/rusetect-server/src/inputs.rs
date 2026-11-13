@@ -40,6 +40,10 @@ impl PaymentIn {
             // 0.015). See research/out/slice_results.json, section F.
             payment_format: o.req_str(e, "payment_format"),
         };
+        // ids are short; the cap keeps per-account engine state and stored alerts small
+        for (f, v) in [("from_bank", &p.from_bank), ("from_account", &p.from_account), ("to_bank", &p.to_bank), ("to_account", &p.to_account)] {
+            o.check_len(e, f, v, None, Some(128));
+        }
         o.one_of(e, "payment_format", &p.payment_format, &PAYMENT_FORMATS);
         // An unknown currency used to be converted to USD at rate 1.0 and given a missing currency code.
         o.one_of(e, "payment_currency", &p.payment_currency, &CURRENCIES);
