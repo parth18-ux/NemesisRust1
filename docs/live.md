@@ -82,7 +82,7 @@ async function send(event, url) {
 | `risk`, `context_band`, `reasons` | engine risk (null when the L1 gatekeeper cleared it), context band, top reasons (in-memory mode) |
 | `pramaan` | null, or the account-takeover decision (`allow`/`challenge`/`block`), its `decision_id` and whether it `raised` the action |
 | `alert_id` | the review alert opened for verify/hold/block (null for allow); analysts act on it at `/api/v2/alerts/{id}/review` |
-| `ledger` | `seq` and `hash` of the hash-chained ledger entry written for this decision |
+| `ledger` | `seq` (the entry's position in this server's hash-chained log) and `hash` of the ledger entry written for this decision; the entry carries the event's `seq` as `event_seq`. With Redis, `allow` decisions are written to `live:ledger` only, unchained, with `seq` null |
 | `payment`, `received_at`, `latency_ms`, `source` | what was decided on, when, how long it took; `source` is `live` |
 | `durable`, `store` | `true`/`redis` when committed to Redis; `false`/`memory` otherwise |
 
@@ -98,9 +98,15 @@ again. With Redis this holds across all function instances for 7 days; in memory
 
 ## 5. Watching it live
 
-The Live Console (`/console`) polls `GET /api/v2/live` every 1.5 s and lists real ingested events only, tagged `live`.
-The replay of recorded synthetic payments below it is tagged `demo`. A badge shows the store: `durable: redis` or
-`not durable: in-memory`. With analyst keys configured, `/api/v2/live` needs an `X-Analyst-Key`.
+The Live Console (`/console`) polls `GET /api/v2/live` every 5 s, and not at all while its tab is hidden, and lists
+real ingested events only, tagged `live`. The replay of recorded synthetic payments below it is tagged `demo`. A badge
+shows the store: `durable: redis` or `not durable: in-memory`. With analyst keys configured, `/api/v2/live` needs an
+`X-Analyst-Key`. In demo mode (no `RUSETECT_ANALYST_KEYS`) it is public: once `RUSETECT_WEBHOOK_SECRET` is set, anyone
+can read the live feed (accounts and amounts of real events), so configure analyst keys before sending real payments.
+
+Once this server's ledger holds a live decision (in memory: any event; with Redis: verify, hold or block, whose copy
+on the instance would be wiped), `POST /api/v2/demo/reset` answers `409` (the console shows the message), so the
+demo reset cannot wipe the alerts and ledger entries of real events.
 
 ## 6. Durable storage for free (Upstash Redis on Vercel)
 
@@ -111,12 +117,19 @@ Without a store, decisions live in the memory of one function instance and are l
    database on the **Free** plan, in the region closest to the function.
 2. **Connect** it to the project (all environments). This sets `KV_URL` / `REDIS_URL` (a `rediss://` URL) and the
    `KV_REST_API_*` variables. RuseTect uses the `rediss://` URL; the REST variables alone are not enough.
-3. Redeploy. `/api/health` should now show `"durable": true, "store": {"kind": "redis"}`.
+3. Redeploy. `/api/health` should now show `"durable": true, "store": {"kind": "redis"}`. `store.configured` says a
+   Redis URL is set and `store.reachable` the result of this instance's last command (null before the first);
+   `durable` turns `false` when that command could not reach Redis.
 
 What is written, under the prefix `RUSETECT_REDIS_PREFIX` (default `rusetect:`): `live:ev:{event_id}` (result, 7 days),
-`live:feed` (latest 200), `live:alerts` (alert by id), `live:ledger` (ledger entries), `live:seq`, and the per-account
-state of `scale/redis_state.rs` (`a:`, `p:`, `wo:`, `wi:`, `pr:`, `seen:` keys, 24 to 48 hour windows). Watch the free
-plan's daily command and storage limits; each event costs a few tens of commands.
+`live:feed` (latest 200), `live:alerts` (alert by id), `live:ledger` (ledger entries, latest 100,000 kept), `live:seq`,
+and the per-account state of `scale/redis_state.rs` (`a:`, `p:`, `wo:`, `wi:`, `pr:`, `seen:` keys, 24 to 48 hour
+windows). `live:alerts` has no expiry: it holds one entry per verify/hold/block alert until you delete it, so archive
+and `HDEL` final (released or blocked) alerts when it grows. Watch the free plan's daily command and storage limits; each
+event costs a few tens of commands, and each console poll one.
+
+Any instance can review a live alert: `GET /api/v2/alerts`, the review action, the evidence pack and the STR draft read
+the alert from `live:alerts`, and a review action writes the updated alert back.
 
 ## Limits to know
 
@@ -124,6 +137,10 @@ plan's daily command and storage limits; each event costs a few tens of commands
   pair window and the context layer from account history. The message, session and lure signals and per-feature
   reasons are applied only in memory mode, and PRAMAAN's per-user history is kept per function instance.
 - The ledger is hash chained within one server instance; with Redis, entries from several instances are ordered by
-  `seq`, not chained to each other.
+  `event_seq`, not chained to each other, and `allow` entries are not chained at all.
+- Review actions on one live alert from two instances at the same moment are not locked: the last write wins. The
+  pause-screen, re-verification and duress routes change only the instance's copy and are not written back.
+- Redis calls are made while the server's state lock is held, so one instance handles one request at a time (on
+  Vercel an instance serves one request at a time anyway).
 - The per-client rate limit (`RUSETECT_RATE_LIMIT`, requests per 10 s) applies to the webhook too; raise it for a
   high-volume sender.

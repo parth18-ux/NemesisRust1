@@ -361,8 +361,13 @@ repeated `event_id` returns the stored result and is not scored again. The durab
 (`scale::redis_state`), so every function instance sees the same history; the REST API was not needed because Upstash
 accepts TLS connections from a function. Without a Redis URL the server keeps everything in memory and says so
 (`/api/health` `"durable": false`, console badge "not durable: in-memory"). The console polls `GET /api/v2/live` every
-1.5 s instead of holding a server-sent-events stream, which a serverless function would cut at its time limit. How to
-send events: `docs/live.md`.
+5 s (paused while the tab is hidden, to stay inside Upstash's free command quota) instead of holding a server-sent-events
+stream, which a serverless function would cut at its time limit. How to send events:
+`docs/live.md`. Review fixes: the demo reset is refused (409) once live events exist; live alerts are read from and
+written back to Redis so any instance can review them; the ledger position is no longer overwritten by the event
+sequence (`event_seq`); `live:ledger` is capped and Redis `allow` decisions skip the in-process chain; a dropped
+connection is reopened once instead of a PING per call; a failed or unanswered commit releases its claim only when the
+result is not stored; `/api/health` reports `durable` from the last Redis result.
 
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.

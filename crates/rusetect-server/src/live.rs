@@ -13,6 +13,9 @@
 //!
 //! Idempotency: the event_id is claimed before scoring; a repeated event_id returns the stored result unchanged (header
 //! `Idempotent-Replayed: true`) and is not scored or written again.
+//!
+//! Redis I/O happens while the state mutex is held, so one instance serves one request at a time; acceptable on Vercel,
+//! where a function instance serves one request at a time anyway.
 use crate::inputs::AssessIn;
 use crate::scale::{redis_state::RedisState, worker::score_one};
 use crate::{assess, check_auth_request, header, parse_obj, payment_of, require_reader, AppRef, AppState, ApiError, PyJson};
@@ -40,13 +43,15 @@ const MEM_EVENTS: usize = 100_000;
 /// How long Redis keeps an event's result for idempotency, and how long an unfinished claim blocks a retry.
 const EVENT_TTL_S: u64 = 7 * 86_400;
 const CLAIM_TTL_S: u64 = 60;
+/// Entries kept in `live:ledger` (oldest trimmed first).
+pub const LEDGER_MAX: usize = 100_000;
 pub const ACTIONS: [&str; 4] = ["allow", "verify", "hold", "block"];
 
 /// Check the webhook signature over the raw body. `now` is epoch seconds.
 pub fn verify_signature(secret: &[u8], ts: Option<&str>, sig: Option<&str>, body: &[u8], now: i64) -> Result<(), ApiError> {
     let ts = ts.ok_or_else(|| ApiError::new(401, "missing X-RuseTect-Timestamp"))?;
     let t: i64 = ts.trim().parse().map_err(|_| ApiError::new(401, "X-RuseTect-Timestamp must be epoch seconds"))?;
-    if (now - t).abs() > TOLERANCE_S {
+    if now.abs_diff(t) > TOLERANCE_S as u64 {
         return Err(ApiError::new(401, "X-RuseTect-Timestamp is more than 5 minutes from the server clock"));
     }
     let sig = sig.ok_or_else(|| ApiError::new(401, "missing X-RuseTect-Signature"))?;
@@ -64,6 +69,8 @@ pub struct Durable {
     client: redis::Client,
     state: Option<RedisState>,
     px: String,
+    /// result of the last command in this instance (None until the first one)
+    reachable: Option<bool>,
 }
 
 impl Durable {
@@ -71,13 +78,7 @@ impl Durable {
         format!("{}live:{k}", self.px)
     }
 
-    /// The connection, reconnecting when a kept one no longer answers (a warm function instance outlives idle sockets).
-    fn con(&mut self, cfg: &CascadeConfig) -> redis::RedisResult<&mut RedisState> {
-        if let Some(st) = self.state.as_mut() {
-            if redis::cmd("PING").query::<String>(&mut st.con).is_err() {
-                self.state = None;
-            }
-        }
+    fn connect(&mut self, cfg: &CascadeConfig) -> redis::RedisResult<&mut RedisState> {
         if self.state.is_none() {
             let con = self.client.get_connection_with_timeout(Duration::from_secs(5))?;
             con.set_read_timeout(Some(Duration::from_secs(5)))?;
@@ -85,6 +86,33 @@ impl Durable {
             self.state = Some(RedisState::new(con, cfg.clone(), &self.px));
         }
         Ok(self.state.as_mut().unwrap())
+    }
+
+    /// Run `f` on the kept connection. A warm function instance outlives idle sockets, so when `retry` is set and a kept
+    /// connection turns out dropped, reconnect once and run `f` again (no PING per request: the free plan counts every
+    /// command). A connection with an I/O error (a timeout included: its late reply would desync it) is dropped.
+    fn run<T>(&mut self, cfg: &CascadeConfig, retry: bool, mut f: impl FnMut(&mut RedisState) -> redis::RedisResult<T>) -> redis::RedisResult<T> {
+        let kept = self.state.is_some();
+        let mut r = self.connect(cfg).and_then(&mut f);
+        if let Err(e) = &r {
+            if e.is_io_error() || e.is_connection_dropped() {
+                self.state = None;
+                if retry && kept && !e.is_timeout() {
+                    r = self.connect(cfg).and_then(&mut f);
+                }
+            }
+        }
+        let down = r.as_ref().err().is_some_and(|e| e.is_io_error() || e.is_connection_dropped() || e.is_connection_refusal());
+        if down {
+            self.state = None;
+        }
+        self.reachable = Some(!down);
+        r
+    }
+
+    /// Delete an unfinished claim so the sender's retry is processed (account writes are deduped by seen:{eid}).
+    fn release(&mut self, cfg: &CascadeConfig, key: &str) {
+        let _ = self.run(cfg, true, |st| redis::cmd("DEL").arg(key).query::<i64>(&mut st.con));
     }
 }
 
@@ -116,23 +144,29 @@ impl Live {
     }
 
     pub fn redis(url: &str, prefix: &str) -> redis::RedisResult<Self> {
-        Ok(Live { redis: Some(Durable { client: redis::Client::open(url)?, state: None, px: prefix.into() }), ..Default::default() })
+        Ok(Live { redis: Some(Durable { client: redis::Client::open(url)?, state: None, px: prefix.into(), reachable: None }), ..Default::default() })
     }
 
-    pub fn durable(&self) -> bool {
+    /// A Redis store is configured.
+    pub fn configured(&self) -> bool {
         self.redis.is_some()
     }
 
+    /// Configured and its last command in this instance did not fail to connect (unknown before the first one).
+    pub fn durable(&self) -> bool {
+        self.redis.as_ref().is_some_and(|d| d.reachable != Some(false))
+    }
+
     pub fn store_json(&self) -> Value {
-        json!({"kind": if self.durable() { "redis" } else { "memory" }, "note": self.note})
+        json!({"kind": if self.configured() { "redis" } else { "memory" }, "configured": self.configured(),
+               "reachable": self.redis.as_ref().and_then(|d| d.reachable), "note": self.note})
     }
 
     /// Latest live decisions, newest first.
     pub fn feed(&mut self, n: usize, cfg: &CascadeConfig) -> Result<Vec<Value>, ApiError> {
         let Some(d) = self.redis.as_mut() else { return Ok(self.feed.iter().take(n).cloned().collect()) };
         let key = d.key("feed");
-        let st = d.con(cfg).map_err(store_err)?;
-        let rows: Vec<String> = redis::cmd("LRANGE").arg(&key).arg(0).arg(n as i64 - 1).query(&mut st.con).map_err(store_err)?;
+        let rows: Vec<String> = d.run(cfg, true, |st| redis::cmd("LRANGE").arg(&key).arg(0).arg(n as i64 - 1).query(&mut st.con)).map_err(store_err)?;
         Ok(rows.iter().filter_map(|r| serde_json::from_str(r).ok()).collect())
     }
 }
@@ -162,7 +196,7 @@ fn action_of(decision: &str) -> &'static str {
 pub fn ingest(s: &mut AppState, ev: &Event) -> Result<(Value, bool), ApiError> {
     let t0 = Instant::now();
     let d = payment_of(&ev.a.payment)?;
-    s.need_engine()?;
+    let cfg = s.need_engine()?.cfg.clone();
     // 1. idempotency: a known event id returns what was stored; a new one is claimed before any work
     let seq = match s.live.redis.as_mut() {
         None => {
@@ -175,25 +209,28 @@ pub fn ingest(s: &mut AppState, ev: &Event) -> Result<(Value, bool), ApiError> {
         Some(du) => {
             let key = du.key(&format!("ev:{}", ev.id));
             let seq_key = du.key("seq");
-            let st = du.con(&s.engine.as_ref().unwrap().cfg).map_err(store_err)?;
-            let claimed: Option<String> = redis::cmd("SET").arg(&key).arg("pending").arg("NX").arg("EX").arg(CLAIM_TTL_S).query(&mut st.con).map_err(store_err)?;
+            let claim = |st: &mut RedisState| redis::cmd("SET").arg(&key).arg("pending").arg("NX").arg("EX").arg(CLAIM_TTL_S).query(&mut st.con);
+            let claimed: Option<String> = du.run(&cfg, true, claim).map_err(store_err)?;
             if claimed.is_none() {
-                let v: Option<String> = redis::cmd("GET").arg(&key).query(&mut st.con).map_err(store_err)?;
+                let v: Option<String> = du.run(&cfg, true, |st| redis::cmd("GET").arg(&key).query(&mut st.con)).map_err(store_err)?;
                 return match v.as_deref().map(serde_json::from_str::<Value>) {
                     Some(Ok(r)) => Ok((r, true)),
                     _ => Err(ApiError::new(409, "this event_id is still being processed; retry in a minute")),
                 };
             }
-            redis::cmd("INCR").arg(&seq_key).query::<u64>(&mut st.con).map_err(store_err)?
+            match du.run(&cfg, true, |st| redis::cmd("INCR").arg(&seq_key).query::<u64>(&mut st.con)) {
+                Ok(n) => n,
+                Err(e) => {
+                    du.release(&cfg, &key);
+                    return Err(store_err(e));
+                }
+            }
         }
     };
     let res = decide(s, ev, &d, seq);
     if let (Err(_), Some(du)) = (&res, s.live.redis.as_mut()) {
-        // release the claim so the sender's retry is processed (account writes are deduped by seen:{eid})
         let key = du.key(&format!("ev:{}", ev.id));
-        if let Some(st) = du.state.as_mut() {
-            let _ = redis::cmd("DEL").arg(key).query::<i64>(&mut st.con);
-        }
+        du.release(&cfg, &key);
     }
     let (mut rec, alert, entry) = res?;
     rec["latency_ms"] = jf(py_round(t0.elapsed().as_secs_f64() * 1000.0, 2));
@@ -214,14 +251,19 @@ pub fn ingest(s: &mut AppState, ev: &Event) -> Result<(Value, bool), ApiError> {
             pl.atomic().cmd("SET").arg(&ek).arg(&body).arg("EX").arg(EVENT_TTL_S).ignore()
                 .cmd("LPUSH").arg(&fk).arg(&body).ignore()
                 .cmd("LTRIM").arg(&fk).arg(0).arg(FEED - 1).ignore()
-                .cmd("RPUSH").arg(&lk).arg(entry.to_string()).ignore();
+                .cmd("RPUSH").arg(&lk).arg(entry.to_string()).ignore()
+                .cmd("LTRIM").arg(&lk).arg(-(LEDGER_MAX as i64)).arg(-1).ignore();
             if let Some(a) = &alert {
                 pl.cmd("HSET").arg(&ak).arg(a["alert_id"].as_str().unwrap_or("")).arg(a.to_string()).ignore();
             }
-            let st = du.state.as_mut().ok_or_else(|| ApiError::new(503, "durable store connection lost"))?;
-            if let Err(e) = pl.query::<()>(&mut st.con) {
-                let _ = redis::cmd("DEL").arg(&ek).query::<i64>(&mut st.con);
-                du.state = None;
+            // no retry: a transaction whose reply was lost may have been applied
+            if let Err(e) = du.run(&cfg, false, |st| pl.query::<()>(&mut st.con)) {
+                // look before releasing the claim: a stored result means the commit was applied (a reply timeout)
+                match du.run(&cfg, true, |st| redis::cmd("GET").arg(&ek).query::<Option<String>>(&mut st.con)) {
+                    Ok(Some(v)) if v != "pending" => return Ok((serde_json::from_str(&v).unwrap_or(rec), false)),
+                    Ok(_) => du.release(&cfg, &ek),
+                    Err(_) => {} // unknown: the claim expires after CLAIM_TTL_S, so a retry cannot commit twice
+                }
                 return Err(store_err(e));
             }
         }
@@ -243,13 +285,9 @@ fn decide(s: &mut AppState, ev: &Event, d: &rusetect::payment::Payment, seq: u64
         }
         Some(du) => {
             let eng = s.engine.as_ref().unwrap();
-            let st = du.con(&eng.cfg).map_err(store_err)?;
             let mut p = d.clone();
             p.eid = Some(eid_of(&ev.id));
-            let r = score_one(eng, st, &p).map_err(|e| {
-                du.state = None;
-                store_err(e)
-            })?;
+            let r = du.run(&eng.cfg, true, |st| score_one(eng, st, &p)).map_err(store_err)?;
             (json!({"final_decision": r["final_decision"], "payment_decision": r["payment_decision"], "risk": r["risk"],
                     "context_band": r["context_band"], "context": {"ruleset": RULESET_VERSION}}), None, json!([]))
         }
@@ -276,19 +314,76 @@ fn decide(s: &mut AppState, ev: &Event, d: &rusetect::payment::Payment, seq: u64
     let action = action_of(&final_decision);
     let payment: serde_json::Map<String, Value> = ["timestamp", "from_bank", "from_account", "to_bank", "to_account", "amount_paid", "payment_currency", "payment_format"]
         .iter().map(|k| (k.to_string(), inputs.get(*k).cloned().unwrap_or(Value::Null))).collect();
-    let entry = s.desk.append(json!({"type": "live_decision", "event_id": ev.id, "seq": seq, "action": action, "final_decision": final_decision,
-                                     "alert_id": alert_id, "inputs_hash": hash_obj(&Value::Object(payment.clone()))}));
+    let event = json!({"type": "live_decision", "event_id": ev.id, "event_seq": seq, "action": action, "final_decision": final_decision,
+                       "alert_id": alert_id, "inputs_hash": hash_obj(&Value::Object(payment.clone()))});
+    let entry = if s.live.configured() && action == "allow" {
+        // with Redis, allow decisions go to live:ledger only (seq null): this instance's chain would otherwise grow
+        // with every payment, and the desk log cannot be trimmed without breaking its hash chain
+        let mut e = event;
+        e["at"] = json!(utc_now_z());
+        e["seq"] = Value::Null;
+        e["hash"] = json!(hash_obj(&e));
+        e
+    } else {
+        s.desk.append(event)
+    };
     if let Some(aid) = &alert_id {
         s.desk.set_field(aid, "event_id", json!(ev.id));
     }
     let alert = alert_id.as_ref().and_then(|a| s.desk.alerts.get(a)).cloned();
-    let durable = s.live.durable();
+    let durable = s.live.configured();
     let rec = json!({"event_id": ev.id, "seq": seq, "source": "live", "received_at": utc_now_z(), "action": action,
                      "final_decision": final_decision, "payment_decision": assessed["payment_decision"], "risk": assessed["risk"],
                      "context_band": assessed["context_band"], "reasons": reasons, "pramaan": pramaan, "alert_id": alert_id,
                      "ledger": {"seq": entry["seq"], "hash": entry["hash"]}, "payment": payment, "durable": durable,
                      "store": if durable { "redis" } else { "memory" }});
     Ok((rec, alert, entry))
+}
+
+/// With Redis, `live:alerts` is the authority for live alerts: load the alert into this instance's desk before it is read
+/// or acted on (refreshing a copy already there, since another instance may have acted on it). No-op in memory mode.
+pub fn load_alert(s: &mut AppState, id: &str) -> Result<(), ApiError> {
+    if !s.live.configured() {
+        return Ok(());
+    }
+    let cfg = s.need_engine()?.cfg.clone();
+    let du = s.live.redis.as_mut().unwrap();
+    let k = du.key("alerts");
+    let v: Option<String> = du.run(&cfg, true, |st| redis::cmd("HGET").arg(&k).arg(id).query(&mut st.con)).map_err(store_err)?;
+    if let Some(a) = v.and_then(|v| serde_json::from_str::<Value>(&v).ok()) {
+        s.desk.alerts.insert(id.to_string(), a);
+    }
+    Ok(())
+}
+
+/// Write a live alert back to `live:alerts` after an analyst action (Redis mode; other alerts are left alone).
+pub fn save_alert(s: &mut AppState, id: &str) -> Result<(), ApiError> {
+    let Some(a) = s.desk.alerts.get(id).filter(|a| a.get("event_id").is_some()).map(|a| a.to_string()) else { return Ok(()) };
+    if !s.live.configured() {
+        return Ok(());
+    }
+    let cfg = s.need_engine()?.cfg.clone();
+    let du = s.live.redis.as_mut().unwrap();
+    let k = du.key("alerts");
+    du.run(&cfg, true, |st| redis::cmd("HSET").arg(&k).arg(id).arg(&a).query::<i64>(&mut st.con)).map_err(store_err)?;
+    Ok(())
+}
+
+/// The desk's alerts newest first, then (Redis mode) live alerts only in `live:alerts`, newest id first. A live alert
+/// in both is shown as stored in Redis.
+pub fn all_alerts(s: &mut AppState) -> Result<Vec<Value>, ApiError> {
+    let mut stored: IndexMap<String, Value> = IndexMap::new();
+    if s.live.configured() {
+        let cfg = s.need_engine()?.cfg.clone();
+        let du = s.live.redis.as_mut().unwrap();
+        let k = du.key("alerts");
+        let m: Vec<(String, String)> = du.run(&cfg, true, |st| redis::cmd("HGETALL").arg(&k).query(&mut st.con)).map_err(store_err)?;
+        stored = m.into_iter().filter_map(|(id, v)| serde_json::from_str(&v).ok().map(|a| (id, a))).collect();
+        stored.sort_by(|a, _, b, _| b.cmp(a));
+    }
+    let mut out: Vec<Value> = s.desk.alerts.iter().rev().map(|(id, a)| stored.shift_remove(id).unwrap_or_else(|| a.clone())).collect();
+    out.extend(stored.into_values());
+    Ok(out)
 }
 
 /// POST /api/v2/events/payment

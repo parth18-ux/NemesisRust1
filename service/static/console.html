@@ -236,7 +236,7 @@ let running = false, totals = {scored: 0, L1: 0, L2: 0, med: 0, high: 0};
 
 async function api(path, opts = {}) {
   const r = await fetch(path, {method: opts.method || "GET", headers: {"Content-Type": "application/json"}, body: opts.body ? JSON.stringify(opts.body) : undefined});
-  if (!r.ok) throw new Error(`${path} returned ${r.status}`);
+  if (!r.ok) { const b = await r.json().catch(() => ({})); throw new Error(typeof b.detail === "string" ? b.detail : `${path} returned ${r.status}`); }
   return r.json();
 }
 
@@ -247,7 +247,9 @@ async function boot() {
 
 $("btnReset").onclick = async () => {
   $("btnReset").disabled = true; $("status").textContent = "Ingesting earlier payments as account history (up to ~2 min for the full history)…";
-  const r = await api("/api/v2/demo/reset", {method: "POST"});
+  let r;
+  try { r = await api("/api/v2/demo/reset", {method: "POST"}); }
+  catch (e) { $("status").textContent = "Reset refused: " + e.message; $("btnReset").disabled = false; return; }
   totals = {scored: 0, L1: 0, L2: 0, med: 0, high: 0}; render({truth: {tp: 0, fp: 0, pos: 0}, feed: [], cases: [], position: 0, total: r.remaining});
   $("status").textContent = `History loaded: ${nf(r.history_ingested)} payments (${r.source}) in ${r.seconds}s`;
   $("btnRun").disabled = false; $("btnReset").disabled = false;
@@ -363,9 +365,13 @@ $("msgPayScam").onclick = () => lastMsg && payAfter("upi", lastMsg.entities.upi_
 $("obMule").onclick = () => onboard("mule"); $("obGen").onclick = () => onboard("genuine");
 boot();
 
-// ---- live feed: decisions for real webhook events, polled every 1.5 s (no fake rows)
+// ---- live feed: decisions for real webhook events, polled every 5 s while the tab is visible (no fake rows)
 const ACT = {allow: "safe", verify: "verify", hold: "hold", block: "block"};
+let liveTimer = null, liveBusy = false;
 async function pollLive() {
+  clearTimeout(liveTimer); liveTimer = null;
+  if (document.hidden || liveBusy) return;  // a hidden tab costs no store commands; visibilitychange resumes it
+  liveBusy = true;
   try {
     const r = await api("/api/v2/live");
     $("liveBadge").className = "badge " + (r.durable ? "durable" : "mem");
@@ -379,8 +385,10 @@ async function pollLive() {
         <div class="reasons">${(e.reasons || []).slice(0, 3).map(x => `<span class="chip">${esc(x.feature)}: ${esc(x.display)}</span>`).join("")}</div></div>`;
     }).join("");
   } catch (err) { $("liveBadge").textContent = "live feed unavailable (" + err.message + ")"; }
-  setTimeout(pollLive, 1500);
+  finally { liveBusy = false; }
+  if (!document.hidden) liveTimer = setTimeout(pollLive, 5000);
 }
+document.addEventListener("visibilitychange", () => { if (!document.hidden) pollLive(); });
 pollLive();
 </script>
 <script id="motion-js">

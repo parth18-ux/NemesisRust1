@@ -44,6 +44,17 @@ async fn get(app: &axum::Router, path: &str) -> Value {
     serde_json::from_slice(&r.into_body().collect().await.unwrap().to_bytes()).unwrap()
 }
 
+async fn status_of(app: &axum::Router, req: Request<Body>) -> (StatusCode, Value) {
+    let r = app.clone().oneshot(req).await.unwrap();
+    let st = r.status();
+    (st, serde_json::from_slice(&r.into_body().collect().await.unwrap().to_bytes()).unwrap_or(Value::Null))
+}
+
+fn review(aid: &str, key: &str, action: &str, nonce: &str) -> Request<Body> {
+    Request::builder().method("POST").uri(format!("/api/v2/alerts/{aid}/review")).header("content-type", "application/json")
+        .header("x-analyst-key", key).header("x-nonce", nonce).body(Body::from(json!({"action": action}).to_string())).unwrap()
+}
+
 async fn post(app: &axum::Router, path: &str, body: Value) -> Value {
     let req = Request::builder().method("POST").uri(path).header("content-type", "application/json").body(Body::from(body.to_string())).unwrap();
     serde_json::from_slice(&app.clone().oneshot(req).await.unwrap().into_body().collect().await.unwrap().to_bytes()).unwrap()
@@ -142,7 +153,34 @@ async fn block_decision_opens_an_alert_and_a_ledger_entry() {
     let entry = st.desk.log.iter().find(|x| x["type"] == "live_decision" && x["event_id"] == "blk-2").expect("ledger entry");
     assert_eq!((entry["action"].as_str(), entry["alert_id"].as_str()), (Some("block"), Some(aid.as_str())));
     assert_eq!(entry["hash"], r["ledger"]["hash"]);
+    // the ledger position is the entry's place in the log, not the event's store-wide sequence (kept as event_seq)
+    let pos = st.desk.log.iter().position(|x| x["hash"] == entry["hash"]).unwrap() + 1;
+    assert_eq!(r["ledger"]["seq"], json!(pos));
+    assert_eq!(entry["event_seq"], r["seq"]);
+    assert_ne!(r["ledger"]["seq"], r["seq"], "alert and earlier entries put the ledger ahead of the event sequence");
     assert!(st.desk.verify_chain());
+}
+
+#[tokio::test]
+async fn demo_reset_is_refused_once_live_events_exist() {
+    let (app, shared) = app();
+    let r = blocked_event(&app, "rst").await;
+    let req = || Request::builder().method("POST").uri("/api/v2/demo/reset?warm=false").body(Body::empty()).unwrap();
+    let (s, body) = status_of(&app, req()).await;
+    assert_eq!(s, StatusCode::CONFLICT, "{body}");
+    assert!(body["detail"].as_str().unwrap().contains("live events"));
+    let st = shared.state.lock().unwrap();
+    assert!(st.desk.alerts.contains_key(r["alert_id"].as_str().unwrap()), "the live alert is kept");
+}
+
+#[test]
+fn extreme_timestamps_are_refused_without_overflow() {
+    for ts in [i64::MIN.to_string(), i64::MAX.to_string()] {
+        let e = rusetect_server::live::verify_signature(b"k", Some(&ts), Some("v1=00"), b"{}", 1_700_000_000).unwrap_err();
+        assert_eq!(e.status, 401);
+    }
+    let e = rusetect_server::live::verify_signature(b"k", Some("0"), Some("v1=00"), b"{}", i64::MIN).unwrap_err();
+    assert_eq!(e.status, 401);
 }
 
 #[tokio::test]
@@ -213,4 +251,51 @@ async fn redis_store_commits_durably_and_dedupes_across_instances() {
     let feed = get(&b, "/api/v2/live").await;
     assert_eq!(feed["events"].as_array().unwrap().len(), 3);
     assert_eq!(feed["events"][0]["event_id"], "rblk-2");
+    // the ledger list is capped
+    let n_ledger: i64 = redis::cmd("LLEN").arg("t:live:ledger").query(&mut con).unwrap();
+    assert!(n_ledger as usize <= rusetect_server::live::LEDGER_MAX);
+    // another instance lists the durable alert and reviews it; the action is written back to Redis
+    let listed = get(&b, "/api/v2/alerts").await;
+    assert!(listed.as_array().unwrap().iter().any(|x| x["alert_id"] == aid), "{listed}");
+    let (s, acted) = status_of(&b, review(aid, "demo-analyst-1", "approve_block", "nonce-redis-1")).await;
+    assert_eq!((s, acted["status"].as_str()), (StatusCode::OK, Some("block_pending_second_approval")), "{acted}");
+    let stored: String = redis::cmd("HGET").arg("t:live:alerts").arg(aid).query(&mut con).unwrap();
+    assert_eq!(serde_json::from_str::<Value>(&stored).unwrap()["status"], "block_pending_second_approval");
+    // the first instance sees that approval: the same analyst cannot approve twice, a second one completes the block
+    assert_eq!(status_of(&a, review(aid, "demo-analyst-1", "approve_block", "nonce-redis-2")).await.0, StatusCode::BAD_REQUEST);
+    let (s, done) = status_of(&a, review(aid, "demo-analyst-2", "approve_block", "nonce-redis-3")).await;
+    assert_eq!((s, done["status"].as_str()), (StatusCode::OK, Some("blocked")), "{done}");
+}
+
+#[tokio::test]
+async fn redis_failures_release_the_claim_or_keep_an_applied_commit() {
+    let Some(r) = redis_server() else { return };
+    let (app, shared) = app();
+    shared.state.lock().unwrap().live = rusetect_server::live::Live::redis(&r.1, "f:").unwrap();
+    let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
+    // scoring fails (an account key of the wrong type): the claim is released, so the sender's retry is processed
+    redis::cmd("SET").arg("f:a:{070|FV1}").arg("x").query::<()>(&mut con).unwrap();
+    let (s, _, _) = send(&app, &event("evt-f1", "FV1"), now(), None).await;
+    assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
+    let claim: Option<String> = redis::cmd("GET").arg("f:live:ev:evt-f1").query(&mut con).unwrap();
+    assert_eq!(claim, None, "claim released");
+    redis::cmd("DEL").arg("f:a:{070|FV1}").query::<()>(&mut con).unwrap();
+    let (s, ok, replayed) = send(&app, &event("evt-f1", "FV1"), now(), None).await;
+    assert_eq!((s, replayed), (StatusCode::OK, false), "{ok}");
+    // the commit transaction reports an error after storing the result (feed of the wrong type): the stored result
+    // stands, so the claim is not released and a retry is a replay, not a second commit
+    redis::cmd("SET").arg("f:live:feed").arg("x").query::<()>(&mut con).unwrap();
+    let (s, first, _) = send(&app, &event("evt-f2", "FV2"), now(), None).await;
+    assert_eq!(s, StatusCode::OK, "{first}");
+    let (s, again, replayed) = send(&app, &event("evt-f2", "FV2"), now(), None).await;
+    assert_eq!((s, replayed), (StatusCode::OK, true));
+    assert_eq!(again, first);
+    let n: i64 = redis::cmd("LLEN").arg("f:live:ledger").query(&mut con).unwrap();
+    assert_eq!(n, 2, "one ledger entry per event");
+    // a dropped connection is reopened once, without a PING per request
+    redis::cmd("DEL").arg("f:live:feed").query::<()>(&mut con).unwrap();
+    redis::cmd("CLIENT").arg("KILL").arg("TYPE").arg("normal").arg("SKIPME").arg("yes").query::<i64>(&mut con).unwrap();
+    let (s, _, _) = send(&app, &event("evt-f3", "FV3"), now(), None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(get(&app, "/api/health").await["store"]["reachable"], true);
 }

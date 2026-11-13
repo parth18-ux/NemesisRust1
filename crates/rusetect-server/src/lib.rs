@@ -604,7 +604,7 @@ struct StatusQ {
 async fn v2_alerts(State(app): State<AppRef>, h: HeaderMap, Query(q): Query<StatusQ>) -> ApiResult {
     require_reader(&h)?;
     with_state(app, move |s| {
-        let al: Vec<Value> = s.desk.alerts.values().filter(|a| q.status.as_deref().map(|st| a["status"] == st).unwrap_or(true)).rev().cloned().collect();
+        let al: Vec<Value> = live::all_alerts(s)?.into_iter().filter(|a| q.status.as_deref().map(|st| a["status"] == st).unwrap_or(true)).collect();
         ok(Value::Array(al))
     }).await
 }
@@ -649,6 +649,7 @@ async fn v2_review(State(app): State<AppRef>, Path(alert_id): Path<String>, h: H
         if !s.nonces.use_nonce(nonce.as_deref()) {
             return Err(ApiError::new(409, "X-Nonce missing or already used"));
         }
+        live::load_alert(s, &alert_id)?;
         let a = s.desk.act(&alert_id, &who.analyst, &action, &note).map_err(review_err)?;
         if a["status"] == "blocked" && a.get("published").map(|p| p.is_null() || p == &json!(false) || p == &json!(0)).unwrap_or(true) {
             let p = &a["payment"];
@@ -667,6 +668,7 @@ async fn v2_review(State(app): State<AppRef>, Path(alert_id): Path<String>, h: H
                 }
             }
         }
+        live::save_alert(s, &alert_id)?;
         ok(s.desk.alerts[&alert_id].clone())
     }).await
 }
@@ -674,6 +676,7 @@ async fn v2_review(State(app): State<AppRef>, Path(alert_id): Path<String>, h: H
 async fn v2_evidence(State(app): State<AppRef>, h: HeaderMap, Path(alert_id): Path<String>) -> ApiResult {
     require_reader(&h)?;
     with_state(app, move |s| {
+        live::load_alert(s, &alert_id)?;
         let mut pack = s.desk.evidence(&alert_id).ok_or_else(|| ApiError::new(404, "unknown alert"))?;
         pack["signature"] = s.signer.sign(&json!({"pack_hash": pack["pack_hash"], "alert_id": alert_id}));
         ok(pack)
@@ -684,6 +687,7 @@ async fn v2_evidence(State(app): State<AppRef>, h: HeaderMap, Path(alert_id): Pa
 async fn v2_str(State(app): State<AppRef>, h: HeaderMap, Path(alert_id): Path<String>) -> ApiResult {
     require_reader(&h)?;
     with_state(app, move |s| {
+        live::load_alert(s, &alert_id)?;
         let pack = s.desk.evidence(&alert_id).ok_or_else(|| ApiError::new(404, "unknown alert"))?;
         let camps = rusetect::campaigns::build_recent(&s.desk.alerts);
         let camp = camps.iter().find(|c| c["alerts"].as_array().map(|a| a.iter().any(|x| x == alert_id.as_str())).unwrap_or(false));
@@ -1183,6 +1187,10 @@ async fn demo_reset(State(app): State<AppRef>, Query(q): Query<WarmQ>) -> ApiRes
         })?,
     };
     with_state(app, move |s| {
+        // live events are real data: wiping the desk would leave their records pointing at missing alerts
+        if s.desk.log.iter().any(|e| e["type"] == "live_decision") {
+            return Err(ApiError::new(409, "live events have been ingested on this server; the demo reset is disabled so they are kept"));
+        }
         s.need_engine()?.reset();
         s.lures.reset();
         s.desk.reset();
