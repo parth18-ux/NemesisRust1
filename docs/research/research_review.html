@@ -405,6 +405,14 @@ nav.site .cta{justify-self:end;background:var(--olive);color:var(--olive-ink);te
   <p>Missed Hinglish scams are a recharge offer and an instant loan offer: types the rule set does not cover yet.</p>
 </section>
 
+<section id="since">
+  <span class="eyebrow">After the review</span>
+  <h2>Experiments since the review</h2>
+  <p>Each study had its adoption rule written before it ran; thresholds were fitted on validation only. Sources: <code>research/out/</code>.
+  The sanctions list is fictitious test entities until the real OFAC list is loaded.</p>
+  <div class="tbl wrap"><table><thead><tr><th>Study</th><th>Decision</th><th>Key metrics</th></tr></thead><tbody><tr><td>Account takeover layer (PRAMAAN)</td><td>adopted</td><td>96.4% of 796 attack requests stopped (identity rule 77.0%); 3.8% of genuine requests challenged; simulated traffic</td></tr><tr><td>MIDAS-R edge anomaly feature</td><td>not adopted</td><td>validation PR-AUC 0.649 with MIDAS against 0.660 control; MIDAS alone ROC-AUC 0.479</td></tr><tr><td>Sanctions screening v1</td><td>adopted, replaced by v2</td><td>test precision 1.000, recall 0.923; 40 fictitious test entities</td></tr><tr><td>Sanctions screening v2</td><td>adopted</td><td>fresh test recall 0.985 (v1 0.863), precision 1.000; 40 fresh fictitious entities</td></tr><tr><td>Payee name check v1</td><td>adopted</td><td>test match precision 1.000; same person match or close match 98.0%</td></tr><tr><td>Payee name check v2</td><td>not adopted</td><td>fresh test match precision 0.9950 (v1 0.9948); different payees given close match 34.4% (v1 23.8%)</td></tr></tbody></table></div>
+</section>
+
 <section id="security">
   <span class="eyebrow">Deliverable 4</span>
   <h2>Security and threat assessment</h2>
