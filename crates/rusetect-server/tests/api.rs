@@ -214,6 +214,23 @@ async fn block_and_release_are_final() {
 }
 
 #[tokio::test]
+async fn block_stands_when_consortium_ledger_is_full() {
+    let shared = rusetect_server::new_shared();
+    let t = T { app: rusetect_server::build_app(shared.clone()) };
+    t.post("/api/v2/demo/reset?warm=false", json!({})).await;
+    shared.state.lock().unwrap().consortium.ledger = vec![json!({}); rusetect::consortium::MAX_LEDGER];
+    let r = t.post("/api/v2/assess", json!({"timestamp": "2022-09-09 10:00", "from_bank": "070", "from_account": "LF1", "to_bank": "011",
+                                           "to_account": "RM1", "amount_paid": 9300, "payment_format": "ACH", "message": S09, "consent": true})).await;
+    let aid = r["alert_id"].as_str().unwrap().to_string();
+    t.review(&aid, Some("demo-analyst-1"), "approve_block", None).await;
+    let (s, a) = t.review(&aid, Some("demo-analyst-2"), "approve_block", None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!((a["status"].as_str(), a["published"].as_bool()), (Some("blocked"), Some(false)));
+    assert!(a["publish_error"].as_str().unwrap().contains("full"));
+    assert_eq!(a["actions"].as_array().unwrap().last().unwrap()["action"], "consortium_publish_failed");
+}
+
+#[tokio::test]
 async fn customer_answer_cannot_overwrite_an_analyst_hold() {
     let t = T::new();
     t.post("/api/v2/demo/reset?warm=false", json!({})).await;

@@ -15,6 +15,9 @@ use std::collections::{HashMap, VecDeque};
 pub const LOOKBACK_MIN: i64 = 72 * 60;
 pub const DEDUP_MIN: i64 = 24 * 60;
 pub const DAILY_CAP: usize = 3;
+/// Payee watchlist entries kept; the oldest (least recently named) is dropped first.
+// shortcut: in-memory and capped, upgrade to a real store (TTL'd key-value) when one process serves many banks' traffic
+pub const MAX_WATCH: usize = if cfg!(test) { 3 } else { 100_000 };
 
 const RANK: [&str; 4] = ["Approve", "Step-up verification", "Hold for analyst", "Block + STR draft"];
 const BAND: [&str; 4] = ["safe", "med", "med", "high"];
@@ -37,7 +40,7 @@ struct Lure {
 #[derive(Default)]
 pub struct LureMemory {
     events: HashMap<String, VecDeque<Lure>>,
-    watch: HashMap<String, (i64, String, f64)>,
+    watch: IndexMap<String, (i64, String, f64)>,
     pushed: HashMap<String, VecDeque<(i64, String)>>,
     stats: IndexMap<String, i64>,
 }
@@ -71,7 +74,12 @@ impl LureMemory {
         for k in ["upi_ids", "phones", "accounts"] {
             for e in ents[k].as_array().into_iter().flatten() {
                 if let Some(s) = e.as_str() {
-                    self.watch.insert(norm(s), (tmin, wlab.clone(), risk));
+                    let k = norm(s);
+                    self.watch.shift_remove(&k); // re-insert at the back so the order stays oldest-first
+                    if self.watch.len() >= MAX_WATCH {
+                        self.watch.shift_remove_index(0);
+                    }
+                    self.watch.insert(k, (tmin, wlab.clone(), risk));
                 }
             }
         }
@@ -161,5 +169,18 @@ impl LureMemory {
         s.insert("push_rate_per_100_messages".into(), jf(py_round(100.0 * notified / m, 2)));
         s.insert("watchlist_entities".into(), json!(self.watch.len()));
         Value::Object(s)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn watchlist_drops_oldest_when_full() {
+        let mut m = LureMemory::new();
+        for (i, e) in ["u1@ybl", "u2@ybl", "u3@ybl", "u1@ybl", "u4@ybl"].iter().enumerate() {
+            m.record_message(None, i as i64, &json!({"band": "high", "risk": 0.9, "workflow": {}, "entities": {"upi_ids": [e]}}));
+        }
+        assert_eq!(m.watch.keys().cloned().collect::<Vec<_>>(), vec!["u3@ybl", "u1@ybl", "u4@ybl"]);
     }
 }
