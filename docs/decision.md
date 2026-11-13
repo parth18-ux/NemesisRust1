@@ -378,6 +378,19 @@ entries. A truncated tail still verifies by design, and the test pins that the M
 root is anchored outside. A second test covers `publish` refusing an unknown registry or a non-member bank, and checks
 that tokens depend on the registry and the secret. Only tests were added; `verify` and `publish` are unchanged.
 
+**8y. MonLAD-style fan-out (dispersion) features: not adopted.** Four causal features per payer account over 24 hours
+(entropy of outgoing USD over distinct payees, share of small payments, distinct payees paid a small amount,
+pass-through ratio; "small" is below the training median, log_usd 6.8878) were added to a third L2 model and compared
+with the same model without them, at the served alert counts on the second half of HI-Small validation, under rule F1-F4
+pre-registered in `research/fanout_eval.py` (committed in a73cc8f before the run). F1 and F2 failed: block-band recall
+was 0.6489 (precision 0.5215) with the features, exactly the control's 0.6489 (0.5215), against 0.6374 (0.5123) for the
+current model, so the gain of 0.0115 is below the 0.02 margin and comes from the extra model, not from the features. F3
+and F4 passed (PR-AUC 0.6572 against 0.6496 for the current model and 0.6601 for the control; worst PR-AUC under the
+format attack 0.6199 against 0.6171). Alone, the best feature (payee entropy) reached ROC-AUC 0.6049 and PR-AUC 0.0016
+on validation. The served features already hold the 24 hour payee count, payment count and amount, and the spread adds
+nothing the block band can use. Nothing is ported; the served model and the engine are unchanged
+(`research/out/fanout_eval.json`).
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

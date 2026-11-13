@@ -1053,6 +1053,11 @@ def since_section():
         v = M["validation_second_half"]
         rows.append(["MIDAS-R edge anomaly feature", "adopted" if M["decision"]["adopt"] else "not adopted",
                      f"validation PR-AUC {f(v['mean3_midas']['pr_auc'])} with MIDAS against {f(v['mean3_ctrl']['pr_auc'])} control; MIDAS alone ROC-AUC {f(M['midas_alone_validation']['roc_auc'])}"])
+    FO = _opt("fanout_eval.json")
+    if FO:
+        v = FO["validation_second_half"]
+        rows.append(["Fan-out dispersion features (MonLAD idea)", "adopted" if FO["decision"]["adopt"] else "not adopted",
+                     f"validation block recall {f(v['mean3_fanout']['bands']['block']['recall'])} with the features against {f(v['mean3_ctrl']['bands']['block']['recall'])} control and {f(v['current']['bands']['block']['recall'])} current"])
     S = _opt("sanctions_eval.json")
     if S:
         rows.append(["Sanctions screening v1", "adopted, replaced by v2", f"test precision {f(S['test']['precision'])}, recall {f(S['test']['recall'])}; {S['list_entries']} fictitious test entities"])

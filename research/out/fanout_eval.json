@@ -1,0 +1,144 @@
+{
+ "rule": {
+  "F1_min_gain_vs_current": 0.02,
+  "F2_min_gain_vs_ctrl": 0.01,
+  "F3_max_pr_auc_drop": 0.005,
+  "F4_max_attack_drop": 0.02
+ },
+ "fanout": {
+  "window_minutes": 1440,
+  "small_cut_log_usd_train_median": 6.8878,
+  "features": [
+   "fo_entropy_24h",
+   "fo_small_share_24h",
+   "fo_small_payees_24h",
+   "fo_through_24h"
+  ]
+ },
+ "features_alone_validation": {
+  "fo_entropy_24h": {
+   "roc_auc": 0.6049,
+   "pr_auc": 0.0016
+  },
+  "fo_small_share_24h": {
+   "roc_auc": 0.2699,
+   "pr_auc": 0.0008
+  },
+  "fo_small_payees_24h": {
+   "roc_auc": 0.3338,
+   "pr_auc": 0.001
+  },
+  "fo_through_24h": {
+   "roc_auc": 0.4764,
+   "pr_auc": 0.0011
+  }
+ },
+ "rounds": {
+  "ctrl": 335,
+  "fanout": 307
+ },
+ "alert_counts_second_half": {
+  "verify": 4904,
+  "hold": 2319,
+  "block": 652
+ },
+ "validation_second_half": {
+  "current": {
+   "pr_auc": 0.6496,
+   "attack_worst": 0.6171,
+   "bands": {
+    "verify": {
+     "flags": 4904,
+     "tp": 434,
+     "precision": 0.0885,
+     "recall": 0.8282
+    },
+    "hold": {
+     "flags": 2319,
+     "tp": 412,
+     "precision": 0.1777,
+     "recall": 0.7863
+    },
+    "block": {
+     "flags": 652,
+     "tp": 334,
+     "precision": 0.5123,
+     "recall": 0.6374
+    }
+   }
+  },
+  "mean3_ctrl": {
+   "pr_auc": 0.6601,
+   "attack_worst": 0.6191,
+   "bands": {
+    "verify": {
+     "flags": 4904,
+     "tp": 437,
+     "precision": 0.0891,
+     "recall": 0.834
+    },
+    "hold": {
+     "flags": 2319,
+     "tp": 412,
+     "precision": 0.1777,
+     "recall": 0.7863
+    },
+    "block": {
+     "flags": 652,
+     "tp": 340,
+     "precision": 0.5215,
+     "recall": 0.6489
+    }
+   }
+  },
+  "mean3_fanout": {
+   "pr_auc": 0.6572,
+   "attack_worst": 0.6199,
+   "bands": {
+    "verify": {
+     "flags": 4904,
+     "tp": 437,
+     "precision": 0.0891,
+     "recall": 0.834
+    },
+    "hold": {
+     "flags": 2319,
+     "tp": 412,
+     "precision": 0.1777,
+     "recall": 0.7863
+    },
+    "block": {
+     "flags": 652,
+     "tp": 340,
+     "precision": 0.5215,
+     "recall": 0.6489
+    }
+   }
+  }
+ },
+ "decision": {
+  "checks": {
+   "F1": false,
+   "F2": false,
+   "F3": true,
+   "F4": true
+  },
+  "adopt": false,
+  "seconds": 163,
+  "note": "decided on the second half of validation only; the test part is not read by this script"
+ },
+ "fanout_model_gain": {
+  "new_pair": 100.89,
+  "fmt_code": 63.0,
+  "s_gap_out": 34.96,
+  "d_gap_in": 31.29,
+  "reciprocal": 27.51,
+  "self_loop": 24.76,
+  "fo_small_payees_24h": 24.34,
+  "cross_cur": 18.46,
+  "dow": 18.01,
+  "s_in_n": 16.98,
+  "s_fanout_24h": 13.95,
+  "d_uniq_src": 11.94
+ }
+}
