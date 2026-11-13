@@ -140,6 +140,67 @@ mod tests {
         assert!(!con.verify());
     }
 
+    /// Recompute an entry's hash after a forger edits it, so only the signature and the chain can catch the edit.
+    fn rehash(e: &mut Value) {
+        e.as_object_mut().unwrap().remove("hash");
+        e["hash"] = json!(hex::encode(Sha256::digest(canon(e))));
+    }
+
+    #[test]
+    fn verify_catches_forgers_who_recompute_hashes() {
+        let fresh = || {
+            let mut con = Consortium::new(Some("t"), &["BANK-A", "BANK-B"]);
+            for id in ["m1", "m2", "m3"] {
+                con.publish("BANK-A", "mule_account", id, "confirmed", None).unwrap();
+            }
+            assert!(con.verify());
+            con
+        };
+        // an edited reason with a fresh hash: the bank's signature no longer covers the body
+        let mut con = fresh();
+        con.ledger[2]["reason"] = json!("edited");
+        rehash(&mut con.ledger[2]);
+        assert!(!con.verify(), "edit with recomputed hash");
+        // re-attributed to another member bank: BANK-B's key never signed it
+        let mut con = fresh();
+        con.ledger[2]["bank"] = json!("BANK-B");
+        rehash(&mut con.ledger[2]);
+        assert!(!con.verify(), "re-attributed entry");
+        // attributed to a bank outside the consortium
+        let mut con = fresh();
+        con.ledger[2]["bank"] = json!("BANK-X");
+        rehash(&mut con.ledger[2]);
+        assert!(!con.verify(), "unknown bank");
+        // a signature lifted from another entry
+        let mut con = fresh();
+        con.ledger[2]["sig"] = con.ledger[1]["sig"].clone();
+        rehash(&mut con.ledger[2]);
+        assert!(!con.verify(), "replayed signature");
+        // a dropped or reordered entry breaks the prev links
+        let mut con = fresh();
+        con.ledger.remove(1);
+        assert!(!con.verify(), "dropped middle entry");
+        let mut con = fresh();
+        con.ledger.swap(0, 1);
+        assert!(!con.verify(), "reordered entries");
+        // a truncated tail still verifies, so the anchored Merkle root is what detects it
+        let mut con = fresh();
+        let root = con.merkle_root();
+        con.ledger.pop();
+        assert!(con.verify() && con.merkle_root() != root, "truncation changes the Merkle root");
+    }
+
+    #[test]
+    fn publish_refuses_bad_input_and_tokens_are_per_registry() {
+        let mut con = Consortium::new(Some("t"), &["BANK-A"]);
+        assert!(con.publish("BANK-A", "not_a_registry", "x", "r", None).is_err());
+        assert!(con.publish("BANK-X", "mule_account", "x", "r", None).is_err(), "only members publish");
+        assert!(con.ledger.is_empty());
+        con.publish("BANK-A", "mule_account", "011:MULE9", "r", None).unwrap();
+        assert_eq!(con.check("fraud_device", "011:MULE9")["flagged"], false, "a hit in one registry is not a hit in another");
+        assert_ne!(con.token("mule_account", "x"), Consortium::new(Some("other"), &[]).token("mule_account", "x"), "tokens depend on the secret");
+    }
+
     #[test]
     fn ledger_is_capped() {
         let mut con = Consortium::new(Some("t"), &["BANK-A"]);

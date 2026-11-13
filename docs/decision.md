@@ -369,6 +369,15 @@ sequence (`event_seq`); `live:ledger` is capped and Redis `allow` decisions skip
 connection is reopened once instead of a PING per call; a failed or unanswered commit releases its claim only when the
 result is not stored; `/api/health` reports `durable` from the last Redis result.
 
+**8x. Consortium ledger: tests for a forger who recomputes hashes.** The graphify pass marked the cross-bank ledger
+(`consortium.rs`) as thinly tested. Its one tamper test edited a field but left the stored hash stale, so the hash
+check alone caught it. With the Ed25519 signature check switched off, that test still passed. New tests rehash every
+forged entry, so only the signature or the `prev` chain can catch it: an edited reason, an entry re-attributed to
+another member or to a non-member bank, a signature replayed from another entry, a dropped entry and reordered
+entries. A truncated tail still verifies by design, and the test pins that the Merkle root changes, which is why the
+root is anchored outside. A second test covers `publish` refusing an unknown registry or a non-member bank, and checks
+that tokens depend on the registry and the secret. Only tests were added; `verify` and `publish` are unchanged.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
