@@ -391,6 +391,38 @@ on validation. The served features already hold the 24 hour payee count, payment
 nothing the block band can use. Nothing is ported; the served model and the engine are unchanged
 (`research/out/fanout_eval.json`).
 
+**8z. Temporal-motif reason codes: pre-registration.** Written and committed before any implementation. Idea
+borrowed from TempME (Chen and Ying, "TempME: Towards the Explainability of Temporal Graph Neural Networks via Motif
+Discovery", NeurIPS 2023; code MIT-licensed): explain a temporal-graph decision by the small temporal motif the event
+completes. Only the idea is used; no TempME code, model or sampling is ported. When a payment is verify, hold or block,
+one extra reason names the motifs it completes inside the engine's 24 hour account windows. It is explanation only: it
+reads state and never feeds the score.
+
+Definitions, for a payment from payer S to payee D at minute t (S and D different; a self transfer has no motif). "In
+the window" means a minute in (t - 1440, t]. Only the 64 newest window receipts of an account are read, so the cost per
+payment is bounded. Reported in this order:
+- `cycle`: D paid S in the window, or D paid some K and K then paid S, both in the window.
+- `scatter_gather`: some A paid S in the window, and A also paid another K that then paid D, both in the window.
+- `pass_through`: S received from a third account in the window and this payment is between half and all of that
+  receipt (in USD).
+- `fan_in`: D was paid by four or more distinct accounts in the window (the context rules' `fan_in_4plus` count).
+- `fan_out`: S paid four or more distinct accounts in the window.
+
+Criteria, all four must pass or the feature is not shipped and the failure is recorded here:
+- **M1 correct reasons.** (a) Demo stream, 100,000 payments of history then 20,000 scored: every verify, hold or block
+  payment carries exactly the motifs of a brute-force oracle that reads the plain payment list, not the engine's state
+  (`crates/rusetect-server/tests/motifs.rs`, committed with this section). (b) Mule fixture
+  (`fixtures/mule_replay.json`) replayed through `/api/v2/assess`: every deposit that is not approved carries `fan_in`
+  from the fourth victim on and nothing before; every forward that is not approved carries `pass_through`; at least
+  one of each occurs. (c) One hand-built scenario per motif (five) returns that motif, and the same payments shifted
+  outside the window return none.
+- **M2 nothing on allow.** No approved payment carries a motif reason, in (a) and (b).
+- **M3 scores unchanged.** `examples/parity_dump 20000 100000` on this branch against `origin/main` (3971c4f): after
+  deleting the motif reason object from the branch's lines, the two dumps are byte-identical (`cmp`).
+- **M4 small overhead.** The motif pass costs at most 50 microseconds on average per flagged payment on the
+  `score_bench` slice (100,000 of history, 20,000 scored), measured by timing the pass alone, and it does not run for
+  approved payments. Worst case is bounded by the 64-entry scan: at most 64 + 2 x 64 x 64 window entries read.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
