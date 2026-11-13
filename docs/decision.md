@@ -335,6 +335,14 @@ the oldest first. The duress vault refuses new registrations (409) beyond `inter
 rather than evicting a registered customer, and keeps the newest `MAX_NOTIFICATIONS` = 100,000 notifications. All are
 in-memory shortcuts; a real deployment moves them to a store. The per-account lure event and push maps are not capped.
 
+**8u. Capped lure account maps; explicit PRAMAAN decision.** (1) The per-account lure event and push maps now keep at
+most `lure_fusion::MAX_ACCOUNTS` = 100,000 accounts each, dropping the oldest-added account first (the coordination
+tracker's pattern), so a flood of distinct account ids cannot grow memory without bound (tested). (2)
+`research/out/pramaan_eval.json` now carries a `decision` field written by `research/pramaan/compare.py` (`--decide`
+re-derives it from the saved arms): adopted, under the rule of 8f, PRAMAAN stops a larger share of attack requests than
+the identity rule with and without behaviour data; the genuine-challenge cost is reported beside it, not gated. The rule
+was written down after the run, not pre-registered, and the field says so. The research page reads this field.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

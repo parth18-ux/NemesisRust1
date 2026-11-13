@@ -1046,7 +1046,7 @@ def since_section():
     P = _opt("pramaan_eval.json")
     if P:
         a, r = P["without_behaviour"]["pramaan"], P["without_behaviour"]["rusetect"]
-        rows.append(["Account takeover layer (PRAMAAN)", "adopted", f"{pct(a['attack_requests_stopped'])} of {P['without_behaviour']['traffic']['attack_requests']} attack requests stopped "
+        rows.append(["Account takeover layer (PRAMAAN)", "adopted" if P["decision"]["adopted"] else "not adopted", f"{pct(a['attack_requests_stopped'])} of {P['without_behaviour']['traffic']['attack_requests']} attack requests stopped "
                      f"(identity rule {pct(r['attack_requests_stopped'])}); {pct(a['genuine_challenged'])} of genuine requests challenged; simulated traffic"])
     M = _opt("midas_eval.json")
     if M:
