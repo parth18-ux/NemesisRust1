@@ -322,6 +322,7 @@ def build():
     add(unified_section())
     add(other_section())
     add(message_section())
+    add(since_section())
 
     # ---------------- security
     sec = [
@@ -1037,6 +1038,47 @@ def message_section():
   <p>Source: {M['source']}. Only messages absent from the training corpus were kept.</p>
   {table(["Set", "Messages", "Scam", "Recall, caution or above", "Recall, high or above", "False alarms"], rows)}
   <p>Missed Hinglish scams are a recharge offer and an instant loan offer: types the rule set does not cover yet.</p>
+</section>"""
+
+
+def since_section():
+    rows = []
+    P = _opt("pramaan_eval.json")
+    if P:
+        a, r = P["without_behaviour"]["pramaan"], P["without_behaviour"]["rusetect"]
+        rows.append(["Account takeover layer (PRAMAAN)", "adopted", f"{pct(a['attack_requests_stopped'])} of {P['without_behaviour']['traffic']['attack_requests']} attack requests stopped "
+                     f"(identity rule {pct(r['attack_requests_stopped'])}); {pct(a['genuine_challenged'])} of genuine requests challenged; simulated traffic"])
+    M = _opt("midas_eval.json")
+    if M:
+        v = M["validation_second_half"]
+        rows.append(["MIDAS-R edge anomaly feature", "adopted" if M["decision"]["adopt"] else "not adopted",
+                     f"validation PR-AUC {f(v['mean3_midas']['pr_auc'])} with MIDAS against {f(v['mean3_ctrl']['pr_auc'])} control; MIDAS alone ROC-AUC {f(M['midas_alone_validation']['roc_auc'])}"])
+    S = _opt("sanctions_eval.json")
+    if S:
+        rows.append(["Sanctions screening v1", "adopted, replaced by v2", f"test precision {f(S['test']['precision'])}, recall {f(S['test']['recall'])}; {S['list_entries']} fictitious test entities"])
+    S2 = _opt("sanctions_eval_v2.json")
+    if S2:
+        t1, t2 = S2["v1"]["fresh_test"], S2["v2"]["fresh_test"]
+        rows.append(["Sanctions screening v2", "adopted" if S2["adopted"] else "not adopted",
+                     f"fresh test recall {f(t2['recall'])} (v1 {f(t1['recall'])}), precision {f(t2['precision'])}; {S2['fresh_entities']} fresh fictitious entities"])
+    Q = _opt("payee_check_eval.json")
+    if Q:
+        rows.append(["Payee name check v1", "adopted" if Q["adopted"] else "not adopted",
+                     f"test match precision {f(Q['test']['match_precision'])}; same person match or close match {pct(Q['test']['same_match_or_close'])}"])
+    Q2 = _opt("payee_check_eval_v2.json")
+    if Q2:
+        t = Q2["fresh_test"]
+        rows.append(["Payee name check v2", "adopted" if Q2["adopted"] else "not adopted",
+                     f"fresh test match precision {f(t['v2']['match_precision'], 4)} (v1 {f(t['v1']['match_precision'], 4)}); different payees given close match {pct(t['v2']['different_close_match_share'])} (v1 {pct(t['v1']['different_close_match_share'])})"])
+    if not rows:
+        return ""
+    return f"""
+<section id="since">
+  <span class="eyebrow">After the review</span>
+  <h2>Experiments since the review</h2>
+  <p>Each study had its adoption rule written before it ran; thresholds were fitted on validation only. Sources: <code>research/out/</code>.
+  The sanctions list is fictitious test entities until the real OFAC list is loaded.</p>
+  {table(["Study", "Decision", "Key metrics"], rows, "wrap")}
 </section>"""
 
 
