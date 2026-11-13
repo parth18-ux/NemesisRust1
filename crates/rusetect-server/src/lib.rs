@@ -7,6 +7,8 @@
 //!   /api/v2/message      L-1 lure detector: score an SMS / WhatsApp / e-mail / call transcript, decide whether to warn
 //!   /api/v2/payment      score one payment (L1 -> L2 -> decision band -> L4 case), escalated by recent lures
 //!   /api/v2/assess       payment cascade + context layer + session domain, signed verdict, review alert
+//!   /api/v2/events/payment  signed ingest webhook: score, decide, alert, ledger and commit one payment event (live.rs)
+//!   /api/v2/live         latest live decisions for the console
 //!   /api/v2/onboard      L0 onboarding gate for a new account application (Feedzai BAF schema)
 //!   /docs                OpenAPI docs (Swagger UI), /openapi.json
 //!
@@ -17,6 +19,7 @@
 #![allow(clippy::neg_cmp_op_on_partial_ord, clippy::if_same_then_else, clippy::manual_clamp, clippy::type_complexity)]
 #![allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
 pub mod inputs;
+pub mod live;
 pub mod openapi;
 pub mod scale;
 pub mod validate;
@@ -87,6 +90,8 @@ pub struct AppState {
     /// payee name check (t_hi, t_lo, v2) from research/out/payee_check_eval_v2.json or payee_check_eval.json; None unless adopted
     pub payee: Option<(f64, f64, bool)>,
     pub demo: Demo,
+    /// live ingest: idempotency, feed and the durable store (Redis when configured, else memory)
+    pub live: live::Live,
 }
 
 pub struct Shared {
@@ -160,6 +165,7 @@ impl AppState {
             sanctions,
             payee,
             demo: Demo { truth: truth0(), ..Default::default() },
+            live: live::Live::from_env(),
         }
     }
 
@@ -271,6 +277,8 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/", get(health))
         .route("/health", get(health))
         .route("/v2/payment", post(v2_payment))
+        .route("/v2/events/payment", post(live::v2_events_payment))
+        .route("/v2/live", get(live::v2_live))
         .route("/v2/assess", post(v2_assess))
         .route("/v2/alerts", get(v2_alerts))
         .route("/v2/alerts/summary", get(v2_alert_summary))
@@ -471,7 +479,8 @@ async fn health(State(app): State<AppRef>) -> ApiResult {
         ok(json!({"service": format!("{NAME} API"), "name": NAME, "id": SLUG, "version": VERSION, "status": "ok", "engine_loaded": s.engine.is_some(),
                   "hardened": s.engine.as_ref().and_then(|e| e.models.as_ref()).map(|m| m.hardening.is_some()).unwrap_or(false),
                   "ruleset": ctx::RULESET_VERSION, "auth": if KEYS.demo_mode { "demo keys (set RUSETECT_ANALYST_KEYS)" } else { "configured keys" },
-                  "signing": {"alg": "Ed25519", "key_id": s.signer.key_id, "ephemeral": s.signer.ephemeral}}))
+                  "signing": {"alg": "Ed25519", "key_id": s.signer.key_id, "ephemeral": s.signer.ephemeral},
+                  "durable": s.live.durable(), "store": s.live.store_json()}))
     }).await
 }
 
@@ -595,7 +604,7 @@ struct StatusQ {
 async fn v2_alerts(State(app): State<AppRef>, h: HeaderMap, Query(q): Query<StatusQ>) -> ApiResult {
     require_reader(&h)?;
     with_state(app, move |s| {
-        let al: Vec<Value> = s.desk.alerts.values().filter(|a| q.status.as_deref().map(|st| a["status"] == st).unwrap_or(true)).rev().cloned().collect();
+        let al: Vec<Value> = live::all_alerts(s)?.into_iter().filter(|a| q.status.as_deref().map(|st| a["status"] == st).unwrap_or(true)).collect();
         ok(Value::Array(al))
     }).await
 }
@@ -640,6 +649,7 @@ async fn v2_review(State(app): State<AppRef>, Path(alert_id): Path<String>, h: H
         if !s.nonces.use_nonce(nonce.as_deref()) {
             return Err(ApiError::new(409, "X-Nonce missing or already used"));
         }
+        live::load_alert(s, &alert_id)?;
         let a = s.desk.act(&alert_id, &who.analyst, &action, &note).map_err(review_err)?;
         if a["status"] == "blocked" && a.get("published").map(|p| p.is_null() || p == &json!(false) || p == &json!(0)).unwrap_or(true) {
             let p = &a["payment"];
@@ -658,6 +668,7 @@ async fn v2_review(State(app): State<AppRef>, Path(alert_id): Path<String>, h: H
                 }
             }
         }
+        live::save_alert(s, &alert_id)?;
         ok(s.desk.alerts[&alert_id].clone())
     }).await
 }
@@ -665,6 +676,7 @@ async fn v2_review(State(app): State<AppRef>, Path(alert_id): Path<String>, h: H
 async fn v2_evidence(State(app): State<AppRef>, h: HeaderMap, Path(alert_id): Path<String>) -> ApiResult {
     require_reader(&h)?;
     with_state(app, move |s| {
+        live::load_alert(s, &alert_id)?;
         let mut pack = s.desk.evidence(&alert_id).ok_or_else(|| ApiError::new(404, "unknown alert"))?;
         pack["signature"] = s.signer.sign(&json!({"pack_hash": pack["pack_hash"], "alert_id": alert_id}));
         ok(pack)
@@ -675,6 +687,7 @@ async fn v2_evidence(State(app): State<AppRef>, h: HeaderMap, Path(alert_id): Pa
 async fn v2_str(State(app): State<AppRef>, h: HeaderMap, Path(alert_id): Path<String>) -> ApiResult {
     require_reader(&h)?;
     with_state(app, move |s| {
+        live::load_alert(s, &alert_id)?;
         let pack = s.desk.evidence(&alert_id).ok_or_else(|| ApiError::new(404, "unknown alert"))?;
         let camps = rusetect::campaigns::build_recent(&s.desk.alerts);
         let camp = camps.iter().find(|c| c["alerts"].as_array().map(|a| a.iter().any(|x| x == alert_id.as_str())).unwrap_or(false));
@@ -701,14 +714,12 @@ fn customer_may_act(alert: &Value, allowed: &[&str]) -> Result<(), ApiError> {
 async fn v2_customer(State(app): State<AppRef>, Path(alert_id): Path<String>, b: Bytes) -> ApiResult {
     let answer = parse_obj(&b, |o, e| o.req_str(e, "answer"))?;
     with_state(app, move |s| {
-        if !s.desk.alerts.contains_key(&alert_id) {
-            return Err(ApiError::new(404, "unknown alert"));
-        }
+        let alert = s.desk.alerts.get(&alert_id).ok_or_else(|| ApiError::new(404, "unknown alert"))?;
         if answer != "stop" && answer != "continue" {
             return Err(ApiError::new(400, "answer must be stop or continue"));
         }
         // the pause screen answers an alert no analyst has acted on; a hold, block, release or verification stands
-        customer_may_act(&s.desk.alerts[&alert_id], &["open", "cooling_off", "stopped_by_customer"])?;
+        customer_may_act(alert, &["open", "cooling_off", "stopped_by_customer"])?;
         let status = if answer == "stop" { "stopped_by_customer" } else { "cooling_off" };
         ok(s.desk.system_event(&alert_id, status, "customer", &format!("pause screen answer: {answer}"), true).map_err(review_err)?)
     }).await
@@ -718,11 +729,9 @@ async fn v2_customer(State(app): State<AppRef>, Path(alert_id): Path<String>, b:
 async fn v2_reverify(State(app): State<AppRef>, Path(alert_id): Path<String>, b: Bytes) -> ApiResult {
     let method = parse_obj(&b, |o, e| o.str_or(e, "method", "video_kyc"))?;
     with_state(app, move |s| {
-        if !s.desk.alerts.contains_key(&alert_id) {
-            return Err(ApiError::new(404, "unknown alert"));
-        }
+        let alert = s.desk.alerts.get(&alert_id).ok_or_else(|| ApiError::new(404, "unknown alert"))?;
         // re-verification answers the pause screen or an analyst's "verify" request; a hold, block or release stands
-        customer_may_act(&s.desk.alerts[&alert_id], &["open", "cooling_off", "stopped_by_customer", "customer_verification"])?;
+        customer_may_act(alert, &["open", "cooling_off", "stopped_by_customer", "customer_verification"])?;
         ok(s.desk.system_event(&alert_id, "customer_reverified", "customer", &format!("re-verified by {method}"), true).map_err(review_err)?)
     }).await
 }
@@ -741,21 +750,8 @@ async fn v2_identity(b: Bytes) -> ApiResult {
 /// behaviour and transaction objects; see crates/rusetect/src/pramaan.rs.
 async fn v2_authenticate(State(app): State<AppRef>, b: Bytes) -> ApiResult {
     let req: Value = serde_json::from_slice(&b).map_err(|_| ApiError::new(422, "body must be a JSON object"))?;
-    let o = req.as_object().ok_or_else(|| ApiError::new(422, "body must be a JSON object"))?;
-    if !o.get("user_id").and_then(|v| v.as_str()).is_some_and(|u| !u.is_empty() && u.chars().count() <= 128) {
-        return Err(ApiError::new(422, "user_id: a string of 1 to 128 characters is required"));
-    }
-    if !o.get("ts").and_then(|v| v.as_f64()).is_some_and(|t| t.is_finite() && t > 0.0 && t < 4.0e9) {
-        return Err(ApiError::new(422, "ts: epoch seconds are required"));
-    }
-    for k in ["device", "network", "behaviour", "transaction"] {
-        if o.get(k).is_some_and(|v| !v.is_object() && !v.is_null()) {
-            return Err(ApiError::new(422, format!("{k}: must be an object")));
-        }
-        if o.get(k).is_some_and(has_long_str) {
-            return Err(ApiError::new(422, format!("{k}: strings must be at most 512 characters")));
-        }
-    }
+    check_auth_request(&req)?;
+    let o = req.as_object().unwrap();
     let id = o.get("request_id").and_then(|v| v.as_str()).filter(|r| !r.is_empty() && r.len() <= 64).map(String::from)
         .unwrap_or_else(|| (0..16).map(|_| format!("{:x}", rand::random::<u8>() % 16)).collect());
     with_state(app, move |s| {
@@ -779,6 +775,26 @@ async fn v2_authenticate(State(app): State<AppRef>, b: Bytes) -> ApiResult {
         out["payee_flagged_by_consortium"] = flagged_by;
         ok(out)
     }).await
+}
+
+/// A PRAMAAN request: user_id, ts (epoch seconds) and optional device, network, behaviour and transaction objects.
+fn check_auth_request(req: &Value) -> Result<(), ApiError> {
+    let o = req.as_object().ok_or_else(|| ApiError::new(422, "body must be a JSON object"))?;
+    if !o.get("user_id").and_then(|v| v.as_str()).is_some_and(|u| !u.is_empty() && u.chars().count() <= 128) {
+        return Err(ApiError::new(422, "user_id: a string of 1 to 128 characters is required"));
+    }
+    if !o.get("ts").and_then(|v| v.as_f64()).is_some_and(|t| t.is_finite() && t > 0.0 && t < 4.0e9) {
+        return Err(ApiError::new(422, "ts: epoch seconds are required"));
+    }
+    for k in ["device", "network", "behaviour", "transaction"] {
+        if o.get(k).is_some_and(|v| !v.is_object() && !v.is_null()) {
+            return Err(ApiError::new(422, format!("{k}: must be an object")));
+        }
+        if o.get(k).is_some_and(has_long_str) {
+            return Err(ApiError::new(422, format!("{k}: strings must be at most 512 characters")));
+        }
+    }
+    Ok(())
 }
 
 /// Any string (at any depth) over 512 characters: the authenticator keeps device and payee ids per account.
@@ -965,13 +981,19 @@ async fn v2_message(State(app): State<AppRef>, b: Bytes) -> ApiResult {
     }).await
 }
 
+/// A required name: 1 to 300 characters once trimmed (the length is checked only when the field is a string).
+fn req_name(o: &Obj, e: &mut Errors, k: &str) -> String {
+    let v = o.req_str(e, k);
+    if o.get(k).is_some_and(|v| v.is_string()) {
+        o.check_len(e, k, v.trim(), Some(1), Some(300));
+    }
+    v
+}
+
 /// Watchlist name screening: the five closest list entries and whether the best reaches the fitted threshold.
 async fn v2_sanctions(State(app): State<AppRef>, b: Bytes) -> ApiResult {
     let (name, kind) = parse_obj(&b, |o, e| {
-        let name = o.req_str(e, "name");
-        if o.get("name").map(|v| v.is_string()).unwrap_or(false) {
-            o.check_len(e, "name", name.trim(), Some(1), Some(300));
-        }
+        let name = req_name(o, e, "name");
         let kind = o.opt_str(e, "type");
         if let Some(k) = &kind {
             o.one_of(e, "type", k, &["individual", "entity"]);
@@ -994,14 +1016,7 @@ async fn v2_sanctions(State(app): State<AppRef>, b: Bytes) -> ApiResult {
 /// Payee name check (confirmation of payee): the name the payer typed against the account holder name.
 async fn v2_payee_check(State(app): State<AppRef>, b: Bytes) -> ApiResult {
     let (entered, account, kind) = parse_obj(&b, |o, e| {
-        let mut name = |k: &str| {
-            let v = o.req_str(e, k);
-            if o.get(k).map(|v| v.is_string()).unwrap_or(false) {
-                o.check_len(e, k, v.trim(), Some(1), Some(300));
-            }
-            v
-        };
-        let (entered, account) = (name("entered_name"), name("account_name"));
+        let (entered, account) = (req_name(o, e, "entered_name"), req_name(o, e, "account_name"));
         let kind = o.opt_str(e, "account_type");
         if let Some(k) = &kind {
             o.one_of(e, "account_type", k, &["individual", "business"]);
@@ -1172,6 +1187,10 @@ async fn demo_reset(State(app): State<AppRef>, Query(q): Query<WarmQ>) -> ApiRes
         })?,
     };
     with_state(app, move |s| {
+        // live events are real data: wiping the desk would leave their records pointing at missing alerts
+        if s.desk.log.iter().any(|e| e["type"] == "live_decision") {
+            return Err(ApiError::new(409, "live events have been ingested on this server; the demo reset is disabled so they are kept"));
+        }
         s.need_engine()?.reset();
         s.lures.reset();
         s.desk.reset();

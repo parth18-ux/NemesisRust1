@@ -14,7 +14,7 @@
 //! (or a proxy that does not split scripts), not Redis Cluster.
 use rusetect::engine::{fx, CascadeConfig, Features, MIN24};
 use rusetect::payment::Payment;
-use rusetect::pyfmt::{hour_dow, py_repr};
+use rusetect::pyfmt::py_repr;
 use std::collections::HashSet;
 
 const A_S: [&str; 9] = ["out_n", "out_usd", "last_out_t", "first_out_t", "in_n", "in_usd", "last_in_t", "last_in_usd", "uniq_dst"];
@@ -83,7 +83,6 @@ impl RedisState {
         let s = format!("{}|{}", p.from_bank, p.from_account);
         let d = format!("{}|{}", p.to_bank, p.to_account);
         let t = p.tmin;
-        let usd = self.cfg.usd(p.amount_paid, &p.payment_currency);
         let bp = format!("{}>{}", p.from_bank, p.to_bank);
         let eid = p.eid.map(|e| e.to_string()).unwrap_or_else(|| format!("{t}.{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let lo = format!("({}", t - MIN24);
@@ -105,18 +104,8 @@ impl RedisState {
         let nan = f64::NAN;
         let on = int(&sa[0]).unwrap_or(0);
         let ousd = float(&sa[1]).unwrap_or(0.0);
-        let mut f = [0.0f64; 31];
+        let (mut f, usd) = self.cfg.payment_features(p, s == d);
         use fx::*;
-        f[LOG_USD] = usd.ln_1p();
-        f[FMT_CODE] = self.cfg.fmt_codes.get(&p.payment_format).map(|v| *v as f64).unwrap_or(nan);
-        f[CUR_CODE] = self.cfg.cur_codes.get(&p.payment_currency).map(|v| *v as f64).unwrap_or(nan);
-        let (h, dow) = hour_dow(t);
-        f[HOUR] = h as f64;
-        f[DOW] = dow as f64;
-        f[CROSS_BANK] = (p.from_bank != p.to_bank) as i64 as f64;
-        f[CROSS_CUR] = (p.receiving_currency != p.payment_currency) as i64 as f64;
-        f[SELF_LOOP] = (s == d) as i64 as f64;
-        f[ROUND_100] = (usd % 100.0 == 0.0) as i64 as f64;
         f[S_OUT_N] = on as f64;
         f[S_OUT_MEAN_USD] = (ousd / on.max(1) as f64).ln_1p();
         f[S_GAP_OUT] = int(&sa[2]).map(|x| (t - x) as f64).unwrap_or(nan);

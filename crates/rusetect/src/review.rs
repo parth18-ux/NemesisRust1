@@ -43,13 +43,13 @@ impl ReviewDesk {
         *self = Self::new();
     }
 
-    pub fn append(&mut self, event: Map<String, Value>) -> Value {
+    pub fn append(&mut self, event: Value) -> Value {
         let prev = self.log.last().and_then(|e| e["hash"].as_str()).map(String::from).unwrap_or_else(|| "0".repeat(64));
         let mut e = Map::new();
         e.insert("seq".into(), json!(self.log.len() + 1));
         e.insert("at".into(), json!(utc_now_z()));
-        for (k, v) in event {
-            e.insert(k, v);
+        if let Value::Object(m) = event {
+            e.extend(m);
         }
         e.insert("prev".into(), json!(prev));
         let h = hash_obj(&Value::Object(e.clone()));
@@ -67,6 +67,16 @@ impl ReviewDesk {
         }
         let aid = format!("A{:05}", self.next_id);
         self.next_id += 1;
+        self.open_alert_as(aid, payment_in, assessed)
+    }
+
+    /// [`open_alert`](Self::open_alert) under a caller-chosen id (the live ingest path uses a store-wide sequence, so
+    /// ids from several server instances do not collide).
+    pub fn open_alert_as(&mut self, aid: String, payment_in: &Map<String, Value>, assessed: &Value) -> Option<Value> {
+        let fd = assessed["final_decision"].as_str().unwrap_or("Approve");
+        if fd == "Approve" {
+            return None;
+        }
         let shown = if fd == "Block + STR draft" { "Hold + recommend block" } else { fd };
         let payment: Map<String, Value> = ["timestamp", "from_bank", "from_account", "to_bank", "to_account", "amount_paid", "payment_currency", "payment_format"]
             .iter().map(|k| (k.to_string(), payment_in.get(*k).cloned().unwrap_or(Value::Null))).collect();
@@ -80,14 +90,8 @@ impl ReviewDesk {
                 .unwrap_or_else(|| self.alerts.keys().next().cloned().unwrap_or_default());
             self.alerts.shift_remove(&old);
         }
-        let mut ev = Map::new();
-        ev.insert("type".into(), json!("alert_opened"));
-        ev.insert("alert_id".into(), json!(aid));
-        ev.insert("decision".into(), json!(shown));
-        ev.insert("context_band".into(), assessed["context_band"].clone());
-        ev.insert("ruleset".into(), assessed["context"]["ruleset"].clone());
-        ev.insert("inputs_hash".into(), json!(inputs_hash));
-        self.append(ev);
+        self.append(json!({"type": "alert_opened", "alert_id": aid, "decision": shown, "context_band": assessed["context_band"],
+                           "ruleset": assessed["context"]["ruleset"], "inputs_hash": inputs_hash}));
         Some(a)
     }
 
@@ -129,15 +133,8 @@ impl ReviewDesk {
             });
         }
         a["actions"].as_array_mut().unwrap().push(json!({"analyst": analyst, "action": action, "note": note}));
-        let status = a["status"].clone();
         let out = a.clone();
-        let mut ev = Map::new();
-        ev.insert("type".into(), json!("analyst_action"));
-        ev.insert("alert_id".into(), json!(alert_id));
-        ev.insert("analyst".into(), json!(analyst));
-        ev.insert("action".into(), json!(action));
-        ev.insert("status".into(), status);
-        self.append(ev);
+        self.append(json!({"type": "analyst_action", "alert_id": alert_id, "analyst": analyst, "action": action, "status": out["status"]}));
         Ok(out)
     }
 
@@ -148,15 +145,8 @@ impl ReviewDesk {
             a["status"] = json!(status);
         }
         a["actions"].as_array_mut().unwrap().push(json!({"analyst": actor, "action": status, "note": detail}));
-        let st = a["status"].clone();
         let out = a.clone();
-        let mut ev = Map::new();
-        ev.insert("type".into(), json!("event"));
-        ev.insert("alert_id".into(), json!(alert_id));
-        ev.insert("actor".into(), json!(actor));
-        ev.insert("action".into(), json!(status));
-        ev.insert("status".into(), st);
-        self.append(ev);
+        self.append(json!({"type": "event", "alert_id": alert_id, "actor": actor, "action": status, "status": out["status"]}));
         Ok(out)
     }
 
@@ -201,9 +191,8 @@ mod tests {
     #[test]
     fn tampering_breaks_the_chain() {
         let mut d = ReviewDesk::new();
-        let ev = |t: &str| { let mut m = Map::new(); m.insert("type".into(), json!(t)); m };
-        d.append(ev("x"));
-        d.append(ev("y"));
+        d.append(json!({"type": "x"}));
+        d.append(json!({"type": "y"}));
         assert!(d.verify_chain());
         d.log[0]["type"] = json!("edited");
         assert!(!d.verify_chain());

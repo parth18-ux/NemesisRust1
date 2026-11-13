@@ -22,38 +22,38 @@ impl Scorer {
     }
 
     pub fn score(&mut self, payments: &[Payment]) -> redis::RedisResult<Vec<Value>> {
-        let m = self.eng.models.as_ref().unwrap();
-        let cfg = &self.eng.cfg;
-        let mut out = Vec::with_capacity(payments.len());
-        for p in payments {
-            let f = self.state.features(p)?;
-            let sf = self.state.last_sender_fan_in;
-            let x = self.eng.vec(&f);
-            let s1 = m.l1.predict(&x) as f64;
-            let mut esc = s1 >= cfg.l1_threshold;
-            let mut risk = if esc { m.l2(&x) } else { s1 };
-            // same structuring window and format hardening as Engine::finish_risk (the window applies with or without
-            // the hardening file, as there)
-            let payer_window = m.hardening.as_ref().is_some_and(|h| h.payer_window);
-            let payee = if payer_window { String::new() } else { format!("{}|{}", p.to_bank, p.to_account) };
-            let (n, pair) = self.state.pair_window(p, &payee, risk)?;
-            let raised = if n > 1 { pair.max(risk) } else { risk };
-            if let Some(h) = m.hardening.as_ref() {
-                risk = h.risk(&x, raised).0;
-                esc = true;
-            } else {
-                esc |= raised > risk;
-                risk = raised;
-            }
-            let (vt, ht, bt) = self.eng.thresholds();
-            let rank = if !esc { 0 } else if risk >= bt { 3 } else if risk >= ht { 2 } else if risk >= vt { 1 } else { 0 };
-            let ctx = assess(None, &from_engine_features(&f, sf), true, None, true, None, None);
-            let c = combine(DECISIONS[rank], &ctx);
-            out.push(json!({"eid": p.eid, "payment_decision": DECISIONS[rank], "risk": if esc { json!(py_round(risk, 5)) } else { Value::Null },
-                            "context_band": ctx.band, "final_decision": c["final_decision"], "raised_by_context": c["raised_by_context"]}));
-        }
-        Ok(out)
+        payments.iter().map(|p| score_one(&self.eng, &mut self.state, p)).collect()
     }
+}
+
+/// One payment through the cascade with account state in Redis: same structuring window and format hardening as
+/// Engine::finish_risk (the window applies with or without the hardening file, as there), then the context layer.
+pub fn score_one(eng: &Engine, state: &mut RedisState, p: &Payment) -> redis::RedisResult<Value> {
+    let m = eng.models.as_ref().unwrap();
+    let cfg = &eng.cfg;
+    let f = state.features(p)?;
+    let sf = state.last_sender_fan_in;
+    let x = eng.vec(&f);
+    let s1 = m.l1.predict(&x) as f64;
+    let mut esc = s1 >= cfg.l1_threshold;
+    let mut risk = if esc { m.l2(&x) } else { s1 };
+    let payer_window = m.hardening.as_ref().is_some_and(|h| h.payer_window);
+    let payee = if payer_window { String::new() } else { format!("{}|{}", p.to_bank, p.to_account) };
+    let (n, pair) = state.pair_window(p, &payee, risk)?;
+    let raised = if n > 1 { pair.max(risk) } else { risk };
+    if let Some(h) = m.hardening.as_ref() {
+        risk = h.risk(&x, raised).0;
+        esc = true;
+    } else {
+        esc |= raised > risk;
+        risk = raised;
+    }
+    let (vt, ht, bt) = eng.thresholds();
+    let rank = if !esc { 0 } else if risk >= bt { 3 } else if risk >= ht { 2 } else if risk >= vt { 1 } else { 0 };
+    let ctx = assess(None, &from_engine_features(&f, sf), true, None, true, None, None);
+    let c = combine(DECISIONS[rank], &ctx);
+    Ok(json!({"eid": p.eid, "payment_decision": DECISIONS[rank], "risk": if esc { json!(py_round(risk, 5)) } else { Value::Null },
+              "context_band": ctx.band, "final_decision": c["final_decision"], "raised_by_context": c["raised_by_context"]}))
 }
 
 /// Consume one partition until a stop marker arrives; returns how many payments were scored.

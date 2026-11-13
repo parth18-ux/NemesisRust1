@@ -73,7 +73,8 @@ pub fn analyst_for(key: Option<&str>) -> Option<Analyst> {
 
 /// API routes open without a key outside demo mode: liveness, the public signing key and signature checks, and model
 /// documentation. Everything else under /api names accounts, changes state or costs CPU.
-pub const PUBLIC_API: [&str; 7] = ["", "/", "/health", "/v2/keys/public", "/v2/verify", "/v2/model-card", "/v2/demo/analysts"];
+/// `/v2/events/payment` is the ingest webhook: an HMAC signature over the body (RUSETECT_WEBHOOK_SECRET) is its key.
+pub const PUBLIC_API: [&str; 8] = ["", "/", "/health", "/v2/keys/public", "/v2/verify", "/v2/model-card", "/v2/demo/analysts", "/v2/events/payment"];
 
 /// POST routes that take a review decision or publish to the shared ledger: analyst or supervisor only.
 const REVIEW_ROUTES: [&str; 2] = ["/v2/alerts/*/review", "/v2/consortium/publish"];
