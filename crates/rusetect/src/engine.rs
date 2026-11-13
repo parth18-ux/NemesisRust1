@@ -227,6 +227,23 @@ impl CascadeConfig {
         (amount * self.usd_rates.get(currency).copied().unwrap_or(1.0)).min(1e18)
     }
 
+    /// The features of the payment itself (no account state) and its USD amount. Shared by the engine, the compact state
+    /// and the Redis state; `self_loop` is whether payer and payee are the same account.
+    pub fn payment_features(&self, p: &Payment, self_loop: bool) -> ([f64; 31], f64) {
+        use fx::*;
+        let usd = self.usd(p.amount_paid, &p.payment_currency);
+        let code = |m: &IndexMap<String, i64>, k: &str| m.get(k).map(|v| *v as f64).unwrap_or(f64::NAN);
+        let mut f = [0.0f64; 31];
+        let (h, dow) = hour_dow(p.tmin);
+        (f[LOG_USD], f[HOUR], f[DOW]) = (usd.ln_1p(), h as f64, dow as f64);
+        (f[FMT_CODE], f[CUR_CODE]) = (code(&self.fmt_codes, &p.payment_format), code(&self.cur_codes, &p.payment_currency));
+        f[CROSS_BANK] = (p.from_bank != p.to_bank) as i64 as f64;
+        f[CROSS_CUR] = (p.receiving_currency != p.payment_currency) as i64 as f64;
+        f[SELF_LOOP] = self_loop as i64 as f64;
+        f[ROUND_100] = (usd % 100.0 == 0.0) as i64 as f64;
+        (f, usd)
+    }
+
     /// Column order of the model input vector.
     pub fn feature_index(&self) -> Vec<usize> {
         self.features.iter().map(|f| FEATURES.iter().position(|x| x == f).unwrap()).collect()
@@ -532,20 +549,9 @@ impl Engine {
         let d = self.acct_id(&p.to_bank, &p.to_account);
         let (si, di) = (s as usize, d as usize);
         let t = p.tmin;
-        let usd = self.cfg.usd(p.amount_paid, &p.payment_currency);
         let nan = f64::NAN;
-        let mut f = [0.0f64; 31];
+        let (mut f, usd) = self.cfg.payment_features(p, s == d);
         use fx::*;
-        f[LOG_USD] = usd.ln_1p();
-        f[FMT_CODE] = self.cfg.fmt_codes.get(&p.payment_format).map(|v| *v as f64).unwrap_or(nan);
-        f[CUR_CODE] = self.cfg.cur_codes.get(&p.payment_currency).map(|v| *v as f64).unwrap_or(nan);
-        let (h, dow) = hour_dow(t);
-        f[HOUR] = h as f64;
-        f[DOW] = dow as f64;
-        f[CROSS_BANK] = (p.from_bank != p.to_bank) as i64 as f64;
-        f[CROSS_CUR] = (p.receiving_currency != p.payment_currency) as i64 as f64;
-        f[SELF_LOOP] = (s == d) as i64 as f64;
-        f[ROUND_100] = (usd % 100.0 == 0.0) as i64 as f64;
         {
             let sa = &self.accts[si];
             f[S_OUT_N] = sa.out_n as f64;
@@ -712,8 +718,8 @@ impl Engine {
         // reasons from the model that set the risk: the format-free model's SHAP if it did, else the cascade's L2 XGBoost
         let reasons = match free {
             _ if band == "safe" => None,
-            Some((f, s)) if f > s => Some(self.free_reasons(x, out_features(out))),
-            _ => Some(self.cascade_reasons(x, out_features(out))),
+            Some((f, s)) if f > s => Some(self.shap_reasons(x, out_features(out), true)),
+            _ => Some(self.shap_reasons(x, out_features(out), false)),
         };
         if let Some(Value::Array(r)) = out.get_mut("reasons") {
             if let Some(fr) = reasons {
@@ -731,30 +737,25 @@ impl Engine {
         }
     }
 
-    /// Top four positive SHAP contributions of the cascade's L2 XGBoost half.
-    fn cascade_reasons(&self, x: &[f32], feats: Map<String, Value>) -> Vec<Value> {
+    /// Top four positive SHAP contributions of the cascade's L2 XGBoost half, or of the format-free model when `free`
+    /// (then tagged "model": "format-free").
+    fn shap_reasons(&self, x: &[f32], feats: Map<String, Value>, free: bool) -> Vec<Value> {
         let Some(m) = self.models.as_ref() else { return vec![] };
-        let contrib = m.l2x.contributions(x);
-        let mut order: Vec<usize> = (0..x.len()).collect();
+        let (contrib, cols): (Vec<f32>, Vec<usize>) = match m.hardening.as_ref() {
+            Some(h) if free => (h.model.contributions(&h.cols.iter().map(|&i| x[i]).collect::<Vec<f32>>()), h.cols.clone()),
+            _ if free => return vec![],
+            _ => (m.l2x.contributions(x), (0..x.len()).collect()),
+        };
+        let mut order: Vec<usize> = (0..cols.len()).collect();
         order.sort_by(|a, b| contrib[*b].partial_cmp(&contrib[*a]).unwrap_or(std::cmp::Ordering::Equal));
         order.into_iter().take(4).filter(|&i| contrib[i] > 0.0).map(|i| {
-            let k = &self.cfg.features[i];
+            let k = &self.cfg.features[cols[i]];
             let v = feats.get(k).cloned().unwrap_or(Value::Null);
-            json!({"feature": readable(k), "value": v, "display": self.display(k, &v), "impact": py_round(contrib[i] as f64, 3)})
-        }).collect()
-    }
-
-    /// Top four positive SHAP contributions of the format-free model, in the same shape as the cascade's reasons.
-    fn free_reasons(&self, x: &[f32], feats: Map<String, Value>) -> Vec<Value> {
-        let Some(h) = self.models.as_ref().and_then(|m| m.hardening.as_ref()) else { return vec![] };
-        let sub: Vec<f32> = h.cols.iter().map(|&i| x[i]).collect();
-        let contrib = h.model.contributions(&sub);
-        let mut order: Vec<usize> = (0..sub.len()).collect();
-        order.sort_by(|a, b| contrib[*b].partial_cmp(&contrib[*a]).unwrap_or(std::cmp::Ordering::Equal));
-        order.into_iter().take(4).filter(|&i| contrib[i] > 0.0).map(|i| {
-            let k = &self.cfg.features[h.cols[i]];
-            let v = feats.get(k).cloned().unwrap_or(Value::Null);
-            json!({"feature": readable(k), "value": v, "display": self.display(k, &v), "impact": py_round(contrib[i] as f64, 3), "model": "format-free"})
+            let mut r = json!({"feature": readable(k), "value": v, "display": self.display(k, &v), "impact": py_round(contrib[i] as f64, 3)});
+            if free {
+                r["model"] = json!("format-free");
+            }
+            r
         }).collect()
     }
 

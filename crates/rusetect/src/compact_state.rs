@@ -9,7 +9,6 @@
 //!       bloom  a fixed size Bloom filter  (fixed memory; a false positive can only turn a new pair into "seen")
 use crate::engine::{fx, CascadeConfig, Features, Window, MIN24};
 use crate::payment::Payment;
-use crate::pyfmt::hour_dow;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
@@ -164,20 +163,9 @@ impl CompactState {
         let d = self.id(&p.to_bank, &p.to_account);
         let (si, di) = (s as usize, d as usize);
         let t = p.tmin;
-        let usd = self.cfg.usd(p.amount_paid, &p.payment_currency);
         let nan = f64::NAN;
-        let mut f = [0.0f64; 31];
+        let (mut f, usd) = self.cfg.payment_features(p, s == d);
         use fx::*;
-        f[LOG_USD] = usd.ln_1p();
-        f[FMT_CODE] = self.cfg.fmt_codes.get(&p.payment_format).map(|v| *v as f64).unwrap_or(nan);
-        f[CUR_CODE] = self.cfg.cur_codes.get(&p.payment_currency).map(|v| *v as f64).unwrap_or(nan);
-        let (h, dow) = hour_dow(t);
-        f[HOUR] = h as f64;
-        f[DOW] = dow as f64;
-        f[CROSS_BANK] = (p.from_bank != p.to_bank) as i64 as f64;
-        f[CROSS_CUR] = (p.receiving_currency != p.payment_currency) as i64 as f64;
-        f[SELF_LOOP] = (s == d) as i64 as f64;
-        f[ROUND_100] = (usd % 100.0 == 0.0) as i64 as f64;
         let on = self.out_n[si];
         f[S_OUT_N] = on as f64;
         f[S_OUT_MEAN_USD] = (self.out_usd[si] / on.max(1) as f64).ln_1p();

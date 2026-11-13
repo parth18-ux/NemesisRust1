@@ -343,6 +343,14 @@ re-derives it from the saved arms): adopted, under the rule of 8f, PRAMAAN stops
 the identity rule with and without behaviour data; the genuine-challenge cost is reported beside it, not gated. The rule
 was written down after the run, not pre-registered, and the field says so. The research page reads this field.
 
+**8v. Ponytail pass 2: shared helpers, no behaviour change.** Duplicated code merged into one place each: the
+payment-only features (amount, codes, hour, cross-bank and so on) are built once in `CascadeConfig::payment_features`
+and reused by the engine, the compact state and the Redis state; the cascade and format-free SHAP reasons share
+`Engine::shap_reasons`; audit-log events are written as one `json!` object (same key order, so the same hashes); the
+sanctions and payee routes share `req_name`; the pause-screen and re-verification routes take the alert once for the
+404 check. Every validation, cap and error stays. Checked by the full test suite, clippy, and a before/after dump of
+`examples/parity_dump` on the demo stream, which is byte-identical. PRAMAAN code is unchanged.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

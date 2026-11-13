@@ -701,14 +701,12 @@ fn customer_may_act(alert: &Value, allowed: &[&str]) -> Result<(), ApiError> {
 async fn v2_customer(State(app): State<AppRef>, Path(alert_id): Path<String>, b: Bytes) -> ApiResult {
     let answer = parse_obj(&b, |o, e| o.req_str(e, "answer"))?;
     with_state(app, move |s| {
-        if !s.desk.alerts.contains_key(&alert_id) {
-            return Err(ApiError::new(404, "unknown alert"));
-        }
+        let alert = s.desk.alerts.get(&alert_id).ok_or_else(|| ApiError::new(404, "unknown alert"))?;
         if answer != "stop" && answer != "continue" {
             return Err(ApiError::new(400, "answer must be stop or continue"));
         }
         // the pause screen answers an alert no analyst has acted on; a hold, block, release or verification stands
-        customer_may_act(&s.desk.alerts[&alert_id], &["open", "cooling_off", "stopped_by_customer"])?;
+        customer_may_act(alert, &["open", "cooling_off", "stopped_by_customer"])?;
         let status = if answer == "stop" { "stopped_by_customer" } else { "cooling_off" };
         ok(s.desk.system_event(&alert_id, status, "customer", &format!("pause screen answer: {answer}"), true).map_err(review_err)?)
     }).await
@@ -718,11 +716,9 @@ async fn v2_customer(State(app): State<AppRef>, Path(alert_id): Path<String>, b:
 async fn v2_reverify(State(app): State<AppRef>, Path(alert_id): Path<String>, b: Bytes) -> ApiResult {
     let method = parse_obj(&b, |o, e| o.str_or(e, "method", "video_kyc"))?;
     with_state(app, move |s| {
-        if !s.desk.alerts.contains_key(&alert_id) {
-            return Err(ApiError::new(404, "unknown alert"));
-        }
+        let alert = s.desk.alerts.get(&alert_id).ok_or_else(|| ApiError::new(404, "unknown alert"))?;
         // re-verification answers the pause screen or an analyst's "verify" request; a hold, block or release stands
-        customer_may_act(&s.desk.alerts[&alert_id], &["open", "cooling_off", "stopped_by_customer", "customer_verification"])?;
+        customer_may_act(alert, &["open", "cooling_off", "stopped_by_customer", "customer_verification"])?;
         ok(s.desk.system_event(&alert_id, "customer_reverified", "customer", &format!("re-verified by {method}"), true).map_err(review_err)?)
     }).await
 }
@@ -965,13 +961,19 @@ async fn v2_message(State(app): State<AppRef>, b: Bytes) -> ApiResult {
     }).await
 }
 
+/// A required name: 1 to 300 characters once trimmed (the length is checked only when the field is a string).
+fn req_name(o: &Obj, e: &mut Errors, k: &str) -> String {
+    let v = o.req_str(e, k);
+    if o.get(k).is_some_and(|v| v.is_string()) {
+        o.check_len(e, k, v.trim(), Some(1), Some(300));
+    }
+    v
+}
+
 /// Watchlist name screening: the five closest list entries and whether the best reaches the fitted threshold.
 async fn v2_sanctions(State(app): State<AppRef>, b: Bytes) -> ApiResult {
     let (name, kind) = parse_obj(&b, |o, e| {
-        let name = o.req_str(e, "name");
-        if o.get("name").map(|v| v.is_string()).unwrap_or(false) {
-            o.check_len(e, "name", name.trim(), Some(1), Some(300));
-        }
+        let name = req_name(o, e, "name");
         let kind = o.opt_str(e, "type");
         if let Some(k) = &kind {
             o.one_of(e, "type", k, &["individual", "entity"]);
@@ -994,14 +996,7 @@ async fn v2_sanctions(State(app): State<AppRef>, b: Bytes) -> ApiResult {
 /// Payee name check (confirmation of payee): the name the payer typed against the account holder name.
 async fn v2_payee_check(State(app): State<AppRef>, b: Bytes) -> ApiResult {
     let (entered, account, kind) = parse_obj(&b, |o, e| {
-        let mut name = |k: &str| {
-            let v = o.req_str(e, k);
-            if o.get(k).map(|v| v.is_string()).unwrap_or(false) {
-                o.check_len(e, k, v.trim(), Some(1), Some(300));
-            }
-            v
-        };
-        let (entered, account) = (name("entered_name"), name("account_name"));
+        let (entered, account) = (req_name(o, e, "entered_name"), req_name(o, e, "account_name"));
         let kind = o.opt_str(e, "account_type");
         if let Some(k) = &kind {
             o.one_of(e, "account_type", k, &["individual", "business"]);
