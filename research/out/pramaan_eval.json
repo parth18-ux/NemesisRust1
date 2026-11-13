@@ -61,5 +61,34 @@
     "sim_swap": 0.308
    }
   }
+ },
+ "decision": {
+  "adopted": true,
+  "rule": "adopt PRAMAAN next to the identity rule if it stops a larger share of attack requests than the identity rule in both arms (without_behaviour, the conservative case, and with_behaviour); extra genuine challenges are reported, not gated",
+  "rule_source": "docs/decision.md 8f (recorded after the run, not pre-registered)",
+  "checks_pramaan_vs_rusetect": {
+   "without_behaviour": {
+    "attack_requests_stopped": [
+     0.9636,
+     0.7701
+    ],
+    "genuine_challenged": [
+     0.0383,
+     0.0169
+    ],
+    "pass": true
+   },
+   "with_behaviour": {
+    "attack_requests_stopped": [
+     0.9648,
+     0.7701
+    ],
+    "genuine_challenged": [
+     0.0336,
+     0.017
+    ],
+    "pass": true
+   }
+  }
  }
 }

@@ -10,7 +10,7 @@ use crate::payment::Payment;
 use crate::pyfmt::{jf, py_round, py_strip};
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
 pub const LOOKBACK_MIN: i64 = 72 * 60;
 pub const DEDUP_MIN: i64 = 24 * 60;
@@ -18,6 +18,8 @@ pub const DAILY_CAP: usize = 3;
 /// Payee watchlist entries kept; the oldest (least recently named) is dropped first.
 // shortcut: in-memory and capped, upgrade to a real store (TTL'd key-value) when one process serves many banks' traffic
 pub const MAX_WATCH: usize = if cfg!(test) { 3 } else { 100_000 };
+/// Accounts kept in the per-account lure and push maps; the oldest-added account is dropped first.
+pub const MAX_ACCOUNTS: usize = if cfg!(test) { 3 } else { 100_000 };
 
 const RANK: [&str; 4] = ["Approve", "Step-up verification", "Hold for analyst", "Block + STR draft"];
 const BAND: [&str; 4] = ["safe", "med", "med", "high"];
@@ -39,9 +41,9 @@ struct Lure {
 
 #[derive(Default)]
 pub struct LureMemory {
-    events: HashMap<String, VecDeque<Lure>>,
+    events: IndexMap<String, VecDeque<Lure>>,
     watch: IndexMap<String, (i64, String, f64)>,
-    pushed: HashMap<String, VecDeque<(i64, String)>>,
+    pushed: IndexMap<String, VecDeque<(i64, String)>>,
     stats: IndexMap<String, i64>,
 }
 
@@ -88,6 +90,9 @@ impl LureMemory {
             return json!({"notify": false, "reason": "No account given; message kept only for its entities (payee watchlist)"});
         };
         let acct = norm(account);
+        if !self.events.contains_key(&acct) && self.events.len() >= MAX_ACCOUNTS {
+            self.events.shift_remove_index(0);
+        }
         let ev = self.events.entry(acct.clone()).or_default();
         ev.push_back(Lure { t: tmin, wlab: wlab.clone(), risk });
         while ev.front().map(|e| e.t < tmin - LOOKBACK_MIN).unwrap_or(false) {
@@ -96,6 +101,9 @@ impl LureMemory {
         if band != "high" {
             self.stat("suppressed_caution");
             return json!({"notify": false, "reason": "Caution band: shown only if a payment follows (no push)"});
+        }
+        if !self.pushed.contains_key(&acct) && self.pushed.len() >= MAX_ACCOUNTS {
+            self.pushed.shift_remove_index(0);
         }
         let p = self.pushed.entry(acct).or_default();
         while p.front().map(|e| e.0 < tmin - DEDUP_MIN).unwrap_or(false) {
@@ -182,5 +190,16 @@ mod tests {
             m.record_message(None, i as i64, &json!({"band": "high", "risk": 0.9, "workflow": {}, "entities": {"upi_ids": [e]}}));
         }
         assert_eq!(m.watch.keys().cloned().collect::<Vec<_>>(), vec!["u3@ybl", "u1@ybl", "u4@ybl"]);
+    }
+
+    #[test]
+    fn account_maps_stay_capped() {
+        let mut m = LureMemory::new();
+        for i in 0..10 {
+            m.record_message(Some(&format!("acct{i}")), i, &json!({"band": "high", "risk": 0.9, "workflow": {}, "entities": {}}));
+        }
+        assert_eq!(m.events.len(), MAX_ACCOUNTS);
+        assert_eq!(m.pushed.len(), MAX_ACCOUNTS);
+        assert!(m.events.contains_key("acct9") && !m.events.contains_key("acct0"));
     }
 }
