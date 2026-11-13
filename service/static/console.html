@@ -67,6 +67,9 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .verdict{font:500 11.5px var(--mono);justify-self:end}
 .verdict.y{color:var(--ok)} .verdict.n{color:var(--ink-3)}
 .empty{color:var(--ink-3);font-size:13px;padding:18px 0}
+.badge{font:500 11.5px var(--mono);padding:2px 8px;border-radius:999px;white-space:nowrap}
+.badge.durable{background:var(--ok-soft);color:var(--ok)} .badge.mem{background:var(--warn-soft);color:var(--warn)}
+.tag{font:500 10.5px var(--mono);padding:1px 6px;border-radius:4px;border:1px solid var(--rule);color:var(--ink-3);margin-right:6px}
 .case{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--rule)}
 .case:first-of-type{border-top:0}
 .case svg{width:120px;height:84px;background:var(--bg);border-radius:6px}
@@ -167,8 +170,13 @@ img,svg,video,canvas{max-width:100%}
     </div>
   </header>
 
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:6px"><span class="label">Live events · pushed by outside systems to the signed webhook (POST /api/v2/events/payment)</span><span class="badge mem" id="liveBadge">store: checking…</span></div>
+    <div class="feed" id="liveFeed" style="max-height:360px"><div class="empty">No live events yet. Only real events sent to the webhook appear here (see docs/live.md); the demo replay below is not shown.</div></div>
+  </div>
+
   <div class="panel" style="display:flex;flex-direction:column;gap:8px">
-    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span class="label">Replay of recorded IBM AMLworld test period payments (synthetic dataset)</span><span class="status" id="simtime">sim time: waiting</span></div>
+    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span class="label">Demo replay of recorded IBM AMLworld test period payments (synthetic dataset)</span><span class="status" id="simtime">sim time: waiting</span></div>
     <div class="progress"><div id="prog"></div></div>
   </div>
 
@@ -202,7 +210,7 @@ img,svg,video,canvas{max-width:100%}
 
   <div class="cols">
     <div class="panel">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px"><span class="label">Alert feed · newest first</span><span class="status">ground truth label shown for the demo only</span></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px"><span class="label">Demo alert feed · replayed synthetic payments, newest first</span><span class="status">demo traffic · ground truth label shown for the demo only</span></div>
       <div class="feed" id="feed"><div class="empty">Load account history, then stream payments. Blocks and holds appear here with the reasons the model gave.</div></div>
     </div>
     <div class="side">
@@ -274,7 +282,7 @@ function renderFeed(feed) {
   if (!feed.length) return;
   $("feed").innerHTML = feed.map(a => {
     const cls = a.decision.startsWith("Block") ? "block" : a.decision.startsWith("Hold") ? "hold" : "verify";
-    return `<div class="alert"><div><div class="route">${a.from} → ${a.to}</div><div class="meta">${a.ts} · ${nf(a.amount)} ${a.currency} · ${a.format} · risk ${a.risk.toFixed(3)}${a.case_id ? " · " + a.case_id.replace("CASE-", "Case ") : ""}</div></div>
+    return `<div class="alert"><div><div class="route"><span class="tag">demo</span>${a.from} → ${a.to}</div><div class="meta">${a.ts} · ${nf(a.amount)} ${a.currency} · ${a.format} · risk ${a.risk.toFixed(3)}${a.case_id ? " · " + a.case_id.replace("CASE-", "Case ") : ""}</div></div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><span class="pill ${cls}">${a.decision === "Step-up verification" ? "Verify customer" : a.decision}</span><span class="verdict ${a.truth ? "y" : "n"}">${a.truth ? "laundering ✓" : "not laundering"}</span></div>
       <div class="reasons">${a.reasons.map(x => `<span class="chip">${x.feature}: ${x.display}</span>`).join("")}</div></div>`;
   }).join("");
@@ -354,6 +362,26 @@ $("msgPayScam").onclick = () => lastMsg && payAfter("upi", lastMsg.entities.upi_
 
 $("obMule").onclick = () => onboard("mule"); $("obGen").onclick = () => onboard("genuine");
 boot();
+
+// ---- live feed: decisions for real webhook events, polled every 1.5 s (no fake rows)
+const ACT = {allow: "safe", verify: "verify", hold: "hold", block: "block"};
+async function pollLive() {
+  try {
+    const r = await api("/api/v2/live");
+    $("liveBadge").className = "badge " + (r.durable ? "durable" : "mem");
+    $("liveBadge").textContent = r.durable ? "durable: " + r.store.kind : "not durable: in-memory";
+    if (r.store.note) $("liveBadge").title = r.store.note;
+    if (r.events.length) $("liveFeed").innerHTML = r.events.map(e => {
+      const p = e.payment;
+      return `<div class="alert"><div><div class="route"><span class="tag">live</span>${esc(p.from_bank)}·${esc(p.from_account)} → ${esc(p.to_bank)}·${esc(p.to_account)}</div>
+        <div class="meta">${esc(e.received_at)} · event ${esc(e.event_id)} · ${nf(p.amount_paid)} ${esc(p.payment_currency)} · ${esc(p.payment_format)}${e.risk != null ? " · risk " + Number(e.risk).toFixed(3) : ""}${e.alert_id ? " · alert " + esc(e.alert_id) : ""}${e.pramaan ? " · PRAMAAN " + esc(e.pramaan.decision) : ""} · ${e.latency_ms} ms</div></div>
+        <span class="pill ${ACT[e.action]}">${esc(e.action)}</span>
+        <div class="reasons">${(e.reasons || []).slice(0, 3).map(x => `<span class="chip">${esc(x.feature)}: ${esc(x.display)}</span>`).join("")}</div></div>`;
+    }).join("");
+  } catch (err) { $("liveBadge").textContent = "live feed unavailable (" + err.message + ")"; }
+  setTimeout(pollLive, 1500);
+}
+pollLive();
 </script>
 <script id="motion-js">
 (() => {

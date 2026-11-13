@@ -351,6 +351,19 @@ sanctions and payee routes share `req_name`; the pause-screen and re-verificatio
 404 check. Every validation, cap and error stays. Checked by the full test suite, clippy, and a before/after dump of
 `examples/parity_dump` on the demo stream, which is byte-identical. PRAMAAN code is unchanged.
 
+**8w. Live ingest: a signed webhook that decides and commits in the same request.** RuseTect runs on Vercel's free
+tier, where nothing runs between requests, so the webhook itself is the trigger: `POST /api/v2/events/payment` checks an
+HMAC-SHA256 signature over the raw body (timestamp and signature headers, 5 minute tolerance, constant-time compare),
+claims the `event_id`, scores the payment with the served engine, applies PRAMAAN when the event carries an `auth`
+object, opens a review alert for verify/hold/block, appends a hash-chained ledger entry and commits before replying. A
+repeated `event_id` returns the stored result and is not scored again. The durable store is Redis over `rediss://`
+(Upstash's free tier through the Vercel Marketplace), reusing the streaming workers' Redis account state
+(`scale::redis_state`), so every function instance sees the same history; the REST API was not needed because Upstash
+accepts TLS connections from a function. Without a Redis URL the server keeps everything in memory and says so
+(`/api/health` `"durable": false`, console badge "not durable: in-memory"). The console polls `GET /api/v2/live` every
+1.5 s instead of holding a server-sent-events stream, which a serverless function would cut at its time limit. How to
+send events: `docs/live.md`.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

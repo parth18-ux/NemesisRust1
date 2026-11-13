@@ -67,6 +67,16 @@ impl ReviewDesk {
         }
         let aid = format!("A{:05}", self.next_id);
         self.next_id += 1;
+        self.open_alert_as(aid, payment_in, assessed)
+    }
+
+    /// [`open_alert`](Self::open_alert) under a caller-chosen id (the live ingest path uses a store-wide sequence, so
+    /// ids from several server instances do not collide).
+    pub fn open_alert_as(&mut self, aid: String, payment_in: &Map<String, Value>, assessed: &Value) -> Option<Value> {
+        let fd = assessed["final_decision"].as_str().unwrap_or("Approve");
+        if fd == "Approve" {
+            return None;
+        }
         let shown = if fd == "Block + STR draft" { "Hold + recommend block" } else { fd };
         let payment: Map<String, Value> = ["timestamp", "from_bank", "from_account", "to_bank", "to_account", "amount_paid", "payment_currency", "payment_format"]
             .iter().map(|k| (k.to_string(), payment_in.get(*k).cloned().unwrap_or(Value::Null))).collect();

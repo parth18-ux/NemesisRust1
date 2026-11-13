@@ -7,6 +7,8 @@
 //!   /api/v2/message      L-1 lure detector: score an SMS / WhatsApp / e-mail / call transcript, decide whether to warn
 //!   /api/v2/payment      score one payment (L1 -> L2 -> decision band -> L4 case), escalated by recent lures
 //!   /api/v2/assess       payment cascade + context layer + session domain, signed verdict, review alert
+//!   /api/v2/events/payment  signed ingest webhook: score, decide, alert, ledger and commit one payment event (live.rs)
+//!   /api/v2/live         latest live decisions for the console
 //!   /api/v2/onboard      L0 onboarding gate for a new account application (Feedzai BAF schema)
 //!   /docs                OpenAPI docs (Swagger UI), /openapi.json
 //!
@@ -17,6 +19,7 @@
 #![allow(clippy::neg_cmp_op_on_partial_ord, clippy::if_same_then_else, clippy::manual_clamp, clippy::type_complexity)]
 #![allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
 pub mod inputs;
+pub mod live;
 pub mod openapi;
 pub mod scale;
 pub mod validate;
@@ -87,6 +90,8 @@ pub struct AppState {
     /// payee name check (t_hi, t_lo, v2) from research/out/payee_check_eval_v2.json or payee_check_eval.json; None unless adopted
     pub payee: Option<(f64, f64, bool)>,
     pub demo: Demo,
+    /// live ingest: idempotency, feed and the durable store (Redis when configured, else memory)
+    pub live: live::Live,
 }
 
 pub struct Shared {
@@ -160,6 +165,7 @@ impl AppState {
             sanctions,
             payee,
             demo: Demo { truth: truth0(), ..Default::default() },
+            live: live::Live::from_env(),
         }
     }
 
@@ -271,6 +277,8 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/", get(health))
         .route("/health", get(health))
         .route("/v2/payment", post(v2_payment))
+        .route("/v2/events/payment", post(live::v2_events_payment))
+        .route("/v2/live", get(live::v2_live))
         .route("/v2/assess", post(v2_assess))
         .route("/v2/alerts", get(v2_alerts))
         .route("/v2/alerts/summary", get(v2_alert_summary))
@@ -471,7 +479,8 @@ async fn health(State(app): State<AppRef>) -> ApiResult {
         ok(json!({"service": format!("{NAME} API"), "name": NAME, "id": SLUG, "version": VERSION, "status": "ok", "engine_loaded": s.engine.is_some(),
                   "hardened": s.engine.as_ref().and_then(|e| e.models.as_ref()).map(|m| m.hardening.is_some()).unwrap_or(false),
                   "ruleset": ctx::RULESET_VERSION, "auth": if KEYS.demo_mode { "demo keys (set RUSETECT_ANALYST_KEYS)" } else { "configured keys" },
-                  "signing": {"alg": "Ed25519", "key_id": s.signer.key_id, "ephemeral": s.signer.ephemeral}}))
+                  "signing": {"alg": "Ed25519", "key_id": s.signer.key_id, "ephemeral": s.signer.ephemeral},
+                  "durable": s.live.durable(), "store": s.live.store_json()}))
     }).await
 }
 
@@ -737,21 +746,8 @@ async fn v2_identity(b: Bytes) -> ApiResult {
 /// behaviour and transaction objects; see crates/rusetect/src/pramaan.rs.
 async fn v2_authenticate(State(app): State<AppRef>, b: Bytes) -> ApiResult {
     let req: Value = serde_json::from_slice(&b).map_err(|_| ApiError::new(422, "body must be a JSON object"))?;
-    let o = req.as_object().ok_or_else(|| ApiError::new(422, "body must be a JSON object"))?;
-    if !o.get("user_id").and_then(|v| v.as_str()).is_some_and(|u| !u.is_empty() && u.chars().count() <= 128) {
-        return Err(ApiError::new(422, "user_id: a string of 1 to 128 characters is required"));
-    }
-    if !o.get("ts").and_then(|v| v.as_f64()).is_some_and(|t| t.is_finite() && t > 0.0 && t < 4.0e9) {
-        return Err(ApiError::new(422, "ts: epoch seconds are required"));
-    }
-    for k in ["device", "network", "behaviour", "transaction"] {
-        if o.get(k).is_some_and(|v| !v.is_object() && !v.is_null()) {
-            return Err(ApiError::new(422, format!("{k}: must be an object")));
-        }
-        if o.get(k).is_some_and(has_long_str) {
-            return Err(ApiError::new(422, format!("{k}: strings must be at most 512 characters")));
-        }
-    }
+    check_auth_request(&req)?;
+    let o = req.as_object().unwrap();
     let id = o.get("request_id").and_then(|v| v.as_str()).filter(|r| !r.is_empty() && r.len() <= 64).map(String::from)
         .unwrap_or_else(|| (0..16).map(|_| format!("{:x}", rand::random::<u8>() % 16)).collect());
     with_state(app, move |s| {
@@ -775,6 +771,26 @@ async fn v2_authenticate(State(app): State<AppRef>, b: Bytes) -> ApiResult {
         out["payee_flagged_by_consortium"] = flagged_by;
         ok(out)
     }).await
+}
+
+/// A PRAMAAN request: user_id, ts (epoch seconds) and optional device, network, behaviour and transaction objects.
+fn check_auth_request(req: &Value) -> Result<(), ApiError> {
+    let o = req.as_object().ok_or_else(|| ApiError::new(422, "body must be a JSON object"))?;
+    if !o.get("user_id").and_then(|v| v.as_str()).is_some_and(|u| !u.is_empty() && u.chars().count() <= 128) {
+        return Err(ApiError::new(422, "user_id: a string of 1 to 128 characters is required"));
+    }
+    if !o.get("ts").and_then(|v| v.as_f64()).is_some_and(|t| t.is_finite() && t > 0.0 && t < 4.0e9) {
+        return Err(ApiError::new(422, "ts: epoch seconds are required"));
+    }
+    for k in ["device", "network", "behaviour", "transaction"] {
+        if o.get(k).is_some_and(|v| !v.is_object() && !v.is_null()) {
+            return Err(ApiError::new(422, format!("{k}: must be an object")));
+        }
+        if o.get(k).is_some_and(has_long_str) {
+            return Err(ApiError::new(422, format!("{k}: strings must be at most 512 characters")));
+        }
+    }
+    Ok(())
 }
 
 /// Any string (at any depth) over 512 characters: the authenticator keeps device and payee ids per account.
