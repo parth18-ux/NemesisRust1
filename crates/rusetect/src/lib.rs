@@ -15,6 +15,7 @@
 //!   behaviour       typing rhythm profile and verifier                                 [service/behaviour.py]
 //!   mouse_dynamics  mouse action features and per-customer model                       [service/mouse_dynamics.py]
 //!   campaigns, coordination, str_report, risk_score, branding                          [same names]
+//!   drift           rolling-window PSI and band-rate drift monitor against the validation profile
 //!   sanctions       watchlist name screening (Jaro-Winkler token alignment, Soundex tie-break)
 //!   pyfmt, pyre     Python-compatible numerics, formatting, JSON and regex semantics
 // Deliberate: comparisons are written NaN-aware (`!(a > b)`), branches mirror the Python they port line by line,
@@ -28,6 +29,7 @@ pub mod compact_state;
 pub mod consortium;
 pub mod context_rules;
 pub mod coordination;
+pub mod drift;
 pub mod engine;
 pub mod extra_trees;
 pub mod intervention;

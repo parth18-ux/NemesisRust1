@@ -69,6 +69,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .empty{color:var(--ink-3);font-size:13px;padding:18px 0}
 .badge{font:500 11.5px var(--mono);padding:2px 8px;border-radius:999px;white-space:nowrap}
 .badge.durable{background:var(--ok-soft);color:var(--ok)} .badge.mem{background:var(--warn-soft);color:var(--warn)}
+.badge.alert{background:var(--bad-soft);color:var(--bad)}
 .tag{font:500 10.5px var(--mono);padding:1px 6px;border-radius:4px;border:1px solid var(--rule);color:var(--ink-3);margin-right:6px}
 .case{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--rule)}
 .case:first-of-type{border-top:0}
@@ -175,6 +176,11 @@ img,svg,video,canvas{max-width:100%}
     <div class="feed" id="liveFeed" style="max-height:360px"><div class="empty">No live events yet. Only real events sent to the webhook appear here (see docs/live.md); the demo replay below is not shown.</div></div>
   </div>
 
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:6px"><span class="label">Drift · last scored payments vs. the validation profile (GET /api/v2/drift)</span><span class="badge mem" id="driftBadge">drift: checking…</span></div>
+    <div class="status" id="driftInfo">PSI warn 0.1, alert 0.25; band rate warn 2x, alert 3x.</div>
+  </div>
+
   <div class="panel" style="display:flex;flex-direction:column;gap:8px">
     <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span class="label">Demo replay of recorded IBM AMLworld test period payments (synthetic dataset)</span><span class="status" id="simtime">sim time: waiting</span></div>
     <div class="progress"><div id="prog"></div></div>
@@ -261,7 +267,7 @@ async function loop() {
   while (running) {
     const r = await api("/api/v2/demo/next?n=1500", {method: "POST"});
     totals.scored += r.scored; totals.L1 += r.exits.L1; totals.L2 += r.exits.L2; totals.med += r.bands.med; totals.high += r.bands.high;
-    render(r);
+    render(r); refreshDrift();
     if (r.done) { running = false; $("btnPause").disabled = true; $("btnReset").disabled = false; $("status").textContent = "Replay finished"; }
   }
 }
@@ -321,6 +327,16 @@ const MSG_SAMPLES = {
 let lastMsg = null, payClock = 0;
 $("msgSamples").innerHTML = Object.keys(MSG_SAMPLES).map(k => `<button class="s" data-k="${k}">${k}</button>`).join("");
 $("msgSamples").onclick = e => { const k = e.target.dataset && e.target.dataset.k; if (k) { $("msgText").value = MSG_SAMPLES[k]; $("msgCheck").click(); } };
+async function refreshDrift() {
+  try {
+    const d = await api("/api/v2/drift");
+    $("driftBadge").className = "badge " + ({ok: "durable", warn: "mem", alert: "alert"}[d.status] || "mem");
+    $("driftBadge").textContent = "drift: " + d.status + (d.warming_up ? " (warming up)" : "");
+    const top = d.top_psi ? `top PSI ${esc(d.top_psi.name)} ${Number(d.top_psi.psi).toFixed(3)}` : "top PSI n/a";
+    $("driftInfo").innerHTML = `${nf(d.window.size)} of ${nf(d.window.capacity)} recent payments · ${top} · ${d.reasons.length ? d.reasons.map(esc).join("; ") : "no threshold crossed"}`;
+  } catch (err) { $("driftBadge").textContent = "drift: unavailable"; }
+}
+
 const esc = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 
 async function refreshFatigue() {
@@ -386,6 +402,7 @@ async function pollLive() {
     }).join("");
   } catch (err) { $("liveBadge").textContent = "live feed unavailable (" + err.message + ")"; }
   finally { liveBusy = false; }
+  refreshDrift();
   if (!document.hidden) liveTimer = setTimeout(pollLive, 5000);
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) pollLive(); });

@@ -558,6 +558,39 @@ Python 3.13 compatibility shims for the AMLSim graph generator; a fourth was nee
 Python 3.10 and earlier accepted by converting it to a tuple); the shim reproduces that behaviour and changes no AMLSim
 logic. No cash payments occur in this configuration, so the Cash mapping was not used.
 
+**8ag. C2: drift monitor (pre-registered checks written before they were run).** The AMLSim holdout (8af) showed that
+the served bands can alert on a large share of all payments out of domain while nothing in the service noticed. The
+monitor (`crates/rusetect/src/drift.rs`) keeps the last N scored payments of this instance and compares them with a
+reference profile of HI-Small validation (`service/models/drift_reference.json`, written by
+`research/drift_reference.py`; the test part is not read): PSI of the served risk over its decile bins and of five
+payment inputs (amount, format, currency, cross bank, round amount: properties of the payment, not of account state),
+and each band's alert rate over its validation rate. Thresholds, stated in code: PSI warn 0.1, alert 0.25 (the usual
+rule of thumb); band-rate ratio warn at 2x or 1/2, alert at 3x or 1/3, checked only once the window expects at least
+10 payments in that band; status ok while fewer than 1,000 payments are in the window. `GET /api/v2/drift` (any key,
+viewer included) reports it, `/api/health` carries the status as `drift` and `ready` ignores it. Memory only: with
+Redis each function instance keeps its own window, fed by the risk and band but not the inputs.
+Found while building it, before any rule below: the console demo stream starts with five hours of account history, and
+on it the score and band rates differ from validation while the five inputs do not; the monitor flags it. That is the
+monitor working (the demo's numbers are known to be lower for this reason, `research/analyze_slice.py`), so the
+in-distribution test uses validation itself.
+Pre-registered (`research/drift_replay.py`, run after this entry was written):
+- Window size: N = 10,000, 50,000 and 250,000 (about a day of validation traffic) are replayed through the served
+  engine and the monitor on HI-Small validation with full history; the status is taken every 10,000 payments once the
+  window is full. The served default is the smallest N with no alert; if every N has one, 10,000 stays and the alert
+  rate is documented (`results/drift_validation.json`). The same replay with demo-sized history is reported, not used.
+- AMLSim: the holdout stream of 8af (`amlsim_aml.csv` of that run) is scored in order from its first step and the
+  monitor observes the test steps, as in `research/holdout_amlsim.py`. Expected: final status alert at the chosen N.
+  Outcome in `results/drift_amlsim.json`, reported whichever way it goes.
+Outcomes. Window: only the longest candidate (250,000) had no alert check on validation with full history; the
+shorter windows see the time-of-day mix of HI-Small (day-start batches of scheduled payments move the amount and format
+shares and the score with them), so 250,000 is the served default and `RUSETECT_DRIFT_WINDOW` sets another. With the
+demo's history every check alerted at every size (band rates, mostly verify and hold), confirming the console finding
+(`results/drift_validation.json`). AMLSim: **alert, as expected**; every input except the round-amount flag, the score
+and all three band rates crossed their alert thresholds (`results/drift_amlsim.json`). Table: `docs/MODEL_CARD.md`,
+Monitoring. Limits: the reference comes from the same synthetic generator as training, so on a bank's data the first
+weeks will very likely alert until a reference is rebuilt from that bank's validation period; and a window of a day
+reacts to a change only after a large share of a day has passed.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

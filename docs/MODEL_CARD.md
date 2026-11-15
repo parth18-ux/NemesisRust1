@@ -84,6 +84,13 @@ Pre-registered in `docs/HOLDOUT_PREREG.md` and scored once by `research/holdout_
 
 200,689 payments (664 laundering) from one AMLSim run, seed 617114497; test steps 576 to 719: 28,848 payments, 84 laundering (rate 0.29%). Amount ranking PR-AUC 0.0036. H1 (served PR-AUC above the better of amount ranking and random, paired interval [-0.0023, -0.0005]): fail. H2 (hold-or-block precision above the laundering rate, interval [0.0013, 0.0028]): fail. Verdict under the pre-stated rule: does not transfer.
 
+## Monitoring
+
+Drift monitor (`GET /api/v2/drift`, `/api/health` field `drift`; `crates/rusetect/src/drift.rs`): over the last scored payments of an instance, PSI of the served risk and of 5 payment inputs (log_usd, fmt_code, cur_code, cross_bank, round_100) against HI-Small validation (1,015,669 payments, `service/models/drift_reference.json`), and each band's alert rate over its validation rate (verify 1.01%, hold 0.38%, block 0.12%). Status: PSI warn 0.1, alert 0.25; band-rate ratio warn 2x, alert 3x. Per instance, in memory; `ready` ignores it.
+
+- Served window 250,000 payments, chosen by the rule in `research/drift_replay.py` (`results/drift_validation.json`). Checks on validation itself with full account history, by window size: 10,000: ok 64, warn 26, alert 11; 50,000: ok 71, warn 24, alert 2; 250,000: ok 77, warn 0, alert 0. With the console demo's five hours of history (250,000): ok 0, warn 0, alert 77.
+- Pre-registered AMLSim replay (`results/drift_amlsim.json`): expected alert, got alert (score PSI 3.490 >= 0.25; log_usd PSI 3.747 >= 0.25; fmt_code PSI 8.756 >= 0.25; cur_code PSI 4.684 >= 0.25; cross_bank PSI 11.742 >= 0.25; verify rate 22.07x the reference; hold rate 55.85x the reference; block rate 199.33x the reference).
+
 ## Known limitations
 
 - All payment training data is synthetic. Scores on real bank data are unmeasured.

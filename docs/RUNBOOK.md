@@ -12,6 +12,7 @@ steps apply, with the bank's own process manager in place of Vercel.
 | Signal | Where |
 |---|---|
 | `GET /api/health`: `ready`, `durable`, `store.configured`, `store.reachable`, `store.note`, `engine_loaded`, `auth` | the service itself (`health` in `crates/rusetect-server/src/lib.rs`) |
+| `GET /api/v2/drift` (any key): `status`, `reasons`, `score_psi`, `features`, `bands`; `/api/health` `drift` | the service itself (`crates/rusetect/src/drift.rs`) |
 | Webhook status codes (`401`, `409`, `429`, `503`) and their `detail` | the sender's logs; the request log in Vercel |
 | Process log (stderr): start-up failures, `live store: ...`, refused API keys (`auth_failure_line`, key fingerprint only) | Vercel dashboard → project → Logs, or `vercel logs <deployment-url>`; under `deploy/`, `docker compose logs api` |
 | Redis commands, storage, errors | Upstash console → the database → Usage and Data Browser; `redis-cli -u "$KV_URL" INFO` |
@@ -121,3 +122,30 @@ Steps:
    event the sender reports sent should be in `live:ledger` (`LRANGE`) or answered by a replay of its `event_id`.
 5. **Post-mortem** (within a week, blameless): timeline, cause, what detected it, what slowed recovery, actions with
    owners. Add a test for the failure where code changed, and a `docs/decision.md` entry when a decision changed.
+
+## 7. Drift alert
+
+Signals: `/api/health` shows `"drift": "warn"` or `"alert"` (`ready` is not affected); `GET /api/v2/drift` lists the
+checks that fired in `reasons`; the console's Drift panel turns amber or red.
+
+What it measures (`crates/rusetect/src/drift.rs`, thresholds as constants there and in `docs/decision.md` 8ag): over
+the last N payments this instance scored (N in `window.capacity`; `RUSETECT_DRIFT_WINDOW` overrides the default), the
+PSI of the served risk and of five payment inputs against HI-Small validation (`service/models/drift_reference.json`),
+and each band's alert rate over its validation rate. Each instance has its own window: on Vercel with Redis, different
+instances can disagree, and a cold instance reports `warming_up` until it has enough payments. In Redis mode the window
+holds risk and band only, so input PSI is not available there.
+
+Steps:
+1. Read `reasons`. Input PSI (amount, format, currency, cross bank, round amount) means the traffic itself changed:
+   a new channel, a new customer segment, a mapping or currency error at the sender. Check the sender first.
+2. Score PSI or band ratios with inputs in range means the scores moved for other reasons: account history is thin
+   (a new deployment, a restart without history; the console demo shows this), or the population differs from the
+   training generator. The AMLSim holdout is the example: `results/drift_amlsim.json`, `docs/decision.md` 8af.
+3. A band rate well above validation means analysts would be flooded and the thresholds no longer mean what they meant
+   on validation. Tell the fraud-risk owner. Do not retune thresholds on live traffic (thresholds are fitted on
+   validation only). In a shadow pilot (`docs/PILOT.md`) nothing acts on the score, so note the period and treat its
+   alerts as out of domain when comparing with the bank's system.
+4. Short windows see time-of-day mix: a warn after a batch of scheduled payments can be noise
+   (`results/drift_validation.json` gives the rate on validation itself). Act on a status that persists.
+5. Record the episode (start, reasons, action) in the incident log. A lasting shift needs a model trained on that
+   population (`docs/RETRAINING.md`) and a fresh check under a rule written first.

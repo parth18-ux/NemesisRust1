@@ -105,6 +105,37 @@ async fn demo_replay() {
 }
 
 #[tokio::test]
+async fn drift_sees_demo_inputs_in_distribution_and_alerts_on_a_shifted_stream() {
+    std::env::set_var("RUSETECT_DRIFT_WINDOW", "10000"); // the served default is longer than the demo stream
+    let t = T::new();
+    assert_eq!(t.get("/api/v2/drift").await["warming_up"], true);
+    t.post("/api/v2/demo/reset", json!({})).await;
+    for _ in 0..6 {
+        t.post("/api/v2/demo/next?n=2000", json!({})).await;
+    }
+    let d = t.get("/api/v2/drift").await;
+    assert_eq!(d["window"]["size"], 10_000, "the window stays at its cap: {d}");
+    // the demo's payments are drawn like validation's, so the inputs are in distribution; its account state holds about
+    // five hours of history, so its scores are not, and only score and band checks may fire (docs/decision.md 8ag)
+    for (k, f) in d["features"].as_object().unwrap() {
+        assert_eq!(f["status"], "ok", "{k}: {d}");
+    }
+    assert!(d["reasons"].as_array().unwrap().iter().all(|r| r.as_str().is_some_and(|r| r.starts_with("score") || r.contains(" rate "))), "{d}");
+    assert_eq!(t.get("/api/health").await["drift"], d["status"]);
+    // one payee, one currency, one format, large round amounts: nothing like the validation period
+    let shifted: Vec<Value> = (0..3_000).map(|i| json!({"timestamp": format!("2022-09-10 {:02}:{:02}", 10 + i / 600, (i / 10) % 60),
+        "from_bank": "070", "from_account": format!("SH{}", i % 300), "to_bank": "070", "to_account": "SHMULE", "amount_paid": 90_000 + 1_000 * (i % 7),
+        "payment_format": "Cash"})).collect();
+    let (st, _, _) = t.req("POST", "/api/v2/payments/batch", Some(Value::Array(shifted)), &[]).await;
+    assert_eq!(st, StatusCode::OK);
+    let d = t.get("/api/v2/drift").await;
+    assert_eq!(d["window"]["size"], 10_000);
+    assert_eq!(d["status"], "alert", "{d}");
+    assert_eq!(t.get("/api/health").await["drift"], "alert");
+    assert_eq!(t.get("/api/health").await["ready"], true, "drift never changes ready");
+}
+
+#[tokio::test]
 async fn oversized_body_is_refused_before_the_handler() {
     let t = T::new();
     for path in ["/api/v2/payments/batch", "/api/v2/events/payment", "/api/v2/assess"] {

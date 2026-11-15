@@ -9,6 +9,7 @@
 //!   /api/v2/assess       payment cascade + context layer + session domain, signed verdict, review alert
 //!   /api/v2/events/payment  signed ingest webhook: score, decide, alert, ledger and commit one payment event (live.rs)
 //!   /api/v2/live         latest live decisions for the console
+//!   /api/v2/drift        drift monitor: score, input and band-rate drift of recent payments against validation
 //!   /api/v2/onboard      L0 onboarding gate for a new account application (Feedzai BAF schema)
 //!   /docs                OpenAPI docs (Swagger UI), /openapi.json
 //!
@@ -92,6 +93,8 @@ pub struct AppState {
     pub demo: Demo,
     /// live ingest: idempotency, feed and the durable store (Redis when configured, else memory)
     pub live: live::Live,
+    /// drift monitor over the last payments this instance scored (rusetect::drift); None if its reference is absent
+    pub drift: Option<rusetect::drift::DriftMonitor>,
 }
 
 pub struct Shared {
@@ -166,6 +169,7 @@ impl AppState {
             payee,
             demo: Demo { truth: truth0(), ..Default::default() },
             live: live::Live::from_env(),
+            drift: rusetect::drift::DriftMonitor::load(&models.join("drift_reference.json")),
         }
     }
 
@@ -287,6 +291,7 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/v2/payment", post(v2_payment))
         .route("/v2/events/payment", post(live::v2_events_payment))
         .route("/v2/live", get(live::v2_live))
+        .route("/v2/drift", get(v2_drift))
         .route("/v2/assess", post(v2_assess))
         .route("/v2/alerts", get(v2_alerts))
         .route("/v2/alerts/summary", get(v2_alert_summary))
@@ -352,7 +357,7 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/models/l2_xgb.json", "service/models/l2_lgbm.json", "service/models/l0_onboarding_lgbm.json",
     "service/models/message_model.json", "service/models/typing_verifier.json", "service/models/benchmark_results.json",
     "service/models/sample_applications.json", "service/models/demo_stream.csv.gz",
-    "service/models/hardening.json", "service/models/hardening_xgb.json", "service/models/auth_config.json", "service/models/auth_xgb.json",
+    "service/models/hardening.json", "service/models/hardening_xgb.json", "service/models/drift_reference.json", "service/models/auth_config.json", "service/models/auth_xgb.json",
     "service/models/sanctions_sdn.csv", "research/out/sanctions_eval.json", "research/out/sanctions_eval_v2.json",
     "research/out/payee_check_eval.json", "research/out/payee_check_eval_v2.json",
     "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html",
@@ -505,6 +510,8 @@ async fn health(State(app): State<AppRef>) -> ApiResult {
                   "ruleset": ctx::RULESET_VERSION, "auth": if KEYS.demo_mode { "demo keys (set RUSETECT_ANALYST_KEYS)" } else { "configured keys" },
                   "signing": {"alg": "Ed25519", "key_id": s.signer.key_id, "ephemeral": s.signer.ephemeral},
                   "durable": s.live.durable(), "store": s.live.store_json(),
+                  // reported only: drift never changes `ready`
+                  "drift": s.drift.as_ref().map(|d| d.status()).unwrap_or("unavailable"),
                   // ready: the engine is loaded and a configured Redis was not unreachable on this instance's last command
                   "ready": s.engine.is_some() && (!s.live.configured() || s.live.durable())}))
     }).await
@@ -523,6 +530,9 @@ fn score_with_context(s: &mut AppState, p: &Payment) -> Result<Map<String, Value
         return Err(ApiError::new(503, "account state is full; reset the demo or raise RUSETECT_MAX_ACCOUNTS"));
     }
     let mut res = eng.score_payment(p);
+    if let Some(d) = s.drift.as_mut() {
+        d.observe_result(&res); // the model's own decision, before lures can raise it
+    }
     s.lures.apply_to_payment(p, &mut res);
     if res["decision"] != "Approve" {
         s.engine.as_ref().unwrap().add_motif_reason(p, &mut res); // a lure may have raised an approved payment
@@ -1164,6 +1174,19 @@ async fn v2_model_card(State(app): State<AppRef>) -> ApiResult {
     with_state(app, |s| ok(read_json(s.root.join("service/models/benchmark_results.json"))?)).await
 }
 
+/// Drift of the last payments this instance scored against the HI-Small validation profile (rusetect::drift: PSI warn
+/// 0.1, alert 0.25; band-rate ratio warn 2x, alert 3x). Per instance: with Redis every function instance has its own window.
+async fn v2_drift(State(app): State<AppRef>) -> ApiResult {
+    with_state(app, |s| match s.drift.as_ref() {
+        Some(d) => {
+            let mut r = d.report();
+            r["scope"] = json!(if s.live.configured() { "this instance only (Redis mode: each instance keeps its own window)" } else { "this server's memory" });
+            ok(r)
+        }
+        None => Err(ApiError::new(503, "drift reference unavailable (service/models/drift_reference.json)")),
+    }).await
+}
+
 async fn v2_stats(State(app): State<AppRef>) -> ApiResult {
     with_state(app, |s| {
         let e = s.need_engine()?;
@@ -1224,6 +1247,9 @@ async fn demo_reset(State(app): State<AppRef>, Query(q): Query<WarmQ>) -> ApiRes
             return Err(ApiError::new(409, "live events have been ingested on this server; the demo reset is disabled so they are kept"));
         }
         s.need_engine()?.reset();
+        if let Some(d) = s.drift.as_mut() {
+            d.reset();
+        }
         s.lures.reset();
         s.desk.reset();
         s.coord.reset();
@@ -1289,6 +1315,9 @@ async fn demo_next(State(app): State<AppRef>, Query(q): Query<NQ>) -> ApiResult 
         for r in batch {
             let Some(p) = Payment::from_demo_row(r) else { continue };
             let res = s.engine.as_mut().unwrap().score_payment(&p);
+            if let Some(d) = s.drift.as_mut() {
+                d.observe_result(&res);
+            }
             let y = r.y == "1";
             let band = res["band"].as_str().unwrap_or("safe").to_string();
             *exits.entry(if res["layer_exit"] == "L1" { "L1" } else { "L2" }).or_insert(0) += 1;

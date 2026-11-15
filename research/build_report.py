@@ -784,6 +784,7 @@ def model_card():
                   "Pre-registered in `docs/HOLDOUT_PREREG.md` and scored once by `research/holdout_amlsim.py` (results `research/out/holdout_amlsim.json`); "
                   "nothing refitted. AMLSim has one bank, one currency and daily steps, so hour, currency and bank features are constant.", "",
                   "| " + " | ".join(HO_HEAD) + " |", "|---|---|---|", *["| " + " | ".join(r) + " |" for r in _ho_rows(HO)], "", _ho_text(HO), ""]
+    lines += _monitoring_lines()
     lines += [
         "## Known limitations",
         "",
@@ -816,6 +817,32 @@ def model_card():
         "",
     ]
     return "\n".join(lines)
+
+
+def _monitoring_lines():
+    """Model card: the drift monitor, from its reference and the replays in results/ (docs/decision.md 8ag)."""
+    q = lambda *p: J(*p) if os.path.exists(os.path.join(ROOT, *p)) else None  # noqa: E731
+    REF, DV, DA = q("service", "models", "drift_reference.json"), q("results", "drift_validation.json"), q("results", "drift_amlsim.json")
+    if not REF:
+        return []
+    L = ["## Monitoring", "",
+         f"Drift monitor (`GET /api/v2/drift`, `/api/health` field `drift`; `crates/rusetect/src/drift.rs`): over the last scored payments of an instance, "
+         f"PSI of the served risk and of {len(REF['features'])} payment inputs ({', '.join(REF['features'])}) against HI-Small validation "
+         f"({REF['rows']:,} payments, `service/models/drift_reference.json`), and each band's alert rate over its validation rate "
+         f"(verify {pct(REF['bands']['verify'], 2)}, hold {pct(REF['bands']['hold'], 2)}, block {pct(REF['bands']['block'], 2)}). "
+         "Status: PSI warn 0.1, alert 0.25; band-rate ratio warn 2x, alert 3x. Per instance, in memory; `ready` ignores it."]
+    if DV:
+        n = str(DV["chosen_window"])
+        st = lambda w: f"ok {w['check_status']['ok']}, warn {w['check_status']['warn']}, alert {w['check_status']['alert']}"  # noqa: E731
+        sizes = "; ".join(f"{int(k):,}: {st(w)}" for k, w in DV["full_history"]["windows"].items())
+        L += ["", f"- Served window {int(n):,} payments, chosen by the rule in `research/drift_replay.py` (`results/drift_validation.json`). "
+              f"Checks on validation itself with full account history, by window size: {sizes}. "
+              f"With the console demo's five hours of history ({int(n):,}): {st(DV['demo_history']['windows'][n])}."]
+    if DA:
+        fin = DA["replay"]["windows"][str(DA["window"])]["final"]
+        L += [f"- Pre-registered AMLSim replay (`results/drift_amlsim.json`): expected {DA['expected']}, got {DA['result']} "
+              f"({'; '.join(fin['reasons']) or 'no check fired'})."]
+    return L + [""]
 
 
 def evasion_section():
