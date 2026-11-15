@@ -1,0 +1,64 @@
+{
+ "what": "Shadow-pilot rehearsal: rusetect-server in memory mode with analyst keys and throwaway secrets, fixture sent through tools/pilot_sender.py, then sent again to check idempotency",
+ "script": "tools/pilot_rehearsal.py",
+ "fixture": "first 2000 payments of service/models/demo_stream.csv.gz (IBM AMLworld HI-Small, synthetic), time order, engine started with no account history",
+ "first_pass": {
+  "sent": 2000,
+  "accepted": 2000,
+  "replayed": 0,
+  "failed": 0,
+  "retried": 0
+ },
+ "decisions_by_action": {
+  "allow": 1954,
+  "block": 1,
+  "hold": 4,
+  "verify": 41
+ },
+ "decisions_by_band": {
+  "Approve": 1954,
+  "Block + STR draft": 1,
+  "Hold for analyst": 4,
+  "Step-up verification": 41
+ },
+ "second_pass": {
+  "sent": 2000,
+  "accepted": 0,
+  "replayed": 2000,
+  "failed": 0
+ },
+ "second_pass_same_result": 2000,
+ "alerts_open": 46,
+ "alerts_after_resend": 46,
+ "ledger_entries": 2000,
+ "ledger_entries_after_resend": 2000,
+ "ledger_chain_valid": true,
+ "live_feed": {
+  "events_shown": 50,
+  "durable": false,
+  "without_analyst_key_http": 401
+ },
+ "drift": {
+  "http": 200,
+  "status": "alert",
+  "window_n": 2000,
+  "warming_up": false,
+  "reasons": [
+   "score PSI 1.003 >= 0.25",
+   "verify rate 2.04x the reference"
+  ]
+ },
+ "health": {
+  "ready": true,
+  "durable": false,
+  "drift": "alert",
+  "auth": "configured keys"
+ },
+ "latency_ms": {
+  "server_p50": 0.3,
+  "server_p95": 0.71,
+  "round_trip_p50": 1.13,
+  "round_trip_p95": 1.75,
+  "note": "one machine, sender and server on loopback, one event at a time; not a capacity figure"
+ }
+}
