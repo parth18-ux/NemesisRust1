@@ -767,6 +767,16 @@ def model_card():
         lines += [f"Structuring (HI-Small demo window, block recall, any part caught): clean {pct(sp['base']['pair_aggregated']['block']['laundering_recall_any_part'], 0)}, "
                   f"split in 4 {pct(sp['split4']['pair_aggregated']['block']['laundering_recall_any_part'], 0)} (was {pct(sp['split4']['per_payment']['block']['laundering_recall_any_part'], 0)}), "
                   f"split in 4 with parts 30 min apart {pct(sp['split4_spread']['pair_aggregated']['block']['laundering_recall_any_part'], 0)}. Exploratory: the variant was chosen on this window.", ""]
+    EVV = _opt("evasion_validation.json")
+    if EVV:
+        lines += ["## Evasion results", "",
+                  f"Pre-registered suite on HI-Small validation (`research/evasion_validation.py`, results `research/out/evasion_validation.json`; test not read). "
+                  f"Each attack changes only the {EVV['attacks']['clean']['laundering_payments']:,} laundering payments, re-scored by the served engine. "
+                  f"Known weakness: PR-AUC more than {f(EVV['margin'], 2)} below clean. Block recall at the clean alert count keeps the analyst workload "
+                  f"({EVV['clean_block_alerts']:,} block alerts) fixed.", "",
+                  "| " + " | ".join(EV_HEAD) + " |", "|" + "---|" * len(EV_HEAD),
+                  *["| " + " | ".join(str(c) for c in r) + " |" for r in _ev_rows(EVV)], "",
+                  "Known weaknesses: " + (", ".join(k.replace("_", " ") for k in EVV["known_weaknesses"]) or "none") + ".", ""]
     lines += [
         "## Known limitations",
         "",
@@ -784,6 +794,7 @@ def model_card():
            f"{f(PH['test']['li_large']['current_hardened']['roc_auc'])} to {f(PH['test']['li_large']['pooled_hardened']['roc_auc'])}); its adoption rule had no per-dataset guard."]
           if PH and PH.get("test") else []),
         "- Reasons are TreeSHAP contributions of the model that set the risk (the L2 XGBoost half, or the format-free model); the LightGBM half is not explained.",
+        "- A flagged payment can also carry a \"Temporal motif\" reason (fan-in, fan-out, cycle back to the payer, scatter-gather, pass-through chain) read from the 24 h account windows; the idea is TempME's (Chen and Ying, NeurIPS 2023). It is not a model output, has impact 0 and never changes the score; in-memory mode only (`docs/decision.md` 8z).",
         "- Serverless deployments (Vercel) keep state per instance; use the Redis deployment (`deploy/docker-compose.yml`) for shared state.",
         "",
         "## Governance",
@@ -826,8 +837,29 @@ def evasion_section():
   only 100,000 payments of history, so the format-free model is weaker here than on the full test file.</p>
   {table(["Stream", *[l for _, l in labs]], rows, "wrap")}
   <p>The format switch and the same-payee split are now partly caught; small amount changes, delays and new mule accounts still lower block recall,
-  which is why the verify band and analyst review stay in the loop.</p>{acc}
+  which is why the verify band and analyst review stay in the loop.</p>{acc}{evasion_validation_html()}
 </section>"""
+
+
+def _ev_rows(EVV):
+    return [[k.replace("_", " "), f(v["pr_auc"]), f(v["pr_auc_drop"]), pct(v["block_recall"], 0), f"{v['block_alerts']:,}",
+             pct(v["block_recall_at_clean_alert_count"], 0), "yes" if v["known_weakness"] else ""] for k, v in EVV["attacks"].items()]
+
+
+EV_HEAD = ["Attack", "PR-AUC", "Drop", "Block recall", "Block alerts", "Block recall at clean alert count", "Known weakness"]
+
+
+def evasion_validation_html():
+    EVV = _opt("evasion_validation.json")
+    if not EVV:
+        return ""
+    return f"""
+  <h3>HI-Small validation, served score</h3>
+  <p>Pre-registered (<code>research/evasion_validation.py</code>, committed before it ran): each attack changes only the laundering payments of the
+  HI-Small validation part ({EVV['attacks']['clean']['laundering_payments']:,} of {EVV['attacks']['clean']['rows']:,}), re-scored through the Rust engine
+  with the pair window and the hardening maps. A payment's score is the maximum over its parts. Known weakness: PR-AUC more than
+  {f(EVV['margin'], 2)} below clean. Clean block alerts: {EVV['clean_block_alerts']:,}. The test part was not read.</p>
+  {table(EV_HEAD, _ev_rows(EVV), "wrap")}"""
 
 
 def generalisation_section():
