@@ -70,11 +70,25 @@ Pre-registered suite on HI-Small validation (`research/evasion_validation.py`, r
 
 Known weaknesses: timing jitter, new payee.
 
+## Fresh holdout (IBM AMLSim)
+
+Pre-registered in `docs/HOLDOUT_PREREG.md` and scored once by `research/holdout_amlsim.py` (results `research/out/holdout_amlsim.json`); nothing refitted. AMLSim has one bank, one currency and daily steps, so hour, currency and bank features are constant.
+
+| Measure (test steps, AMLSim) | Cascade | Served |
+|---|---|---|
+| PR-AUC [95% CI, whole days resampled] | 0.0255 [0.0062, 0.0708] | 0.0024 [0.0019, 0.0030] |
+| ROC-AUC [95% CI] | 0.770 [0.741, 0.798] | 0.432 [0.379, 0.489] |
+| Block band: alerts, recall / precision | 0 (0.0 per 1,000): 0.0% / 0.0% | 7,142 (247.6 per 1,000): 11.9% / 0.1% |
+| Hold or block: alerts, recall / precision | 634 (22.0 per 1,000): 8.3% / 1.1% | 13,332 (462.1 per 1,000): 32.1% / 0.2% |
+| Verify band: alerts, recall / precision | 6,586 (228.3 per 1,000): 46.4% / 0.6% | 19,734 (684.1 per 1,000): 60.7% / 0.3% |
+
+200,689 payments (664 laundering) from one AMLSim run, seed 617114497; test steps 576 to 719: 28,848 payments, 84 laundering (rate 0.29%). Amount ranking PR-AUC 0.0036. H1 (served PR-AUC above the better of amount ranking and random, paired interval [-0.0023, -0.0005]): fail. H2 (hold-or-block precision above the laundering rate, interval [0.0013, 0.0028]): fail. Verdict under the pre-stated rule: does not transfer.
+
 ## Known limitations
 
 - All payment training data is synthetic. Scores on real bank data are unmeasured.
 - The HI-Small test part has been read by many studies, some designed after earlier test results; the served model needs one
-  confirmation on data no study has read (a new generator run or a bank's shadow pilot).
+  confirmation on data no study has read (a new generator run or a bank's shadow pilot). The pre-registered fresh holdout on a new generator (IBM AMLSim) gave: does not transfer (Fresh holdout above); a new run of the training generator and a bank's shadow pilot remain open.
 - Generalisation across generators is weak. The served cascade zero-shot ROC-AUC on SAML-D 0.565; a research model (29 features plus 13 indicators) trained on all other datasets, leave-one-out ROC-AUC (same-generator siblings stay in training, which flatters the IBM sets): hismall 0.991, himed 0.990, hi_large 0.882, li_small 0.976, li_medium 0.976, li_large 0.863, samld 0.803, amlgentex 0.497, banksim 0.940, sparkov 0.751, paysim 0.349, tabformer 0.458, ieee 0.435.
 - Spread-out structuring still evades most per-payment and pair checks; account-level alerts are the next step. The structuring
   numbers come from 97 laundering payments in one window, so a few payments move them by points.

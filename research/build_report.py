@@ -315,6 +315,7 @@ def build():
     add(full_section())
     add(hardening_section())
     add(evasion_section())
+    add(holdout_section())
     add(generalisation_section())
     add(real_section())
     add(transfer_section())
@@ -777,12 +778,20 @@ def model_card():
                   "| " + " | ".join(EV_HEAD) + " |", "|" + "---|" * len(EV_HEAD),
                   *["| " + " | ".join(str(c) for c in r) + " |" for r in _ev_rows(EVV)], "",
                   "Known weaknesses: " + (", ".join(k.replace("_", " ") for k in EVV["known_weaknesses"]) or "none") + ".", ""]
+    HO = _opt("holdout_amlsim.json")
+    if HO:
+        lines += ["## Fresh holdout (IBM AMLSim)", "",
+                  "Pre-registered in `docs/HOLDOUT_PREREG.md` and scored once by `research/holdout_amlsim.py` (results `research/out/holdout_amlsim.json`); "
+                  "nothing refitted. AMLSim has one bank, one currency and daily steps, so hour, currency and bank features are constant.", "",
+                  "| " + " | ".join(HO_HEAD) + " |", "|---|---|---|", *["| " + " | ".join(r) + " |" for r in _ho_rows(HO)], "", _ho_text(HO), ""]
     lines += [
         "## Known limitations",
         "",
         "- All payment training data is synthetic. Scores on real bank data are unmeasured.",
         "- The HI-Small test part has been read by many studies, some designed after earlier test results; the served model needs one",
-        "  confirmation on data no study has read (a new generator run or a bank's shadow pilot).",
+        "  confirmation on data no study has read (a new generator run or a bank's shadow pilot)."
+        + (f" The pre-registered fresh holdout on a new generator (IBM AMLSim) gave: {HO['rule']['verdict']} (Fresh holdout above); a new"
+           " run of the training generator and a bank's shadow pilot remain open." if HO else ""),
         f"- Generalisation across generators is weak. The served cascade zero-shot ROC-AUC on {zs}; a research model (29 features plus 13 indicators) trained on all other datasets, leave-one-out ROC-AUC (same-generator siblings stay in training, which flatters the IBM sets): {loo}." if U else "- Generalisation across generators is weak.",
         "- Spread-out structuring still evades most per-payment and pair checks; account-level alerts are the next step. The structuring",
         "  numbers come from 97 laundering payments in one window, so a few payments move them by points.",
@@ -860,6 +869,47 @@ def evasion_validation_html():
   with the pair window and the hardening maps. A payment's score is the maximum over its parts. Known weakness: PR-AUC more than
   {f(EVV['margin'], 2)} below clean. Clean block alerts: {EVV['clean_block_alerts']:,}. The test part was not read.</p>
   {table(EV_HEAD, _ev_rows(EVV), "wrap")}"""
+
+
+HO_HEAD = ["Measure (test steps, AMLSim)", "Cascade", "Served"]
+
+
+def _ho_rows(HO):
+    c, s = HO["cascade"], HO["served"]
+    bd = lambda r, b: f"{r['bands'][b]['flags']:,} ({f(r['bands'][b]['alerts_per_1000'], 1)} per 1,000): {pct(r['bands'][b]['recall'])} / {pct(r['bands'][b]['precision'])}"  # noqa: E731
+    ci_ = HO["ci95_day_bootstrap"]
+    return [["PR-AUC [95% CI, whole days resampled]", f"{f(c['pr_auc'], 4)} {ci(ci_['cascade_pr_auc'], 4)}", f"{f(s['pr_auc'], 4)} {ci(ci_['served_pr_auc'], 4)}"],
+            ["ROC-AUC [95% CI]", f"{f(c['roc_auc'])} {ci(ci_['cascade_roc_auc'])}", f"{f(s['roc_auc'])} {ci(ci_['served_roc_auc'])}"],
+            ["Block band: alerts, recall / precision", bd(c, "block"), bd(s, "block")],
+            ["Hold or block: alerts, recall / precision", bd(c, "hold_or_block"), bd(s, "hold_or_block")],
+            ["Verify band: alerts, recall / precision", bd(c, "verify"), bd(s, "verify")]]
+
+
+def _ho_text(HO):
+    T, R, ci_ = HO["test"], HO["rule"], HO["ci95_day_bootstrap"]
+    return (f"{HO['rows_total']:,} payments ({HO['positives_total']:,} laundering) from one AMLSim run, seed {HO['provenance']['seed']}; test steps "
+            f"{T['steps'][0]} to {T['steps'][1]}: {T['rows']:,} payments, {T['positives']:,} laundering (rate {pct(T['prevalence'], 2)}). "
+            f"Amount ranking PR-AUC {f(HO['baseline_amount']['pr_auc'], 4)}. H1 (served PR-AUC above the better of amount ranking and random, paired "
+            f"interval {ci(ci_['served_minus_best_baseline'], 4)}): {'pass' if R['H1_adds_value'] else 'fail'}. H2 (hold-or-block precision above the "
+            f"laundering rate, interval {ci(ci_['served_hold_or_block_precision'], 4)}): {'pass' if R['H2_bands_mean_something'] else 'fail'}. "
+            f"Verdict under the pre-stated rule: {R['verdict']}.")
+
+
+def holdout_section():
+    HO = _opt("holdout_amlsim.json")
+    if not HO:
+        return ""
+    return f"""
+<section id="holdout">
+  <span class="eyebrow">Fresh holdout, executed</span>
+  <h2>IBM AMLSim, scored once</h2>
+  <p>Pre-registered in <code>docs/HOLDOUT_PREREG.md</code> (approved by the user 2026-11-15, option B), committed with its scoring script
+  (<code>research/holdout_amlsim.py</code>) before any data was generated. A generator no earlier result used, mapped field by field to the served
+  features; nothing was refitted. AMLSim has one bank, one currency and daily steps, so hour, currency and bank features are constant and the
+  24 hour windows work at day resolution.</p>
+  {table(HO_HEAD, _ho_rows(HO), "wrap")}
+  <p>{_ho_text(HO)}</p>
+</section>"""
 
 
 def generalisation_section():
