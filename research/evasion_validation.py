@@ -39,6 +39,9 @@ REPORTING RULE (fixed):
                       with any part among them (same analyst workload as clean)
   KNOWN WEAKNESS: an attack is flagged when its PR-AUC is more than 0.05 below the clean PR-AUC (absolute).
   For the format and currency families each variant is reported and flagged on its own; the family's worst is named.
+Mechanical fix after the first run (rules, attacks and margin unchanged): pandas 3 parses times in microseconds, so
+the first run rebuilt every validation timestamp wrongly (clean PR-AUC 0.053); minutes are now taken from nanoseconds
+and the clean stream asserts that rebuilt timestamps equal the originals. The first run's output was discarded.
 Results: research/out/evasion_validation.json (research/out/evasion_suite.json is the earlier demo-window suite).
 """
 import json, os, subprocess, sys
@@ -59,7 +62,7 @@ RATES = CFG["usd_rates"]
 
 
 def minutes(ts):
-    return (pd.to_datetime(ts, format="%Y/%m/%d %H:%M").astype("int64") // 60_000_000_000).values
+    return (pd.to_datetime(ts, format="%Y/%m/%d %H:%M").astype("datetime64[ns]").astype("int64") // 60_000_000_000).values
 
 
 def amt(x):
@@ -95,7 +98,10 @@ def attacks(lau):
 def run(name, tail, raw, prefix, first, work):
     """score raw[:VAL0] + tail (the changed validation part) with the engine from row `first`; returns validation rows"""
     tail = tail.sort_values(["t", "o", "j"], kind="stable")
-    tail["ts"] = pd.to_datetime(tail.t * 60_000_000_000).dt.strftime("%Y/%m/%d %H:%M")
+    ts = pd.to_datetime(tail.t, unit="m").dt.strftime("%Y/%m/%d %H:%M")
+    if name == "clean":
+        assert (ts.values == tail.ts.values).all(), "minute round trip"
+    tail["ts"] = ts
     tp, out = os.path.join(work, f"{name}.tail.csv"), os.path.join(work, f"{name}.dump.csv")
     tail[COLS].to_csv(tp, header=False, index=False)
     with open(prefix, "rb") as a, open(tp, "rb") as b:

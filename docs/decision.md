@@ -528,6 +528,19 @@ exponential backoff with full jitter; `docs/RUNBOOK.md` covers Redis down or ove
 rotation, a Vercel rollback, an incident checklist and where the logs are. Not done: alerting on quota, a SIEM export,
 a rehearsed drill.
 
+**8ae. C1: evasion suite on HI-Small validation (measurement only).** `research/evasion_validation.py` was committed with
+its attacks, reporting rule and margin before it ran (pre-registration commit `38096ba`). Each attack changes only the
+laundering payments of the HI-Small validation part: structuring under the 10,000 USD reporting threshold, timing
+jitter (up to two days later), amount jitter (+-10%), a fresh payee per payment, every format, and two currencies.
+The changed stream is re-scored by the served Rust engine (`research_dump` gained an optional first row, so only the
+24 h before validation and validation itself are written), with the pair window and the hardening maps. The test part
+is not read. Rule: an attack is a known weakness when its PR-AUC is more than 0.05 below clean. Result
+(`research/out/evasion_validation.json`): timing jitter and new payee are known weaknesses; structuring, amount
+jitter, format and currency swaps stay within the margin. The table is in `docs/MODEL_CARD.md` (Evasion results). One
+mechanical fix after the first run: pandas 3 parses times in microseconds, which broke every rebuilt validation
+timestamp; that run was discarded and the rules were not changed (the script's docstring records it). Nothing served
+changed. The earlier demo-window suite (`research/out/evasion_suite.json`) is kept as it was.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

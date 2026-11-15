@@ -1,0 +1,157 @@
+{
+ "script": "research/evasion_validation.py",
+ "split": "HI-Small validation (rows 3,047,007 to 4,062,675); test not read",
+ "margin": 0.05,
+ "block_threshold": 0.13074204946996468,
+ "clean_block_alerts": 1517,
+ "attacks": {
+  "clean": {
+   "pr_auc": 0.6316,
+   "block_recall": 0.6506,
+   "block_alerts": 1517,
+   "block_recall_at_clean_alert_count": 0.6506,
+   "rows": 1015669,
+   "laundering_payments": 1082,
+   "pr_auc_drop": 0.0,
+   "known_weakness": false
+  },
+  "structuring": {
+   "pr_auc": 0.6326,
+   "block_recall": 0.658,
+   "block_alerts": 1961,
+   "block_recall_at_clean_alert_count": 0.6229,
+   "rows": 1016391,
+   "laundering_payments": 1082,
+   "pr_auc_drop": -0.001,
+   "known_weakness": false
+  },
+  "timing_jitter": {
+   "pr_auc": 0.4515,
+   "block_recall": 0.5518,
+   "block_alerts": 1413,
+   "block_recall_at_clean_alert_count": 0.5591,
+   "rows": 1015669,
+   "laundering_payments": 1082,
+   "pr_auc_drop": 0.1801,
+   "known_weakness": true
+  },
+  "amount_jitter": {
+   "pr_auc": 0.6192,
+   "block_recall": 0.6414,
+   "block_alerts": 1507,
+   "block_recall_at_clean_alert_count": 0.6433,
+   "rows": 1015669,
+   "laundering_payments": 1082,
+   "pr_auc_drop": 0.0124,
+   "known_weakness": false
+  },
+  "new_payee": {
+   "pr_auc": 0.5451,
+   "block_recall": 0.5739,
+   "block_alerts": 1435,
+   "block_recall_at_clean_alert_count": 0.5804,
+   "rows": 1015669,
+   "laundering_payments": 1082,
+   "pr_auc_drop": 0.0865,
+   "known_weakness": true
+  },
+  "format_ACH": {
+   "pr_auc": 0.632,
+   "block_recall": 0.6506,
+   "block_alerts": 1517,
+   "block_recall_at_clean_alert_count": 0.6506,
+   "rows": 1015669,
+   "laundering_payments": 1082,
+   "pr_auc_drop": -0.0004,
+   "known_weakness": false
+  },
+  "format_Bitcoin": {
+   "pr_auc": 0.5919,
+   "block_recall": 0.6017,
+   "block_alerts": 1462,
+   "block_recall_at_clean_alert_count": 0.6054,
+   "rows": 1015669,
+   "laundering_payments": 1082,
+   "pr_auc_drop": 0.0397,
+   "known_weakness": false
+  },
+  "format_Cash": {
+   "pr_auc": 0.589,
+   "block_recall": 0.5933,
+   "block_alerts": 1453,
+   "block_recall_at_clean_alert_count": 0.5989,
+   "rows": 1015669,
+   "laundering_payments": 1082,
+   "pr_auc_drop": 0.0426,
+   "known_weakness": false
+  },
+  "format_Cheque": {
+   "pr_auc": 0.5891,
+   "block_recall": 0.5933,
+   "block_alerts": 1453,
+   "block_recall_at_clean_alert_count": 0.5989,
+   "rows": 1015669,
+   "laundering_payments": 1082,
+   "pr_auc_drop": 0.0425,
+   "known_weakness": false
+  },
+  "format_Credit Card": {
+   "pr_auc": 0.5884,
+   "block_recall": 0.5924,
+   "block_alerts": 1452,
+   "block_recall_at_clean_alert_count": 0.5989,
+   "rows": 1015669,
+   "laundering_payments": 1082,
+   "pr_auc_drop": 0.0432,
+   "known_weakness": false
+  },
+  "format_Reinvestment": {
+   "pr_auc": 0.5882,
+   "block_recall": 0.5924,
+   "block_alerts": 1452,
+   "block_recall_at_clean_alert_count": 0.5989,
+   "rows": 1015669,
+   "laundering_payments": 1082,
+   "pr_auc_drop": 0.0434,
+   "known_weakness": false
+  },
+  "format_Wire": {
+   "pr_auc": 0.5882,
+   "block_recall": 0.5924,
+   "block_alerts": 1452,
+   "block_recall_at_clean_alert_count": 0.5989,
+   "rows": 1015669,
+   "laundering_payments": 1082,
+   "pr_auc_drop": 0.0434,
+   "known_weakness": false
+  },
+  "currency_US Dollar": {
+   "pr_auc": 0.6268,
+   "block_recall": 0.6451,
+   "block_alerts": 1511,
+   "block_recall_at_clean_alert_count": 0.646,
+   "rows": 1015669,
+   "laundering_payments": 1082,
+   "pr_auc_drop": 0.0048,
+   "known_weakness": false
+  },
+  "currency_Euro": {
+   "pr_auc": 0.6296,
+   "block_recall": 0.6479,
+   "block_alerts": 1514,
+   "block_recall_at_clean_alert_count": 0.6479,
+   "rows": 1015669,
+   "laundering_payments": 1082,
+   "pr_auc_drop": 0.002,
+   "known_weakness": false
+  }
+ },
+ "worst": {
+  "format": "format_Reinvestment",
+  "currency": "currency_US Dollar"
+ },
+ "known_weaknesses": [
+  "timing_jitter",
+  "new_payee"
+ ]
+}

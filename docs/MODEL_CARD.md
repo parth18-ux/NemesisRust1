@@ -47,6 +47,29 @@ Served minus cascade PR-AUC, paired, whole days resampled: [-0.014, 0.018] (with
 
 Structuring (HI-Small demo window, block recall, any part caught): clean 37%, split in 4 26% (was 5%), split in 4 with parts 30 min apart 14%. Exploratory: the variant was chosen on this window.
 
+## Evasion results
+
+Pre-registered suite on HI-Small validation (`research/evasion_validation.py`, results `research/out/evasion_validation.json`; test not read). Each attack changes only the 1,082 laundering payments, re-scored by the served engine. Known weakness: PR-AUC more than 0.05 below clean. Block recall at the clean alert count keeps the analyst workload (1,517 block alerts) fixed.
+
+| Attack | PR-AUC | Drop | Block recall | Block alerts | Block recall at clean alert count | Known weakness |
+|---|---|---|---|---|---|---|
+| clean | 0.632 | 0.000 | 65% | 1,517 | 65% |  |
+| structuring | 0.633 | -0.001 | 66% | 1,961 | 62% |  |
+| timing jitter | 0.452 | 0.180 | 55% | 1,413 | 56% | yes |
+| amount jitter | 0.619 | 0.012 | 64% | 1,507 | 64% |  |
+| new payee | 0.545 | 0.086 | 57% | 1,435 | 58% | yes |
+| format ACH | 0.632 | -0.000 | 65% | 1,517 | 65% |  |
+| format Bitcoin | 0.592 | 0.040 | 60% | 1,462 | 61% |  |
+| format Cash | 0.589 | 0.043 | 59% | 1,453 | 60% |  |
+| format Cheque | 0.589 | 0.043 | 59% | 1,453 | 60% |  |
+| format Credit Card | 0.588 | 0.043 | 59% | 1,452 | 60% |  |
+| format Reinvestment | 0.588 | 0.043 | 59% | 1,452 | 60% |  |
+| format Wire | 0.588 | 0.043 | 59% | 1,452 | 60% |  |
+| currency US Dollar | 0.627 | 0.005 | 65% | 1,511 | 65% |  |
+| currency Euro | 0.630 | 0.002 | 65% | 1,514 | 65% |  |
+
+Known weaknesses: timing jitter, new payee.
+
 ## Known limitations
 
 - All payment training data is synthetic. Scores on real bank data are unmeasured.
