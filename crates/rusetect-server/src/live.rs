@@ -4,7 +4,8 @@
 //!
 //! Signature (Stripe style): X-RuseTect-Timestamp is epoch seconds; X-RuseTect-Signature is `v1=<hex>`, the
 //! HMAC-SHA256 of `{timestamp}.{raw body}` under RUSETECT_WEBHOOK_SECRET (several comma separated `v1=` values are
-//! accepted, for secret rotation). Requests more than 5 minutes off the server clock are refused.
+//! accepted; during a rotation RUSETECT_WEBHOOK_SECRET_PREVIOUS is accepted too). Requests more than 5 minutes off the
+//! server clock are refused.
 //!
 //! Store: with REDIS_URL or KV_URL (the rediss:// URL Vercel's Upstash Redis integration sets) the decision, the alert,
 //! the ledger entry, the live feed and the per-account state (scale::redis_state, shared with the streaming workers) are
@@ -47,21 +48,23 @@ const CLAIM_TTL_S: u64 = 60;
 pub const LEDGER_MAX: usize = 100_000;
 pub const ACTIONS: [&str; 4] = ["allow", "verify", "hold", "block"];
 
-/// Check the webhook signature over the raw body. `now` is epoch seconds.
-pub fn verify_signature(secret: &[u8], ts: Option<&str>, sig: Option<&str>, body: &[u8], now: i64) -> Result<(), ApiError> {
+/// Check the webhook signature over the raw body against any of `secrets` (current, then previous). `now` is epoch seconds.
+pub fn verify_signature(secrets: &[&[u8]], ts: Option<&str>, sig: Option<&str>, body: &[u8], now: i64) -> Result<(), ApiError> {
     let ts = ts.ok_or_else(|| ApiError::new(401, "missing X-RuseTect-Timestamp"))?;
     let t: i64 = ts.trim().parse().map_err(|_| ApiError::new(401, "X-RuseTect-Timestamp must be epoch seconds"))?;
     if now.abs_diff(t) > TOLERANCE_S as u64 {
         return Err(ApiError::new(401, "X-RuseTect-Timestamp is more than 5 minutes from the server clock"));
     }
     let sig = sig.ok_or_else(|| ApiError::new(401, "missing X-RuseTect-Signature"))?;
-    let mut mac = Hmac::<Sha256>::new_from_slice(secret).expect("HMAC takes any key length");
-    mac.update(ts.as_bytes());
-    mac.update(b".");
-    mac.update(body);
-    // verify_slice compares in constant time
-    let good = sig.split(',').filter_map(|p| p.trim().strip_prefix("v1=")).filter_map(|h| hex::decode(h).ok())
-        .any(|b| mac.clone().verify_slice(&b).is_ok());
+    let sigs: Vec<Vec<u8>> = sig.split(',').filter_map(|p| p.trim().strip_prefix("v1=")).filter_map(|h| hex::decode(h).ok()).collect();
+    let good = secrets.iter().any(|secret| {
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret).expect("HMAC takes any key length");
+        mac.update(ts.as_bytes());
+        mac.update(b".");
+        mac.update(body);
+        // verify_slice compares in constant time
+        sigs.iter().any(|b| mac.clone().verify_slice(b).is_ok())
+    });
     if good { Ok(()) } else { Err(ApiError::new(401, "bad signature")) }
 }
 
@@ -401,8 +404,14 @@ async fn events_payment(app: AppRef, h: HeaderMap, b: Bytes) -> Result<Response,
     if secret.trim().len() < 16 {
         return Err(ApiError::new(503, "ingest webhook disabled: set RUSETECT_WEBHOOK_SECRET (16+ characters)"));
     }
+    // rotation: the old secret stays valid while senders switch; a short or empty value is ignored
+    let previous = std::env::var("RUSETECT_WEBHOOK_SECRET_PREVIOUS").unwrap_or_default();
+    let mut secrets = vec![secret.trim().as_bytes()];
+    if previous.trim().len() >= 16 {
+        secrets.push(previous.trim().as_bytes());
+    }
     let now = chrono::Utc::now().timestamp();
-    verify_signature(secret.trim().as_bytes(), header(&h, "x-rusetect-timestamp").as_deref(), header(&h, "x-rusetect-signature").as_deref(), &b, now)?;
+    verify_signature(&secrets, header(&h, "x-rusetect-timestamp").as_deref(), header(&h, "x-rusetect-signature").as_deref(), &b, now)?;
     let ev = parse_obj(&b, |o, e| {
         let id = o.req_str(e, "event_id");
         if o.get("event_id").is_some_and(|v| v.is_string()) {

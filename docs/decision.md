@@ -515,6 +515,19 @@ the user: Upstash and the webhook secret on the public deployment, managed key s
 rule, an external penetration test, SIEM export, and the legal and data terms. No existing check was relaxed; no
 metric changed.
 
+**8ad. Phase B operations: failure handling, rotation, runbook.** Smallest changes, each with a test in
+`crates/rusetect-server/tests/live.rs`. Every `503` now carries `Retry-After` (one place, `ApiError::into_response`),
+since every 503 the service returns is temporary and commits nothing. A Redis outage was already handled fail closed in
+`ingest` (claim released or left to expire, never a fallback to memory); a test now kills and restarts a real
+`redis-server` and checks the 503, the `ready: false` health signal and that the refused event is committed on retry.
+`/api/health` gains `ready` (engine loaded, and a configured Redis not unreachable on the last command); it sends no
+Redis command of its own, to spare the free tier's quota, so it does not see quota errors. The webhook accepts
+`RUSETECT_WEBHOOK_SECRET_PREVIOUS` next to the current secret, so a rotation needs no coordinated switch; API keys
+already rotate by listing old and new keys together. `docs/live.md` section 4 gives senders retry rules and
+exponential backoff with full jitter; `docs/RUNBOOK.md` covers Redis down or over quota, signature failure spikes,
+rotation, a Vercel rollback, an incident checklist and where the logs are. Not done: alerting on quota, a SIEM export,
+a rehearsed drill.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

@@ -24,7 +24,8 @@ openssl rand -hex 32
   `device`, `network`, `behaviour`, `transaction` objects, as for `/api/v2/authenticate`);
 - `X-RuseTect-Timestamp`: the current time in epoch seconds;
 - `X-RuseTect-Signature`: `v1=` + hex HMAC-SHA256 of `{timestamp}.{raw body}` with the secret. Several comma separated
-  `v1=` values are accepted, so a secret can be rotated.
+  `v1=` values are accepted, and during a rotation a signature under `RUSETECT_WEBHOOK_SECRET_PREVIOUS` is accepted
+  too (steps in `docs/RUNBOOK.md`, section 4).
 
 Sign the exact bytes you send. Requests more than 5 minutes from the server clock are refused. The existing input
 rules apply (`payment_format` and currencies from the trained set, ids up to 128 characters, amount above 0,
@@ -87,14 +88,43 @@ async function send(event, url) {
 | `durable`, `store` | `true`/`redis` when committed to Redis; `false`/`memory` otherwise |
 
 Errors: `401` bad or missing signature, or timestamp outside 5 minutes; `422` invalid body (same messages as
-`/api/v2/assess`); `409` the same `event_id` is still being processed (retry after a minute); `503` secret not set or
-durable store unreachable (nothing is reported as committed; retry).
+`/api/v2/assess`); `409` the same `event_id` is still being processed (retry after a minute); `429` rate limited;
+`503` secret not set, account state full, or durable store unreachable (nothing is committed; the response carries
+`Retry-After`; retry).
 
 ## 4. Idempotency and retries
 
-Retry on any network error or 5xx with the same body and `event_id` (and a fresh timestamp and signature). A known
-`event_id` returns the stored result unchanged, with header `Idempotent-Replayed: true`, and is not scored or written
-again. With Redis this holds across all function instances for 7 days; in memory it holds for the life of one instance.
+Retry on any network error, `409`, `429` or 5xx with the same body and `event_id`, and a fresh timestamp and
+signature (a retry signed with the first attempt's timestamp is refused after 5 minutes). Do not retry other 4xx: fix
+the request. A known `event_id` returns the stored result unchanged, with header `Idempotent-Replayed: true`, and is
+not scored or written again. With Redis this holds across all function instances for 7 days; in memory it holds for the
+life of one instance.
+
+Every 5xx is safe to retry. When Redis fails before the commit, the claim on the `event_id` is released, so the retry
+is scored afresh; per-account state is deduped by event (`seen:` keys), so a payment is never counted twice. When the
+outcome of the commit is unknown, the claim expires after 60 s and the retry then gets either the stored result or a
+fresh scoring, never a second commit.
+
+Back off exponentially with full jitter, honouring `Retry-After` when it is larger:
+
+```python
+import random, time
+
+def send_with_retry(event, url, attempts=8, base=1.0, cap=60.0):
+    for n in range(attempts):
+        try:
+            return send(event, url)            # signs with a fresh timestamp each call
+        except urllib.error.HTTPError as e:
+            if e.code < 500 and e.code not in (409, 429):
+                raise                          # 401, 413, 422: retrying will not help
+            wait = max(float(e.headers.get("Retry-After") or 0), random.uniform(0, min(cap, base * 2 ** n)))
+        except OSError:                        # network error or timeout: the event may or may not be committed
+            wait = random.uniform(0, min(cap, base * 2 ** n))
+        time.sleep(wait)
+    raise RuntimeError(f"gave up on {event['event_id']}; queue it and alert")
+```
+
+After the last attempt, keep the event in the sender's own queue and alert: RuseTect has not committed it.
 
 ## 5. Watching it live
 
@@ -119,7 +149,8 @@ Without a store, decisions live in the memory of one function instance and are l
    `KV_REST_API_*` variables. RuseTect uses the `rediss://` URL; the REST variables alone are not enough.
 3. Redeploy. `/api/health` should now show `"durable": true, "store": {"kind": "redis"}`. `store.configured` says a
    Redis URL is set and `store.reachable` the result of this instance's last command (null before the first);
-   `durable` turns `false` when that command could not reach Redis.
+   `durable` turns `false` when that command could not reach Redis. `ready` is `true` when the engine is loaded and a
+   configured Redis was not unreachable on that last command (health itself sends no command, to save the quota).
 
 What is written, under the prefix `RUSETECT_REDIS_PREFIX` (default `rusetect:`): `live:ev:{event_id}` (result, 7 days),
 `live:feed` (latest 200), `live:alerts` (alert by id), `live:ledger` (ledger entries, latest 100,000 kept), `live:seq`,

@@ -200,6 +200,9 @@ fn ok(v: Value) -> Result<PyJson, ApiError> {
     Ok(PyJson(StatusCode::OK, v))
 }
 
+/// Seconds a sender should wait before retrying a 503 (the Retry-After header).
+pub const RETRY_AFTER_S: &str = "5";
+
 #[derive(Debug)]
 pub struct ApiError {
     pub status: u16,
@@ -217,7 +220,12 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        PyJson(StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), json!({"detail": self.detail})).into_response()
+        let mut r = PyJson(StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), json!({"detail": self.detail})).into_response();
+        // every 503 is temporary and nothing was committed: tell senders when to retry (docs/live.md section 4)
+        if self.status == 503 {
+            r.headers_mut().insert("retry-after", HeaderValue::from_static(RETRY_AFTER_S));
+        }
+        r
     }
 }
 
@@ -496,7 +504,9 @@ async fn health(State(app): State<AppRef>) -> ApiResult {
                   "hardened": s.engine.as_ref().and_then(|e| e.models.as_ref()).map(|m| m.hardening.is_some()).unwrap_or(false),
                   "ruleset": ctx::RULESET_VERSION, "auth": if KEYS.demo_mode { "demo keys (set RUSETECT_ANALYST_KEYS)" } else { "configured keys" },
                   "signing": {"alg": "Ed25519", "key_id": s.signer.key_id, "ephemeral": s.signer.ephemeral},
-                  "durable": s.live.durable(), "store": s.live.store_json()}))
+                  "durable": s.live.durable(), "store": s.live.store_json(),
+                  // ready: the engine is loaded and a configured Redis was not unreachable on this instance's last command
+                  "ready": s.engine.is_some() && (!s.live.configured() || s.live.durable())}))
     }).await
 }
 
