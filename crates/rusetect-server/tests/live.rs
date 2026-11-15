@@ -9,10 +9,12 @@ use std::process::{Child, Command, Stdio};
 use tower::ServiceExt;
 
 const SECRET: &str = "test-webhook-secret-0123456789";
+const PREVIOUS: &str = "old-webhook-secret-0123456789";
 
 fn app() -> (axum::Router, rusetect_server::AppRef) {
     std::env::set_var("RUSETECT_RATE_LIMIT", "1000000");
     std::env::set_var("RUSETECT_WEBHOOK_SECRET", SECRET);
+    std::env::set_var("RUSETECT_WEBHOOK_SECRET_PREVIOUS", PREVIOUS);
     let shared = rusetect_server::new_shared();
     (rusetect_server::build_app(shared.clone()), shared)
 }
@@ -176,10 +178,10 @@ async fn demo_reset_is_refused_once_live_events_exist() {
 #[test]
 fn extreme_timestamps_are_refused_without_overflow() {
     for ts in [i64::MIN.to_string(), i64::MAX.to_string()] {
-        let e = rusetect_server::live::verify_signature(b"k", Some(&ts), Some("v1=00"), b"{}", 1_700_000_000).unwrap_err();
+        let e = rusetect_server::live::verify_signature(&[b"k"], Some(&ts), Some("v1=00"), b"{}", 1_700_000_000).unwrap_err();
         assert_eq!(e.status, 401);
     }
-    let e = rusetect_server::live::verify_signature(b"k", Some("0"), Some("v1=00"), b"{}", i64::MIN).unwrap_err();
+    let e = rusetect_server::live::verify_signature(&[b"k"], Some("0"), Some("v1=00"), b"{}", i64::MIN).unwrap_err();
     assert_eq!(e.status, 401);
 }
 
@@ -189,6 +191,18 @@ async fn memory_fallback_reports_not_durable() {
     let h = get(&app, "/api/health").await;
     assert_eq!((h["durable"].as_bool(), h["store"]["kind"].as_str()), (Some(false), Some("memory")));
     assert_eq!(get(&app, "/api/v2/live").await["durable"], false);
+    assert_eq!(h["ready"], true, "memory mode is ready once the engine is loaded");
+}
+
+#[tokio::test]
+async fn previous_secret_is_accepted_during_rotation() {
+    let (app, _) = app();
+    let e = event("evt-rot-1", "ROT1");
+    let ts = now();
+    let (s, r, _) = send(&app, &e, ts, Some(sign(ts, &e.to_string(), PREVIOUS))).await;
+    assert_eq!(s, StatusCode::OK, "{r}");
+    let (s, _, _) = send(&app, &event("evt-rot-2", "ROT2"), ts, Some(sign(ts, &event("evt-rot-2", "ROT2").to_string(), "a-third-secret-not-configured"))).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
 }
 
 struct Redis(Child, String);
@@ -298,4 +312,39 @@ async fn redis_failures_release_the_claim_or_keep_an_applied_commit() {
     let (s, _, _) = send(&app, &event("evt-f3", "FV3"), now(), None).await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(get(&app, "/api/health").await["store"]["reachable"], true);
+}
+
+/// Redis down: the webhook fails closed (503 + Retry-After, the event is not committed or marked seen, /api/health says
+/// not ready), and once Redis is back the same event is scored and committed, not lost.
+#[tokio::test]
+async fn redis_outage_fails_closed_and_recovers() {
+    let Some(mut r) = redis_server() else { return };
+    let (app, shared) = app();
+    shared.state.lock().unwrap().live = rusetect_server::live::Live::redis(&r.1, "o:").unwrap();
+    let (s, _, _) = send(&app, &event("evt-o1", "OV1"), now(), None).await;
+    assert_eq!(s, StatusCode::OK);
+    let _ = r.0.kill();
+    let _ = r.0.wait();
+    let e = event("evt-o2", "OV2");
+    let (raw, ts) = (e.to_string(), now());
+    let req = Request::builder().method("POST").uri("/api/v2/events/payment").header("content-type", "application/json")
+        .header("x-rusetect-timestamp", ts.to_string()).header("x-rusetect-signature", sign(ts, &raw, SECRET)).body(Body::from(raw)).unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(resp.headers().get("retry-after").and_then(|v| v.to_str().ok()), Some(rusetect_server::RETRY_AFTER_S));
+    let h = get(&app, "/api/health").await;
+    assert_eq!((h["ready"].as_bool(), h["durable"].as_bool()), (Some(false), Some(false)), "{h}");
+    // Redis returns on the same port: the retry of the refused event is processed (not a replay), and health recovers
+    let port = r.1.trim_end_matches("/0").rsplit(':').next().unwrap().to_string();
+    r.0 = Command::new("redis-server").args(["--port", &port, "--save", "", "--appendonly", "no"]).stdout(Stdio::null()).spawn().unwrap();
+    for _ in 0..100 {
+        if redis::Client::open(r.1.as_str()).ok().and_then(|c| c.get_connection().ok()).is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let (s, body, replayed) = send(&app, &e, now(), None).await;
+    assert_eq!((s, replayed), (StatusCode::OK, false), "{body}");
+    assert_eq!(body["durable"], true);
+    assert_eq!(get(&app, "/api/health").await["ready"], true);
 }
