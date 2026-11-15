@@ -134,8 +134,8 @@ the alert from `live:alerts`, and a review action writes the updated alert back.
 ## Limits to know
 
 - With Redis, scoring uses the bank-scale path (the streaming workers' code): the payment cascade, hardening, the 24 h
-  pair window and the context layer from account history. The message, session and lure signals and per-feature
-  reasons are applied only in memory mode, and PRAMAAN's per-user history is kept per function instance.
+  pair window and the context layer from account history. The message, session and lure signals, per-feature
+  reasons and temporal-motif reasons are applied only in memory mode, and PRAMAAN's per-user history is kept per function instance.
 - The ledger is hash chained within one server instance; with Redis, entries from several instances are ordered by
   `event_seq`, not chained to each other, and `allow` entries are not chained at all.
 - Review actions on one live alert from two instances at the same moment are not locked: the last write wins. The

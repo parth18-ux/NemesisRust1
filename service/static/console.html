@@ -286,7 +286,7 @@ function renderFeed(feed) {
     const cls = a.decision.startsWith("Block") ? "block" : a.decision.startsWith("Hold") ? "hold" : "verify";
     return `<div class="alert"><div><div class="route"><span class="tag">demo</span>${a.from} → ${a.to}</div><div class="meta">${a.ts} · ${nf(a.amount)} ${a.currency} · ${a.format} · risk ${a.risk.toFixed(3)}${a.case_id ? " · " + a.case_id.replace("CASE-", "Case ") : ""}</div></div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><span class="pill ${cls}">${a.decision === "Step-up verification" ? "Verify customer" : a.decision}</span><span class="verdict ${a.truth ? "y" : "n"}">${a.truth ? "laundering ✓" : "not laundering"}</span></div>
-      <div class="reasons">${a.reasons.map(x => `<span class="chip">${x.feature}: ${x.display}</span>`).join("")}</div></div>`;
+      <div class="reasons">${a.reasons.map(x => `<span class="chip">${esc(x.feature)}: ${esc(x.display)}</span>`).join("")}</div></div>`;
   }).join("");
 }
 

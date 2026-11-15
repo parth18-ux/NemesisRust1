@@ -60,6 +60,7 @@ Structuring (HI-Small demo window, block recall, any part caught): clean 37%, sp
   delays, splits, new mule accounts), where block recall stays low.
 - The multi-domain second opinion is weaker than the HI-Small-only one on the two largest bank-AML sets (test ROC-AUC HI-Large 0.980 to 0.947, LI-Large 0.953 to 0.866); its adoption rule had no per-dataset guard.
 - Reasons are TreeSHAP contributions of the model that set the risk (the L2 XGBoost half, or the format-free model); the LightGBM half is not explained.
+- A flagged payment can also carry a "Temporal motif" reason (fan-in, fan-out, cycle back to the payer, scatter-gather, pass-through chain) read from the 24 h account windows; the idea is TempME's (Chen and Ying, NeurIPS 2023). It is not a model output, has impact 0 and never changes the score; in-memory mode only (`docs/decision.md` 8z).
 - Serverless deployments (Vercel) keep state per instance; use the Redis deployment (`deploy/docker-compose.yml`) for shared state.
 
 ## Governance

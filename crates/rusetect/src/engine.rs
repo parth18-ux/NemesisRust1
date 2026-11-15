@@ -119,6 +119,11 @@ pub fn readable(k: &str) -> &str {
     READABLE.iter().find(|(f, _)| *f == k).map(|(_, r)| *r).unwrap_or(k)
 }
 
+/// Newest window entries the motif pass reads per account, so its cost per payment is bounded.
+pub const MOTIF_SCAN: usize = 64;
+/// Distinct counterparties in 24 h that make a fan (the context rules' `fan_in_4plus`).
+pub const MOTIF_FAN: usize = 4;
+
 /// 24h sliding window with O(1) amortised distinct-counterparty count and running sum.
 #[derive(Debug, Default, Clone)]
 pub struct Window {
@@ -153,6 +158,11 @@ impl Window {
 
     pub fn last_t(&self) -> Option<i64> {
         self.q.back().map(|e| e.0)
+    }
+
+    /// The newest MOTIF_SCAN entries in (t - 24 h, t], newest first.
+    fn recent(&self, t: i64) -> impl Iterator<Item = &(i64, u32, f64)> {
+        self.q.iter().rev().filter(move |e| e.0 <= t).take_while(move |e| e.0 > t - MIN24).take(MOTIF_SCAN)
     }
 }
 
@@ -731,9 +741,66 @@ impl Engine {
                                    "display": format!("{n} payments"), "impact": py_round(risk - before, 3)}));
             }
         }
+        if band != "safe" {
+            self.add_motif_reason(p, out);
+        }
         if band == "high" && out["case_id"].is_null() {
             let cid = self.link(p);
             out.insert("case_id".into(), Value::String(cid));
+        }
+    }
+
+    /// The temporal motifs this payment completes inside the 24 h account windows, as one reason, or None. Call after
+    /// the payment is in the state. Explanation only: it reads the windows and never feeds the score. The idea of
+    /// explaining a temporal-graph decision by the motif an event completes is TempME's (Chen and Ying, NeurIPS 2023;
+    /// MIT-licensed code); nothing of it is ported. Definitions and tests: docs/decision.md 8z.
+    pub fn motif_reason(&self, p: &Payment) -> Option<Value> {
+        let id = |b: &str, a: &str| self.ids.get(&(b.to_string(), a.to_string())).copied();
+        let (s, d) = (id(&p.from_bank, &p.from_account)?, id(&p.to_bank, &p.to_account)?);
+        if s == d {
+            return None;
+        }
+        let (t, usd) = (p.tmin, self.cfg.usd(p.amount_paid, &p.payment_currency));
+        let ins = |a: u32| self.accts[a as usize].win_in.recent(t);
+        let other = |a: u32| a != s && a != d;
+        let mut m: Vec<(&str, String)> = Vec::new();
+        // cycle: money left the payee and is back at the payer, directly or through one account
+        if ins(s).any(|e| e.1 == d || (other(e.1) && ins(e.1).any(|x| x.1 == d && x.0 <= e.0))) {
+            m.push(("cycle", "cycle back to the payer".into()));
+        }
+        // scatter-gather: an account that paid this payer also paid another account, which then paid this payee
+        let sources: HashSet<u32> = ins(s).map(|e| e.1).filter(|a| other(*a)).collect();
+        if !sources.is_empty() && ins(d).any(|k| other(k.1) && ins(k.1).any(|a| a.1 != k.1 && sources.contains(&a.1) && a.0 <= k.0)) {
+            m.push(("scatter_gather", "scatter-gather through this payer".into()));
+        }
+        // pass-through chain: this payment forwards between half and all of one receipt from a third account
+        if ins(s).any(|e| other(e.1) && usd >= 0.5 * e.2 && usd <= e.2) {
+            m.push(("pass_through", "pass-through chain".into()));
+        }
+        let (fan_in, fan_out) = (self.accts[d as usize].win_in.cnt.len(), self.accts[s as usize].win_out.cnt.len());
+        if fan_in >= MOTIF_FAN {
+            m.push(("fan_in", format!("fan-in of {fan_in} payers")));
+        }
+        if fan_out >= MOTIF_FAN {
+            m.push(("fan_out", format!("fan-out to {fan_out} payees")));
+        }
+        if m.is_empty() {
+            return None;
+        }
+        let names: Vec<&str> = m.iter().map(|x| x.1.as_str()).collect();
+        Some(json!({"feature": "Temporal motif", "value": m.len(), "display": format!("{} (24 h)", names.join(", ")), "impact": 0.0,
+                    "motifs": m.iter().map(|x| x.0).collect::<Vec<_>>()}))
+    }
+
+    /// Put the motif reason first in `out["reasons"]` unless one is already there. The engine calls it for its own
+    /// verify, hold and block; the server calls it when a lure or the context layer raised an approved payment.
+    pub fn add_motif_reason(&self, p: &Payment, out: &mut Map<String, Value>) {
+        if let Some(Value::Array(r)) = out.get_mut("reasons") {
+            if !r.iter().any(|x| x.get("motifs").is_some()) {
+                if let Some(m) = self.motif_reason(p) {
+                    r.insert(0, m);
+                }
+            }
         }
     }
 

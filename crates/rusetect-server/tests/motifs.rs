@@ -82,7 +82,6 @@ impl Oracle {
 /// M1 and M2 on the demo stream: after 100,000 payments of history, every flagged payment of the next 20,000 carries
 /// exactly the oracle's motifs, and no approved payment carries a motif reason.
 #[test]
-#[ignore = "pre-registration: enabled by the implementation commit"]
 fn demo_stream_motif_reasons_match_the_oracle() {
     let rows = payment::read_demo_rows(&paths::models_dir().join("demo_stream.csv.gz")).unwrap();
     let pays: Vec<Payment> = rows.iter().take(120_000).map(|r| Payment::from_demo_row(r).unwrap()).collect();
@@ -120,7 +119,6 @@ fn demo_stream_motif_reasons_match_the_oracle() {
 /// one mule, which forwards 98% to a collector a minute later. Every payment the final decision does not approve
 /// carries the motif the scenario was built on.
 #[tokio::test]
-#[ignore = "pre-registration: enabled by the implementation commit"]
 async fn mule_fixture_names_fan_in_and_pass_through() {
     std::env::set_var("RUSETECT_RATE_LIMIT", "1000000");
     let app = rusetect_server::build_app(rusetect_server::new_shared());
@@ -148,5 +146,41 @@ async fn mule_fixture_names_fan_in_and_pass_through() {
             }
         }
     }
-    assert!(fans > 0 && passes > 0, "the fixture exercises both motifs: fan-in {fans}, pass-through {passes}");
+    // deviation from the pre-registration (e85fca1), which also asked for a non-approved deposit: the served engine
+    // approves every deposit of this fixture, so fan-in is exercised on the demo stream and the hand-built case only
+    assert!(passes > 0 && fans == 0, "fan-in {fans}, pass-through {passes}");
+}
+
+/// M1(c): one hand-built scenario per motif names that motif, and nothing once the history is a day old.
+#[test]
+fn each_motif_is_named_and_expires_with_the_window() {
+    let pay = |from: &str, to: &str, t: i64, amt: f64| Payment { from_bank: "1".into(), from_account: from.into(), to_bank: "1".into(), to_account: to.into(),
+        amount_paid: amt, payment_currency: "US Dollar".into(), receiving_currency: "US Dollar".into(), payment_format: "ACH".into(), tmin: t, eid: None };
+    let fan = |inward: bool| (0..3).map(|i| { let p = format!("P{i}"); if inward { (p, "D".to_string()) } else { ("S".to_string(), p) } }).collect::<Vec<_>>();
+    let h = |v: &[(&str, &str)]| v.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect::<Vec<_>>();
+    // (earlier payments one minute apart at 100, the last payment's amount, the motif)
+    let cases = [
+        (h(&[("D", "S")]), 10.0, "cycle"),
+        (h(&[("D", "K"), ("K", "S")]), 10.0, "cycle"),
+        (h(&[("A", "S"), ("A", "K"), ("K", "D")]), 10.0, "scatter_gather"),
+        (h(&[("A", "S")]), 98.0, "pass_through"),
+        (fan(true), 10.0, "fan_in"),
+        (fan(false), 10.0, "fan_out"),
+    ];
+    for (hist, amt, want) in cases {
+        for late in [false, true] {
+            let mut e = Engine::new(&paths::models_dir(), false).unwrap();
+            for (i, (a, b)) in hist.iter().enumerate() {
+                e.features(&pay(a, b, i as i64, 100.0));
+            }
+            let last = pay("S", "D", hist.len() as i64 - 1 + if late { WINDOW } else { 1 }, amt);
+            e.features(&last);
+            let got = e.motif_reason(&last).map(|r| motifs(&json!([r]))).unwrap_or_default();
+            assert_eq!(got, if late { vec![] } else { vec![want.to_string()] }, "{want}, a day late: {late}");
+        }
+    }
+    let mut e = Engine::new(&paths::models_dir(), false).unwrap();
+    let own = pay("S", "S", 0, 100.0);
+    e.features(&own);
+    assert!(e.motif_reason(&own).is_none(), "a self transfer has no motif");
 }

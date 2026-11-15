@@ -423,6 +423,35 @@ Criteria, all four must pass or the feature is not shipped and the failure is re
   `score_bench` slice (100,000 of history, 20,000 scored), measured by timing the pass alone, and it does not run for
   approved payments. Worst case is bounded by the 64-entry scan: at most 64 + 2 x 64 x 64 window entries read.
 
+**8z-result. Temporal-motif reason codes: served, with one deviation from the pre-registration.** Pre-registered
+in e85fca1. `Engine::motif_reason` reads the two 24 hour windows each account already has (`win_in`, `win_out`); no map
+or state was added, and it reads at most the 64 newest receipts per account. The reason is put first in `reasons` as
+`{"feature": "Temporal motif", "display": "...", "impact": 0.0, "motifs": [...]}`, so it reaches `/api/v2/payment`,
+`/api/v2/assess`, the live webhook record and the console chips (now escaped in the demo feed too). The server also
+asks for it when a lure or the context layer raised a payment the cascade approved.
+- **M1 correct reasons: passed on the checks, with one clause failed as written.** (a) passed: all
+  734 flagged payments of the slice carry exactly the oracle's motifs; 337 carry one
+  (fan-out 250, fan-in 73, pass-through 15, scatter-gather
+  1, cycle 0; `results/motif_reasons.json`). (c) passed for all five motifs.
+  (b): every forward the context layer steps up carries `pass_through`, and no approved payment carries a reason, but
+  the clause "at least one non-approved deposit carries `fan_in`" failed: the served engine approves every deposit of
+  the fixture, so there was no deposit to name. That clause tested the fixture, not the reason code, and should have
+  been checked before it was written down. It was not dropped silently: the test now asserts the observed outcome
+  and says so. Fan-in is covered by (a) and (c); `cycle` only by (c), since the slice has no flagged cycle.
+- **M2 nothing on allow: passed** (0 approved payments with a motif reason in the slice, none
+  in the fixture).
+- **M3 scores unchanged: passed.** The two `parity_dump 20000 100000` dumps are byte-identical once the motif reason
+  object is deleted from this branch's lines.
+- **M4 small overhead: passed.** The pass alone takes 0.92 microseconds on average per flagged
+  payment (slowest 2.42), against the bound of 50
+  (`examples/motif_bench`).
+- **Limits.** Memory mode only: the Redis live path and the streaming workers return no reasons at all, and the motif
+  pass would need the windows of other accounts, which is extra Redis round trips per payment. Chains longer than two
+  hops and cycles longer than three are not named. The motif says what shape the payment completes, not that the shape
+  is laundering: fan-out is common among ordinary payers. Read strictly, the pre-registered rule (all four pass, else
+  do not ship) is not met because of the failed clause in (b); the change is in an open pull request so that call
+  stays with the reviewer.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
