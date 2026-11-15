@@ -541,6 +541,23 @@ mechanical fix after the first run: pandas 3 parses times in microseconds, which
 timestamp; that run was discarded and the rules were not changed (the script's docstring records it). Nothing served
 changed. The earlier demo-window suite (`research/out/evasion_suite.json`) is kept as it was.
 
+**8af. C3: fresh holdout on IBM AMLSim (scored once).** The user chose option B (a generator no result had used) on
+2026-11-15. `docs/HOLDOUT_PREREG.md` and its scoring script `research/holdout_amlsim.py` were committed and pushed
+before any data was generated (pre-registration commit `24c86b8`; the seed comes from that SHA). AMLSim (Apache-2.0,
+commit `7338a4b`) was built here with MASON 20 compiled from source and run once on its 10K parameter set; the run is
+deterministic (two graph-generator runs gave identical files). The served engine scored it once with nothing refitted.
+Result (`research/out/holdout_amlsim.json`, table in `docs/MODEL_CARD.md`, Fresh holdout): H1 failed (the served score
+ranks below both amount ranking and random on the test steps), H2 failed (hold-or-block precision is not above the
+laundering rate, and the served bands alert on a large share of all payments). **Verdict under the pre-stated rule:
+does not transfer.** The cascade alone ranks better than the served score here (ROC-AUC above random) but its bands
+are not useful either; this is reported, not part of the verdict. A likely reason, not tested: AMLSim has one bank,
+one currency and daily steps, so every same-day payment is simultaneous and the 24 hour features, the pair window and
+the format-free model see values far from their training range. Per the rule, nothing is tuned on this holdout; a fix
+would be checked on a later, separate holdout. One deviation, toolchain only: the pre-registration names three
+Python 3.13 compatibility shims for the AMLSim graph generator; a fourth was needed (`random.sample` on a set, which
+Python 3.10 and earlier accepted by converting it to a tuple); the shim reproduces that behaviour and changes no AMLSim
+logic. No cash payments occur in this configuration, so the Cash mapping was not used.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

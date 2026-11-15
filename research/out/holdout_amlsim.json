@@ -1,0 +1,144 @@
+{
+ "script": "research/holdout_amlsim.py",
+ "prereg": "docs/HOLDOUT_PREREG.md",
+ "provenance": {
+  "generator": "IBM AMLSim (Apache-2.0), github.com/IBM/AMLSim master",
+  "amlsim_commit": "7338a4bcb1af9bcfea2201ad7daccfe2a4d569ca",
+  "mason": "eclab/mason tag v20, commit b799a4a3bf0a9f562a3532edeb2aac1bd106c42e, sim.engine compiled from source",
+  "config": "AMLSim conf.json with input.directory=paramFiles/10K, simulation_name=holdout, random_seed below",
+  "seed": 617114497,
+  "seed_rule": "int(first 8 hex of the pre-registration commit 24c86b81e683c14912b417082c7bab19ccb5281f, 16) mod 2^31",
+  "prereg_commit": "24c86b81e683c14912b417082c7bab19ccb5281f",
+  "graph_generator": "scripts/transaction_graph_generator.py, networkx 1.11, Python 3.13 compatibility shims (fractions.gcd, collections ABC aliases, lib2to3 stubs, random.sample on sets as in Python <= 3.10); deterministic: two runs gave identical files",
+  "simulator": "amlsim.AMLSim, OpenJDK 21, 720 steps",
+  "tx_log_sha256": "01b11d74c401ee414eb08140e142eb4c993025ddd82a8ccea18b54350eb72b8b"
+ },
+ "rows_total": 200689,
+ "positives_total": 664,
+ "rows_by_type": {
+  "TRANSFER": 200689
+ },
+ "positives_by_type": {
+  "TRANSFER": 664
+ },
+ "test": {
+  "steps": [
+   576,
+   719
+  ],
+  "rows": 28848,
+  "positives": 84,
+  "prevalence": 0.002912
+ },
+ "served": {
+  "pr_auc": 0.0024,
+  "roc_auc": 0.432,
+  "thresholds": {
+   "verify": 0.010297347791492939,
+   "hold": 0.042735349386930466,
+   "block": 0.13074204946996468
+  },
+  "bands": {
+   "verify": {
+    "flags": 19734,
+    "alerts_per_1000": 684.068,
+    "precision": 0.0026,
+    "recall": 0.6071
+   },
+   "hold": {
+    "flags": 13332,
+    "alerts_per_1000": 462.146,
+    "precision": 0.002,
+    "recall": 0.3214
+   },
+   "block": {
+    "flags": 7142,
+    "alerts_per_1000": 247.573,
+    "precision": 0.0014,
+    "recall": 0.119
+   },
+   "hold_or_block": {
+    "flags": 13332,
+    "alerts_per_1000": 462.146,
+    "precision": 0.002,
+    "recall": 0.3214
+   }
+  }
+ },
+ "cascade": {
+  "pr_auc": 0.0255,
+  "roc_auc": 0.7704,
+  "thresholds": {
+   "verify": 0.13664003359675353,
+   "hold": 0.4495068494649108,
+   "block": 0.8230328180234521
+  },
+  "bands": {
+   "verify": {
+    "flags": 6586,
+    "alerts_per_1000": 228.3,
+    "precision": 0.0059,
+    "recall": 0.4643
+   },
+   "hold": {
+    "flags": 634,
+    "alerts_per_1000": 21.977,
+    "precision": 0.011,
+    "recall": 0.0833
+   },
+   "block": {
+    "flags": 0,
+    "alerts_per_1000": 0.0,
+    "precision": 0.0,
+    "recall": 0.0
+   },
+   "hold_or_block": {
+    "flags": 634,
+    "alerts_per_1000": 21.977,
+    "precision": 0.011,
+    "recall": 0.0833
+   }
+  }
+ },
+ "baseline_amount": {
+  "pr_auc": 0.0036,
+  "roc_auc": 0.554
+ },
+ "ci95_day_bootstrap": {
+  "served_pr_auc": [
+   0.0019,
+   0.003
+  ],
+  "served_roc_auc": [
+   0.3793,
+   0.4889
+  ],
+  "cascade_pr_auc": [
+   0.0062,
+   0.0708
+  ],
+  "cascade_roc_auc": [
+   0.741,
+   0.7982
+  ],
+  "amount_pr_auc": [
+   0.0027,
+   0.0048
+  ],
+  "served_minus_best_baseline": [
+   -0.0023,
+   -0.0005
+  ],
+  "served_hold_or_block_precision": [
+   0.0013,
+   0.0028
+  ],
+  "resamples": 500,
+  "days": 144
+ },
+ "rule": {
+  "H1_adds_value": false,
+  "H2_bands_mean_something": false,
+  "verdict": "does not transfer"
+ }
+}
