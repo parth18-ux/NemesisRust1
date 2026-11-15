@@ -506,6 +506,15 @@ agreed before results are read and an explicit list of what is not claimed; the 
 generator, awaiting the user's approval and not run). No metric is typed into them; they point to the files in
 `results/` and `research/out/`.
 
+**8ac. Phase B hardening: threat model gaps closed in code.** From `docs/THREAT_MODEL.md`, the open gaps that need no
+secret, account or outside party, smallest first: API key lookup now compares every key in constant time
+(`security::lookup`); request bodies are capped at an explicit, tested 2 MiB (`MAX_BODY_BYTES`, the size axum used by
+default, so no route that worked before is refused); a refused key is logged with a SHA-256 fingerprint, never the
+key; CI runs `cargo audit`. Each has a test, and the threat model lists them under "Mitigated in phase B". Left for
+the user: Upstash and the webhook secret on the public deployment, managed key storage and rotation, SSO or MFA, a WAF
+rule, an external penetration test, SIEM export, and the legal and data terms. No existing check was relaxed; no
+metric changed.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

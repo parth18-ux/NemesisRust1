@@ -35,6 +35,12 @@ jobs:
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
+      # RustSec advisory scan of Cargo.lock: a vulnerability fails the build; "unmaintained" notices only warn.
+      - name: cargo audit
+        run: |
+          cargo install cargo-audit --locked --version 0.23.0
+          cargo audit
+
       # cargo fmt --check is not run: the code base is not rustfmt-clean yet.
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
