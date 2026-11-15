@@ -466,6 +466,21 @@ second with p95 1.51 ms; the webhook at concurrency 32 runs 1,961.23 per second 
 CPUs and there is no network or TLS, so this is a floor for one instance, not a Vercel or production figure
 (`docs/SCALING.md`, section 3b).
 
+**8z-followup. A fan-in check the mule fixture could not give: pre-registration.** Written and committed before the
+check was run. Clause M1(b) of 8z failed as recorded in 8z-result (the served engine approves every deposit of
+`fixtures/mule_replay.json`); that record stands unchanged. This is a new, separate check of the same reason code on a
+fixture where deposits can be raised: `fixtures/mule_fanin.json`, eight victims of one lure campaign each paying one
+mule account six minutes apart, each deposit sent to `/api/v2/assess` with the lure the victim received and consent
+given (the lure is the one already in `mule_replay.json`). There are no forwards, so fan-in is the only motif a deposit
+can complete. The engine, thresholds, scoring and context rules are used as served; nothing is changed to make it fire.
+Expectation, tested by `fan_in_fixture_names_fan_in_on_held_deposits` in `crates/rusetect-server/tests/motifs.rs`:
+- **F1.** Every deposit whose final decision is not Approve carries exactly the oracle's motifs: `fan_in` from the
+  fourth distinct payer on, nothing before.
+- **F2.** No approved deposit carries a motif reason.
+- **F3.** At least one non-approved deposit carries `fan_in`.
+If the engine approves every deposit, or holds only the first three, F3 fails; that is recorded here as the outcome and
+the test is kept as a record of current behaviour, not tuned until it passes.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

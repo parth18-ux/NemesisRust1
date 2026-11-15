@@ -184,3 +184,37 @@ fn each_motif_is_named_and_expires_with_the_window() {
     e.features(&own);
     assert!(e.motif_reason(&own).is_none(), "a self transfer has no motif");
 }
+
+/// 8z-followup (docs/decision.md), written before it was run: the fan-in fixture replayed through /api/v2/assess, each
+/// deposit with the campaign's lure and consent. Every deposit the final decision does not approve carries exactly the
+/// oracle's motifs (`fan_in` from the fourth distinct payer on, nothing before); approved deposits carry no motif
+/// reason; and at least one non-approved deposit carries `fan_in`.
+#[tokio::test]
+async fn fan_in_fixture_names_fan_in_on_held_deposits() {
+    std::env::set_var("RUSETECT_RATE_LIMIT", "1000000");
+    let app = rusetect_server::build_app(rusetect_server::new_shared());
+    let f: Value = serde_json::from_str(&std::fs::read_to_string(paths::repo_root().join("fixtures/mule_fanin.json")).unwrap()).unwrap();
+    let (mut held, mut held_fan) = (0, 0);
+    for (i, amt) in f["deposits_inr"].as_array().unwrap().iter().enumerate() {
+        let t = i as i64 * f["gap_minutes"].as_i64().unwrap();
+        let payment = json!({"timestamp": format!("2022-09-10 {:02}:{:02}", 10 + t / 60, t % 60), "from_bank": format!("02{:02}", i + 1),
+            "from_account": format!("W{:02}", i + 1), "to_bank": f["mule"]["bank"], "to_account": f["mule"]["account"],
+            "amount_paid": amt, "payment_currency": "Rupee", "payment_format": "ACH"});
+        let body = json!({"payment": payment, "message": f["lure"], "consent": true});
+        let req = Request::builder().method("POST").uri("/api/v2/assess").header("content-type", "application/json").body(Body::from(body.to_string())).unwrap();
+        let bytes = app.clone().oneshot(req).await.unwrap().into_body().collect().await.unwrap().to_bytes();
+        let r: Value = serde_json::from_slice(&bytes).unwrap();
+        let got = motifs(&r["payment"]["reasons"]);
+        eprintln!("deposit {}: {} (payment {}, context {}) motifs {got:?}", i + 1, r["final_decision"], r["payment"]["decision"], r["context_band"]);
+        if r["final_decision"] == "Approve" {
+            assert!(got.is_empty(), "deposit {}: motif reason on an approved payment", i + 1);
+            continue;
+        }
+        held += 1;
+        let want: Vec<String> = if i + 1 >= FAN { vec!["fan_in".into()] } else { vec![] };
+        assert_eq!(got, want, "deposit {}: {}", i + 1, r["final_decision"]);
+        held_fan += !want.is_empty() as usize;
+    }
+    eprintln!("not approved {held}, of which carry fan_in {held_fan}");
+    assert!(held_fan > 0, "no non-approved deposit carried fan_in (not approved: {held})");
+}
