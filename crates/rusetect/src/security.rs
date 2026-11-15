@@ -68,7 +68,22 @@ pub fn load_keys() -> Keys {
 pub static KEYS: LazyLock<Keys> = LazyLock::new(load_keys);
 
 pub fn analyst_for(key: Option<&str>) -> Option<Analyst> {
-    KEYS.keys.get(key.unwrap_or("")).cloned()
+    lookup(&KEYS.keys, key).cloned()
+}
+
+/// Find the analyst for a presented key in constant time: every configured key is compared with `ct_eq` and the loop
+/// never exits early, so response time does not reveal how many leading bytes of a guess were right. (`ct_eq` on
+/// slices of different lengths returns false at once, so only the length is not hidden; keys are 16+ characters.)
+pub fn lookup<'a>(keys: &'a IndexMap<String, Analyst>, key: Option<&str>) -> Option<&'a Analyst> {
+    use subtle::ConstantTimeEq;
+    let key = key.unwrap_or("").as_bytes();
+    let mut found = None;
+    for (k, a) in keys {
+        if bool::from(k.as_bytes().ct_eq(key)) {
+            found = Some(a);
+        }
+    }
+    found
 }
 
 /// API routes open without a key outside demo mode: liveness, the public signing key and signature checks, and model
@@ -100,7 +115,7 @@ pub fn gate(keys: &Keys, method: &str, path: &str, key: Option<&str>) -> Result<
     if keys.demo_mode || PUBLIC_API.contains(&path) {
         return Ok(());
     }
-    let who = keys.keys.get(key.unwrap_or("")).ok_or((401, "missing or unknown X-Analyst-Key"))?;
+    let who = lookup(&keys.keys, key).ok_or((401, "missing or unknown X-Analyst-Key"))?;
     let role = who.role.as_str();
     if path.starts_with("/v2/demo/") {
         return if role == "supervisor" { Ok(()) } else { Err((403, "demo reset and replay need a supervisor key")) };
@@ -247,6 +262,16 @@ impl Signer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn key_lookup_is_exact() {
+        let a = |n: &str| Analyst { analyst: n.into(), role: "analyst".into() };
+        let keys: IndexMap<String, Analyst> = [("key-aaaaaaaaaaaaaaaa", a("x")), ("key-bbbbbbbbbbbbbbbb", a("y"))].into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+        assert_eq!(lookup(&keys, Some("key-bbbbbbbbbbbbbbbb")).unwrap().analyst, "y");
+        for wrong in [None, Some(""), Some("key-aaaaaaaaaaaaaaa"), Some("key-aaaaaaaaaaaaaaaaa"), Some("key-aaaaaaaaaaaaaaab"), Some("KEY-aaaaaaaaaaaaaaaa")] {
+            assert!(lookup(&keys, wrong).is_none(), "{wrong:?} must not match");
+        }
+    }
 
     #[test]
     fn production_gate_and_key_validation() {

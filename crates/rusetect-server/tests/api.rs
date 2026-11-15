@@ -105,6 +105,18 @@ async fn demo_replay() {
 }
 
 #[tokio::test]
+async fn oversized_body_is_refused_before_the_handler() {
+    let t = T::new();
+    for path in ["/api/v2/payments/batch", "/api/v2/events/payment", "/api/v2/assess"] {
+        let big = "x".repeat(rusetect_server::MAX_BODY_BYTES + 1);
+        let r = t.app.clone().oneshot(Request::builder().method("POST").uri(path).header("content-type", "application/json").body(Body::from(big)).unwrap()).await.unwrap();
+        assert_eq!(r.status(), StatusCode::PAYLOAD_TOO_LARGE, "{path}");
+    }
+    // a body under the limit still reaches the handler (422: not a list)
+    assert_eq!(t.req("POST", "/api/v2/payments/batch", Some(json!({"pad": "x".repeat(1024)})), &[]).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
 async fn validation_errors_look_like_fastapi() {
     let t = T::new();
     let (s, v, _) = t.req("POST", "/api/v2/payment", Some(json!({"timestamp": "2022-09-09 10:00", "from_bank": 7, "amount_paid": -1})), &[]).await;

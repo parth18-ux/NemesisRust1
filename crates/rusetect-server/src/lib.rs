@@ -25,7 +25,7 @@ pub mod scale;
 pub mod validate;
 
 use axum::body::{Body, Bytes};
-use axum::extract::{ConnectInfo, Path, Query, Request, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -325,6 +325,7 @@ pub fn build_app(app: AppRef) -> Router {
         .nest("/api", api)
         .fallback(|| async { ApiError::new(404, "Not Found") })
         .method_not_allowed_fallback(|| async { ApiError::new(405, "Method Not Allowed") })
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         .layer(middleware::from_fn(require_key))
         .layer(middleware::from_fn_with_state(app.clone(), rate_limit))
         .layer(middleware::from_fn(security_headers))
@@ -412,11 +413,26 @@ static TRUST_PROXY: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
 /// Accounts with a typing profile kept in memory (each holds at most 20 sessions of 1,000 key pairs).
 const MAX_PROFILES: usize = 100_000;
 
+/// Largest request body any route reads (`/v2/payments/batch` takes up to 20,000 payments); larger bodies get `413`
+/// before a handler runs. Set here rather than left to axum's default so the limit is a reviewed, tested value.
+pub const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
+
+/// One log line for a refused API key, for spotting guessing or a revoked key still in use. The key itself is never
+/// written: only the first 8 hex characters of its SHA-256, enough to tell repeated attempts with the same key apart.
+pub fn auth_failure_line(code: u16, method: &str, path: &str, client: &str, key: Option<&str>) -> String {
+    use sha2::{Digest, Sha256};
+    let key = key.map(|k| hex::encode(&Sha256::digest(k.as_bytes())[..4])).unwrap_or_else(|| "none".into());
+    format!("{NAME} auth refused: {code} {method} {path} client={client} key_sha256={key}")
+}
+
 /// Outside demo mode every /api route needs a known X-Analyst-Key except the public ones (security::gate).
 async fn require_key(req: Request, next: Next) -> Response {
     if let Some(path) = req.uri().path().strip_prefix("/api") {
         let key = req.headers().get("x-analyst-key").and_then(|v| v.to_str().ok());
         if let Err((code, msg)) = rusetect::security::gate(&KEYS, req.method().as_str(), path, key) {
+            let peer = req.extensions().get::<ConnectInfo<SocketAddr>>().map(|c| c.0.ip().to_string()).unwrap_or_else(|| "?".into());
+            let client = client_key(req.headers().get("x-forwarded-for").and_then(|v| v.to_str().ok()), peer, *TRUST_PROXY);
+            eprintln!("{}", auth_failure_line(code, req.method().as_str(), path, &client, key));
             return ApiError::new(code, msg).into_response();
         }
     }
@@ -1300,7 +1316,17 @@ pub fn description() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::client_key;
+    use super::{auth_failure_line, client_key};
+
+    #[test]
+    fn auth_failure_line_never_holds_the_key() {
+        let key = "secret-analyst-key-0123456789";
+        let line = auth_failure_line(401, "POST", "/v2/payment", "1.2.3.4", Some(key));
+        assert!(!line.contains(key) && !line.contains("secret"), "{line}");
+        assert!(line.contains("401 POST /v2/payment client=1.2.3.4 key_sha256="), "{line}");
+        assert_eq!(line, auth_failure_line(401, "POST", "/v2/payment", "1.2.3.4", Some(key)), "same key, same fingerprint");
+        assert!(auth_failure_line(401, "GET", "/v2/alerts", "?", None).ends_with("key_sha256=none"));
+    }
 
     #[test]
     fn client_key_takes_the_rightmost_forwarded_address_only_behind_a_trusted_proxy() {
