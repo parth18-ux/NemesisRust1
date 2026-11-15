@@ -502,7 +502,7 @@ secret not configured on the public deployment, a consortium that is simulated i
 `docs/PILOT_PROPOSAL.md` (a one-page shadow pilot built from `docs/PILOT.md` and `docs/live.md`, with success metrics
 agreed before results are read and an explicit list of what is not claimed; the price is left to the user);
 `docs/OUTREACH.md` (an email template and an NDA, data terms and DPDP Act checklist, marked as not legal advice); and
-`docs/HOLDOUT_PREREG_DRAFT.md` (a draft rule for a fresh holdout, on a new AMLworld seed or the unused AMLSim
+`docs/HOLDOUT_PREREG.md` (then a draft rule for a fresh holdout, on a new AMLworld seed or the unused AMLSim
 generator, awaiting the user's approval and not run). No metric is typed into them; they point to the files in
 `results/` and `research/out/`.
 
