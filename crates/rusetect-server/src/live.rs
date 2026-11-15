@@ -276,6 +276,8 @@ fn decide(s: &mut AppState, ev: &Event, d: &rusetect::payment::Payment, seq: u64
     let inputs = ev.a.dump_without_message();
     // 2. score: in memory the full /v2/assess path (cascade, hardening, pair window, lures, context, session, alert);
     // with Redis the bank-scale path, whose account state and pair window live in Redis and are shared by every instance
+    // (it returns no reasons, so SHAP and temporal-motif reasons are memory-mode only: the motif pass reads other
+    // accounts' windows, which would cost extra Redis round trips per payment)
     let (mut assessed, mut alert_id, reasons) = match s.live.redis.as_mut() {
         None => {
             let out = assess(s, &ev.a, d)?.1;

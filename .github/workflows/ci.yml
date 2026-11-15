@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: "1.97.0"
+
+jobs:
+  rust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy
+          rustup default "$RUST_TOOLCHAIN"
+
+      # The Redis tests (tests/live.rs, tests/scale.rs) start their own redis-server on a free port and skip when the
+      # binary is missing, so install the binary (a service container would not be seen by them) and fail if absent.
+      - name: redis-server
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q redis-server
+          redis-server --version
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      # cargo fmt --check is not run: the code base is not rustfmt-clean yet.
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: |
+          cargo test --release --workspace 2>&1 | tee test.log
+          if grep -q "redis-server not installed" test.log; then echo "Redis tests were skipped"; exit 1; fi
+        shell: bash -o pipefail {0}

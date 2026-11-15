@@ -22,7 +22,7 @@ own.
 | Message (L-1) | Scores an SMS, WhatsApp message or call transcript, names the scam workflow (digital arrest, KYC block, task job, voice clone emergency) and extracts UPI IDs, phone numbers and links | `crates/rusetect/src/scam_text.rs` |
 | Message to payment | Asks for confirmation on a payment to a new payee within 72 hours of a risky message, and holds payments to an identifier named in one | `crates/rusetect/src/lure_fusion.rs` |
 | Account opening (L0) | Scores new account applications for mule risk, with separate thresholds for applicants under and over 50 | `service/models/l0_onboarding_lgbm.json` |
-| Payment cascade (L1, L2) | XGBoost gatekeeper, then XGBoost and LightGBM averaged into a risk score with per feature reasons | `crates/rusetect/src/engine.rs` |
+| Payment cascade (L1, L2) | XGBoost gatekeeper, then XGBoost and LightGBM averaged into a risk score with per feature reasons and a temporal-motif reason (fan-in, fan-out, cycle, scatter-gather, pass-through; idea from TempME) | `crates/rusetect/src/engine.rs` |
 | Ring linking (L4) | Merges blocked payments that share accounts into a single case | `crates/rusetect/src/engine.rs` |
 | Context rules | Combines message, payment, account graph and session evidence; escalation needs two domains | `crates/rusetect/src/context_rules.rs` |
 | Session and identity | Live call, screen sharing, remote access apps, pasted payee details, hesitation, SIM swap and device checks before the OTP, account takeover sequences | `crates/rusetect/src/session_signals.rs` |
@@ -41,7 +41,8 @@ files and evaluated in Rust, including XGBoost's exact TreeSHAP for the per-feat
 The port was checked against the Python service it replaces:
 
 * the live engine on 20,000 test-period payments after 100,000 history payments: every feature, L1 and L2 score,
-  decision and SHAP reason identical (`cargo run --release --example parity_dump`)
+  decision and SHAP reason identical (`cargo run --release --example parity_dump`); the temporal-motif reason added
+  later is Rust only and changes no score (`docs/decision.md` 8z)
 * the message model, redaction and context cues on 809 messages: every probability, band, workflow, key phrase,
   entity and salted hash identical (`cargo run --release --example text_dump`)
 * 321 API calls replayed against both servers (payments, assessments with messages and session signals, alerts,

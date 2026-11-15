@@ -91,6 +91,38 @@ docker compose -f deploy/docker-compose.yml up --build
 `deploy/docker-compose.yml` was written for a machine with Docker; this workspace has no Docker daemon, so the
 compose file itself is untested here (the same processes are tested natively above).
 
+## 3b. End-to-end HTTP benchmark of the Rust server
+
+`crates/rusetect-server/examples/e2e_bench.rs` starts the release `rusetect-server` binary on loopback and drives it
+over keep-alive HTTP/1.1: `POST /api/v2/payment` and the HMAC-signed `POST /api/v2/events/payment` webhook, at
+concurrency 1, 8, 32, 5,000 requests per level after a warm-up, first with the in-memory store and then
+with a local `redis-server` (webhook only: `/v2/payment` keeps its state in process memory either way). It writes
+`results/e2e_bench.json`, which the table below is copied from.
+
+**One container, not Vercel.** The load generator, the server and Redis share 4 logical CPUs (Intel(R) Xeon(R) Processor @ 2.30GHz); there is
+no network hop, TLS or cold start. Scoring holds the server's one state mutex, so it is serial; more concurrency mostly
+adds queueing. Expect tens of percent run to run on a shared container. It replaces the old Python figure
+(`results/load_test.json`, uvicorn, 220 requests per second), which measured a server that is no longer served.
+
+| Store | Endpoint | Concurrency | Requests per second | p50 ms | p95 ms | p99 ms | Errors |
+|---|---|---|---|---|---|---|---|
+| memory | `POST /api/v2/payment` | 1 | 1,979.86 | 0.28 | 1.51 | 1.91 | 0 |
+| memory | `POST /api/v2/payment` | 8 | 2,588.63 | 2.95 | 6.07 | 8.27 | 0 |
+| memory | `POST /api/v2/payment` | 32 | 3,474.8 | 8.24 | 19.78 | 28.67 | 0 |
+| memory | `POST /api/v2/events/payment` | 1 | 1,210.66 | 0.68 | 1.64 | 2.52 | 0 |
+| memory | `POST /api/v2/events/payment` | 8 | 1,865.72 | 4.24 | 7.23 | 9.65 | 0 |
+| memory | `POST /api/v2/events/payment` | 32 | 1,961.23 | 16.55 | 23.6 | 37.0 | 0 |
+| redis | `POST /api/v2/events/payment` | 1 | 1,382.09 | 0.67 | 1.06 | 1.3 | 0 |
+| redis | `POST /api/v2/events/payment` | 8 | 1,333.57 | 5.71 | 7.76 | 9.18 | 0 |
+| redis | `POST /api/v2/events/payment` | 32 | 1,146.63 | 27.06 | 35.41 | 43.07 | 0 |
+
+Rerun it:
+
+```bash
+cargo build --release -p rusetect-server --bins --examples
+target/release/examples/e2e_bench            # optional argument: requests per level (default 5000); needs redis-server
+```
+
 ## 4. From here to a bank
 
 1. **Throughput.** UPI runs at roughly 20 billion payments a month, about 7,000 to 8,000 a second on average with

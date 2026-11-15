@@ -391,6 +391,121 @@ on validation. The served features already hold the 24 hour payee count, payment
 nothing the block band can use. Nothing is ported; the served model and the engine are unchanged
 (`research/out/fanout_eval.json`).
 
+**8z. Temporal-motif reason codes: pre-registration.** Written and committed before any implementation. Idea
+borrowed from TempME (Chen and Ying, "TempME: Towards the Explainability of Temporal Graph Neural Networks via Motif
+Discovery", NeurIPS 2023; code MIT-licensed): explain a temporal-graph decision by the small temporal motif the event
+completes. Only the idea is used; no TempME code, model or sampling is ported. When a payment is verify, hold or block,
+one extra reason names the motifs it completes inside the engine's 24 hour account windows. It is explanation only: it
+reads state and never feeds the score.
+
+Definitions, for a payment from payer S to payee D at minute t (S and D different; a self transfer has no motif). "In
+the window" means a minute in (t - 1440, t]. Only the 64 newest window receipts of an account are read, so the cost per
+payment is bounded. Reported in this order:
+- `cycle`: D paid S in the window, or D paid some K and K then paid S, both in the window.
+- `scatter_gather`: some A paid S in the window, and A also paid another K that then paid D, both in the window.
+- `pass_through`: S received from a third account in the window and this payment is between half and all of that
+  receipt (in USD).
+- `fan_in`: D was paid by four or more distinct accounts in the window (the context rules' `fan_in_4plus` count).
+- `fan_out`: S paid four or more distinct accounts in the window.
+
+Criteria, all four must pass or the feature is not shipped and the failure is recorded here:
+- **M1 correct reasons.** (a) Demo stream, 100,000 payments of history then 20,000 scored: every verify, hold or block
+  payment carries exactly the motifs of a brute-force oracle that reads the plain payment list, not the engine's state
+  (`crates/rusetect-server/tests/motifs.rs`, committed with this section). (b) Mule fixture
+  (`fixtures/mule_replay.json`) replayed through `/api/v2/assess`: every deposit that is not approved carries `fan_in`
+  from the fourth victim on and nothing before; every forward that is not approved carries `pass_through`; at least
+  one of each occurs. (c) One hand-built scenario per motif (five) returns that motif, and the same payments shifted
+  outside the window return none.
+- **M2 nothing on allow.** No approved payment carries a motif reason, in (a) and (b).
+- **M3 scores unchanged.** `examples/parity_dump 20000 100000` on this branch against `origin/main` (3971c4f): after
+  deleting the motif reason object from the branch's lines, the two dumps are byte-identical (`cmp`).
+- **M4 small overhead.** The motif pass costs at most 50 microseconds on average per flagged payment on the
+  `score_bench` slice (100,000 of history, 20,000 scored), measured by timing the pass alone, and it does not run for
+  approved payments. Worst case is bounded by the 64-entry scan: at most 64 + 2 x 64 x 64 window entries read.
+
+**8z-result. Temporal-motif reason codes: served, with one deviation from the pre-registration.** Pre-registered
+in e85fca1. `Engine::motif_reason` reads the two 24 hour windows each account already has (`win_in`, `win_out`); no map
+or state was added, and it reads at most the 64 newest receipts per account. The reason is put first in `reasons` as
+`{"feature": "Temporal motif", "display": "...", "impact": 0.0, "motifs": [...]}`, so it reaches `/api/v2/payment`,
+`/api/v2/assess`, the live webhook record and the console chips (now escaped in the demo feed too). The server also
+asks for it when a lure or the context layer raised a payment the cascade approved.
+- **M1 correct reasons: passed on the checks, with one clause failed as written.** (a) passed: all
+  734 flagged payments of the slice carry exactly the oracle's motifs; 337 carry one
+  (fan-out 250, fan-in 73, pass-through 15, scatter-gather
+  1, cycle 0; `results/motif_reasons.json`). (c) passed for all five motifs.
+  (b): every forward the context layer steps up carries `pass_through`, and no approved payment carries a reason, but
+  the clause "at least one non-approved deposit carries `fan_in`" failed: the served engine approves every deposit of
+  the fixture, so there was no deposit to name. That clause tested the fixture, not the reason code, and should have
+  been checked before it was written down. It was not dropped silently: the test now asserts the observed outcome
+  and says so. Fan-in is covered by (a) and (c); `cycle` only by (c), since the slice has no flagged cycle.
+- **M2 nothing on allow: passed** (0 approved payments with a motif reason in the slice, none
+  in the fixture).
+- **M3 scores unchanged: passed.** The two `parity_dump 20000 100000` dumps are byte-identical once the motif reason
+  object is deleted from this branch's lines.
+- **M4 small overhead: passed.** The pass alone takes 0.92 microseconds on average per flagged
+  payment (slowest 2.42), against the bound of 50
+  (`examples/motif_bench`).
+- **Limits.** Memory mode only: the Redis live path and the streaming workers return no reasons at all, and the motif
+  pass would need the windows of other accounts, which is extra Redis round trips per payment. Chains longer than two
+  hops and cycles longer than three are not named. The motif says what shape the payment completes, not that the shape
+  is laundering: fan-out is common among ordinary payers. Read strictly, the pre-registered rule (all four pass, else
+  do not ship) is not met because of the failed clause in (b); the change is in an open pull request so that call
+  stays with the reviewer.
+
+**8aa. CI and an end-to-end benchmark of the Rust server.** Hardening, independent of the motif work (8z).
+(1) `.github/workflows/ci.yml` runs on pushes and pull requests to `main`: `cargo clippy --workspace --all-targets --
+-D warnings` and `cargo test --release --workspace` on a pinned toolchain, with cargo caching and actions pinned to
+commit SHAs. The Redis tests start their own `redis-server`, so CI installs the binary rather than a service container
+(which they would not use) and fails if they report skipping. `cargo fmt --check` is left out: the code is not
+rustfmt-clean, and reformatting every file would bury real changes in one diff.
+(2) The only load test was of the retired Python server (`results/load_test.json`). `examples/e2e_bench` drives the
+real Rust binary over HTTP, both the payment route and the signed webhook, in memory and with Redis, and writes
+`results/e2e_bench.json`. On one 4-CPU container: `/api/v2/payment` at concurrency 1 runs 1,979.86 requests per
+second with p95 1.51 ms; the webhook at concurrency 32 runs 1,961.23 per second (p95 23.6 ms) in memory and
+1,146.63 (p95 35.41 ms) with Redis; with Redis at concurrency 1 its p95 is 1.06 ms. Client, server and Redis share the
+CPUs and there is no network or TLS, so this is a floor for one instance, not a Vercel or production figure
+(`docs/SCALING.md`, section 3b).
+
+**8z-followup. A fan-in check the mule fixture could not give: pre-registration.** Written and committed before the
+check was run. Clause M1(b) of 8z failed as recorded in 8z-result (the served engine approves every deposit of
+`fixtures/mule_replay.json`); that record stands unchanged. This is a new, separate check of the same reason code on a
+fixture where deposits can be raised: `fixtures/mule_fanin.json`, eight victims of one lure campaign each paying one
+mule account six minutes apart, each deposit sent to `/api/v2/assess` with the lure the victim received and consent
+given (the lure is the one already in `mule_replay.json`). There are no forwards, so fan-in is the only motif a deposit
+can complete. The engine, thresholds, scoring and context rules are used as served; nothing is changed to make it fire.
+Expectation, tested by `fan_in_fixture_names_fan_in_on_held_deposits` in `crates/rusetect-server/tests/motifs.rs`:
+- **F1.** Every deposit whose final decision is not Approve carries exactly the oracle's motifs: `fan_in` from the
+  fourth distinct payer on, nothing before.
+- **F2.** No approved deposit carries a motif reason.
+- **F3.** At least one non-approved deposit carries `fan_in`.
+If the engine approves every deposit, or holds only the first three, F3 fails; that is recorded here as the outcome and
+the test is kept as a record of current behaviour, not tuned until it passes.
+
+**8z-followup-result. Fan-in on held deposits: F1 and F3 passed; F2 was not exercised.** Pre-registered in fba1620
+and run once on the engine as served (`results/motif_fanin.json`, written by the test). The first run stopped before
+any assertion because the test sent the payment nested under a `payment` key, which `/api/v2/assess` rejects; the
+fields were moved to the top level of the request, as the API takes them, and nothing else changed. Of the 8
+deposits, 8 were not approved and 5 of those carry `fan_in`: deposits 1 to 3 are step-up verification with no motif,
+deposits 4 to 8 are held for an analyst with `fan_in`, exactly the oracle's motifs (F1, F3). The cascade itself holds
+deposit 4 and steps up deposits 3, 5, 6, 7 and 8; the context layer (the lure plus the `fan_in_4plus` graph check)
+raises the rest. F2 holds trivially: no deposit was approved, so this fixture does not test "nothing on allow"; that
+stays covered by 8z (a) and (b). The 8z-result record of the failed M1(b) clause is unchanged; this shows the reason
+code firing on held fan-in deposits, not that the original clause passed. The lure carries most of the weight here, so
+it says nothing about how often a real mule's deposits are held without a message.
+
+**8ab. Phase D pilot pack, as documents only.** From the execution plan's phase D (threat model, shadow-mode
+configuration, pilot proposal) and its 90-day targets (one organisation willing to discuss a controlled shadow
+evaluation; a documented security and data-handling plan with no claim of certification). Four files, no code change,
+nothing run: `docs/THREAT_MODEL.md` (STRIDE over the components as they are, with the file that holds each control and
+the open gaps: public demo mode, no external penetration test, no dependency scan in CI, Upstash and the webhook
+secret not configured on the public deployment, a consortium that is simulated inside one process);
+`docs/PILOT_PROPOSAL.md` (a one-page shadow pilot built from `docs/PILOT.md` and `docs/live.md`, with success metrics
+agreed before results are read and an explicit list of what is not claimed; the price is left to the user);
+`docs/OUTREACH.md` (an email template and an NDA, data terms and DPDP Act checklist, marked as not legal advice); and
+`docs/HOLDOUT_PREREG_DRAFT.md` (a draft rule for a fresh holdout, on a new AMLworld seed or the unused AMLSim
+generator, awaiting the user's approval and not run). No metric is typed into them; they point to the files in
+`results/` and `research/out/`.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

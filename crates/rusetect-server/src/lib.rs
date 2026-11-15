@@ -498,6 +498,9 @@ fn score_with_context(s: &mut AppState, p: &Payment) -> Result<Map<String, Value
     }
     let mut res = eng.score_payment(p);
     s.lures.apply_to_payment(p, &mut res);
+    if res["decision"] != "Approve" {
+        s.engine.as_ref().unwrap().add_motif_reason(p, &mut res); // a lure may have raised an approved payment
+    }
     Ok(res)
 }
 
@@ -534,7 +537,7 @@ fn assess(s: &mut AppState, a: &AssessIn, d: &Payment) -> ApiResult {
     let flagged_payers = s.coord.flagged_payers(&payee, d.tmin);
     let shared = s.consortium.check("mule_account", &payee);
     let shared_flag = shared["flagged"].as_bool().unwrap_or(false);
-    let pay = score_with_context(s, d)?;
+    let mut pay = score_with_context(s, d)?;
     let msg = a.message.as_deref().filter(|m| !m.is_empty());
     let mm = match (a.consent, msg, s.messages.as_ref()) {
         (true, Some(m), Some(model)) => Some(model.score(m)),
@@ -554,6 +557,9 @@ fn assess(s: &mut AppState, a: &AssessIn, d: &Payment) -> ApiResult {
     let comb = ctx::combine(&decision, &c);
     let final_decision = comb["final_decision"].as_str().unwrap().to_string();
     s.coord.record(&sender, &payee, d.tmin, ctx::payment_rank(&final_decision));
+    if final_decision != "Approve" {
+        s.engine.as_ref().unwrap().add_motif_reason(d, &mut pay); // the context layer may have raised an approved payment
+    }
     let mut out = Map::new();
     let mut pv = Map::new();
     for k in ["l1_score", "layer_exit", "risk", "decision", "reasons", "case_id", "latency_ms"] {

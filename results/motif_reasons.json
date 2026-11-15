@@ -1,0 +1,17 @@
+{
+  "slice": "demo_stream.csv.gz: 100000 payments of history, then 20000 scored",
+  "scored": 20000,
+  "flagged": 734,
+  "flagged_with_motif": 337,
+  "approved_with_motif": 0,
+  "motif_counts": {
+    "fan_in": 73,
+    "pass_through": 15,
+    "fan_out": 250,
+    "scatter_gather": 1
+  },
+  "motif_pass_mean_us": 0.92,
+  "motif_pass_max_us": 2.42,
+  "bound_mean_us": 50.0,
+  "within_bound": true
+}

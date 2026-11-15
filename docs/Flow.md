@@ -53,6 +53,7 @@ rate_limit (middleware)                       per-client token bucket; X-Forward
          │       ├─ band_for_risk             verify / hold / block on the hardened thresholds (thresholds())
          │       ├─ reasons                   only for flagged payments: SHAP of the model that set the risk
          │       │                            (cascade_reasons or free_reasons) plus a "repeated payments" chip
+         │       ├─ add_motif_reason          flagged only: the temporal motif the payment completes (motif_reason)
          │       └─ link                      case graph when the band is high
          └─ lures.apply_to_payment            a recent risky message can raise (never lower) the decision
 ```

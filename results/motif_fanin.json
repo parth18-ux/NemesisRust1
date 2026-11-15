@@ -1,0 +1,75 @@
+{
+  "fixture": "fixtures/mule_fanin.json",
+  "check": "docs/decision.md 8z-followup",
+  "deposits": 8,
+  "not_approved": 8,
+  "not_approved_with_fan_in": 5,
+  "per_deposit": [
+    {
+      "deposit": 1,
+      "final_decision": "Step-up verification",
+      "payment_decision": "Approve",
+      "context_band": "MEDIUM",
+      "motifs": []
+    },
+    {
+      "deposit": 2,
+      "final_decision": "Step-up verification",
+      "payment_decision": "Approve",
+      "context_band": "MEDIUM",
+      "motifs": []
+    },
+    {
+      "deposit": 3,
+      "final_decision": "Step-up verification",
+      "payment_decision": "Step-up verification",
+      "context_band": "MEDIUM",
+      "motifs": []
+    },
+    {
+      "deposit": 4,
+      "final_decision": "Hold for analyst",
+      "payment_decision": "Hold for analyst",
+      "context_band": "HIGH",
+      "motifs": [
+        "fan_in"
+      ]
+    },
+    {
+      "deposit": 5,
+      "final_decision": "Hold for analyst",
+      "payment_decision": "Step-up verification",
+      "context_band": "HIGH",
+      "motifs": [
+        "fan_in"
+      ]
+    },
+    {
+      "deposit": 6,
+      "final_decision": "Hold for analyst",
+      "payment_decision": "Step-up verification",
+      "context_band": "HIGH",
+      "motifs": [
+        "fan_in"
+      ]
+    },
+    {
+      "deposit": 7,
+      "final_decision": "Hold for analyst",
+      "payment_decision": "Step-up verification",
+      "context_band": "HIGH",
+      "motifs": [
+        "fan_in"
+      ]
+    },
+    {
+      "deposit": 8,
+      "final_decision": "Hold for analyst",
+      "payment_decision": "Step-up verification",
+      "context_band": "HIGH",
+      "motifs": [
+        "fan_in"
+      ]
+    }
+  ]
+}

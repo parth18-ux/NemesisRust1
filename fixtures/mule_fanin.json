@@ -1,0 +1,7 @@
+{
+ "note": "Fictional fan-in fixture for docs/decision.md 8z-followup: eight victims of one lure campaign each pay the same mule account within an hour, and each deposit is assessed with the lure the victim received (consent given), as a bank would see an authorised push payment scam. No forwards, so the only motif the deposits can complete is fan-in. Amounts in Rupee, format ACH. The lure is the one already in fixtures/mule_replay.json.",
+ "start": "2022-09-10 10:00", "gap_minutes": 6,
+ "mule": {"bank": "0210", "account": "MULE02"},
+ "deposits_inr": [8800, 13500, 10200, 16000, 9700, 12400, 15200, 11100],
+ "lure": "The finance office has revised the vendor details. Please remit the balance to the replacement beneficiary ahead of the afternoon cutoff."
+}
