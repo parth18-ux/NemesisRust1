@@ -97,7 +97,9 @@ and 24 hour payer-to-payee aggregation against split payments (four-part block r
 [research/out/structuring_defence.json](research/out/structuring_defence.json)).
 
 The [model card](docs/MODEL_CARD.md) lists intended use, measured performance, robustness and known limits; the
-[pilot protocol](docs/PILOT.md) is how a bank can measure it on its own data in shadow mode.
+[pilot protocol](docs/PILOT.md) is how a bank can measure it on its own data in shadow mode, the
+[pilot onboarding guide](docs/PILOT_ONBOARDING.md) is how its engineers connect to it, and the
+[demo script](docs/DEMO_SCRIPT.md) is a five-minute walkthrough with the known limits.
 
 ## Quick start
 
