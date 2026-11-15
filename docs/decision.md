@@ -481,6 +481,18 @@ Expectation, tested by `fan_in_fixture_names_fan_in_on_held_deposits` in `crates
 If the engine approves every deposit, or holds only the first three, F3 fails; that is recorded here as the outcome and
 the test is kept as a record of current behaviour, not tuned until it passes.
 
+**8z-followup-result. Fan-in on held deposits: F1 and F3 passed; F2 was not exercised.** Pre-registered in fba1620
+and run once on the engine as served (`results/motif_fanin.json`, written by the test). The first run stopped before
+any assertion because the test sent the payment nested under a `payment` key, which `/api/v2/assess` rejects; the
+fields were moved to the top level of the request, as the API takes them, and nothing else changed. Of the 8
+deposits, 8 were not approved and 5 of those carry `fan_in`: deposits 1 to 3 are step-up verification with no motif,
+deposits 4 to 8 are held for an analyst with `fan_in`, exactly the oracle's motifs (F1, F3). The cascade itself holds
+deposit 4 and steps up deposits 3, 5, 6, 7 and 8; the context layer (the lure plus the `fan_in_4plus` graph check)
+raises the rest. F2 holds trivially: no deposit was approved, so this fixture does not test "nothing on allow"; that
+stays covered by 8z (a) and (b). The 8z-result record of the failed M1(b) clause is unchanged; this shows the reason
+code firing on held fan-in deposits, not that the original clause passed. The lure carries most of the weight here, so
+it says nothing about how often a real mule's deposits are held without a message.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

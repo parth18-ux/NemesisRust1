@@ -194,18 +194,18 @@ async fn fan_in_fixture_names_fan_in_on_held_deposits() {
     std::env::set_var("RUSETECT_RATE_LIMIT", "1000000");
     let app = rusetect_server::build_app(rusetect_server::new_shared());
     let f: Value = serde_json::from_str(&std::fs::read_to_string(paths::repo_root().join("fixtures/mule_fanin.json")).unwrap()).unwrap();
-    let (mut held, mut held_fan) = (0, 0);
+    let (mut held, mut held_fan, mut rows) = (0, 0, Vec::new());
     for (i, amt) in f["deposits_inr"].as_array().unwrap().iter().enumerate() {
         let t = i as i64 * f["gap_minutes"].as_i64().unwrap();
-        let payment = json!({"timestamp": format!("2022-09-10 {:02}:{:02}", 10 + t / 60, t % 60), "from_bank": format!("02{:02}", i + 1),
+        let body = json!({"timestamp": format!("2022-09-10 {:02}:{:02}", 10 + t / 60, t % 60), "from_bank": format!("02{:02}", i + 1),
             "from_account": format!("W{:02}", i + 1), "to_bank": f["mule"]["bank"], "to_account": f["mule"]["account"],
-            "amount_paid": amt, "payment_currency": "Rupee", "payment_format": "ACH"});
-        let body = json!({"payment": payment, "message": f["lure"], "consent": true});
+            "amount_paid": amt, "payment_currency": "Rupee", "payment_format": "ACH", "message": f["lure"], "consent": true});
         let req = Request::builder().method("POST").uri("/api/v2/assess").header("content-type", "application/json").body(Body::from(body.to_string())).unwrap();
         let bytes = app.clone().oneshot(req).await.unwrap().into_body().collect().await.unwrap().to_bytes();
         let r: Value = serde_json::from_slice(&bytes).unwrap();
         let got = motifs(&r["payment"]["reasons"]);
-        eprintln!("deposit {}: {} (payment {}, context {}) motifs {got:?}", i + 1, r["final_decision"], r["payment"]["decision"], r["context_band"]);
+        rows.push(json!({"deposit": i + 1, "final_decision": r["final_decision"], "payment_decision": r["payment"]["decision"],
+                         "context_band": r["context_band"], "motifs": got}));
         if r["final_decision"] == "Approve" {
             assert!(got.is_empty(), "deposit {}: motif reason on an approved payment", i + 1);
             continue;
@@ -215,6 +215,8 @@ async fn fan_in_fixture_names_fan_in_on_held_deposits() {
         assert_eq!(got, want, "deposit {}: {}", i + 1, r["final_decision"]);
         held_fan += !want.is_empty() as usize;
     }
-    eprintln!("not approved {held}, of which carry fan_in {held_fan}");
+    let out = json!({"fixture": "fixtures/mule_fanin.json", "check": "docs/decision.md 8z-followup", "deposits": rows.len(),
+                     "not_approved": held, "not_approved_with_fan_in": held_fan, "per_deposit": rows});
+    std::fs::write(paths::repo_root().join("results/motif_fanin.json"), serde_json::to_string_pretty(&out).unwrap() + "\n").unwrap();
     assert!(held_fan > 0, "no non-approved deposit carried fan_in (not approved: {held})");
 }
