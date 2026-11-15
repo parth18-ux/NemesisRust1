@@ -293,6 +293,9 @@ fn decide(s: &mut AppState, ev: &Event, d: &rusetect::payment::Payment, seq: u64
             let mut p = d.clone();
             p.eid = Some(eid_of(&ev.id));
             let r = du.run(&eng.cfg, true, |st| score_one(eng, st, &p)).map_err(store_err)?;
+            if let Some(m) = s.drift.as_mut() {
+                m.observe(r["risk"].as_f64(), r["payment_decision"].as_str().unwrap_or(""), None); // no features on this path
+            }
             (json!({"final_decision": r["final_decision"], "payment_decision": r["payment_decision"], "risk": r["risk"],
                     "context_band": r["context_band"], "context": {"ruleset": RULESET_VERSION}}), None, json!([]))
         }

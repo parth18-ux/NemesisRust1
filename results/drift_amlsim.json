@@ -1,0 +1,345 @@
+{
+ "script": "research/drift_replay.py",
+ "prereg": "docs/decision.md 8ag",
+ "stream": "amlsim_aml.csv",
+ "stream_sha256": "67c816706990711e348c4eb3a593e9e0b58bc0216300e651db0bdaeed2e5c214",
+ "rows": 200689,
+ "observed_from_row": 171841,
+ "window": 250000,
+ "expected": "alert",
+ "result": "alert",
+ "as_expected": true,
+ "replay": {
+  "observed": 28848,
+  "check_every": 10000,
+  "windows": {
+   "10000": {
+    "checks": 2,
+    "check_status": {
+     "ok": 0,
+     "warn": 0,
+     "alert": 2
+    },
+    "per_check": [
+     {
+      "last_row": 181840,
+      "status": "alert",
+      "score_psi": 3.5465,
+      "top_psi": {
+       "name": "cross_bank",
+       "psi": 11.7417
+      },
+      "reasons": [
+       "score PSI 3.546 >= 0.25",
+       "log_usd PSI 3.760 >= 0.25",
+       "fmt_code PSI 8.756 >= 0.25",
+       "cur_code PSI 4.684 >= 0.25",
+       "cross_bank PSI 11.742 >= 0.25",
+       "verify rate 21.98x the reference",
+       "hold rate 53.33x the reference",
+       "block rate 219.81x the reference"
+      ]
+     },
+     {
+      "last_row": 191840,
+      "status": "alert",
+      "score_psi": 3.4901,
+      "top_psi": {
+       "name": "cross_bank",
+       "psi": 11.7417
+      },
+      "reasons": [
+       "score PSI 3.490 >= 0.25",
+       "log_usd PSI 3.780 >= 0.25",
+       "fmt_code PSI 8.756 >= 0.25",
+       "cur_code PSI 4.684 >= 0.25",
+       "cross_bank PSI 11.742 >= 0.25",
+       "verify rate 22.21x the reference",
+       "hold rate 57.03x the reference",
+       "block rate 191.14x the reference"
+      ]
+     }
+    ],
+    "final": {
+     "status": "alert",
+     "warming_up": false,
+     "reasons": [
+      "score PSI 3.443 >= 0.25",
+      "log_usd PSI 3.717 >= 0.25",
+      "fmt_code PSI 8.756 >= 0.25",
+      "cur_code PSI 4.684 >= 0.25",
+      "cross_bank PSI 11.742 >= 0.25",
+      "verify rate 22.07x the reference",
+      "hold rate 57.47x the reference",
+      "block rate 185.59x the reference"
+     ],
+     "window": {
+      "size": 10000,
+      "capacity": 10000,
+      "min_size": 1000
+     },
+     "score_psi": 3.4428,
+     "score": {
+      "n": 10000,
+      "psi": 3.4428,
+      "status": "alert"
+     },
+     "features": {
+      "log_usd": {
+       "n": 10000,
+       "psi": 3.717,
+       "status": "alert"
+      },
+      "fmt_code": {
+       "n": 10000,
+       "psi": 8.756,
+       "status": "alert"
+      },
+      "cur_code": {
+       "n": 10000,
+       "psi": 4.6835,
+       "status": "alert"
+      },
+      "cross_bank": {
+       "n": 10000,
+       "psi": 11.7417,
+       "status": "alert"
+      },
+      "round_100": {
+       "n": 10000,
+       "psi": 0.0001,
+       "status": "ok"
+      }
+     },
+     "bands": {
+      "verify": {
+       "rate": 0.2219,
+       "reference": 0.010055,
+       "ratio": 22.0686,
+       "checked": true,
+       "status": "alert"
+      },
+      "hold": {
+       "rate": 0.2208,
+       "reference": 0.003842,
+       "ratio": 57.4701,
+       "checked": true,
+       "status": "alert"
+      },
+      "block": {
+       "rate": 0.2305,
+       "reference": 0.001242,
+       "ratio": 185.5878,
+       "checked": true,
+       "status": "alert"
+      }
+     },
+     "top_psi": {
+      "name": "cross_bank",
+      "psi": 11.7417
+     },
+     "thresholds": {
+      "psi_warn": 0.1,
+      "psi_alert": 0.25,
+      "rate_ratio_warn": 2.0,
+      "rate_ratio_alert": 3.0,
+      "min_expected_band_count": 10.0
+     },
+     "reference": "HI-Small validation (rows 3,047,007 to 4,062,675); test not read"
+    }
+   },
+   "50000": {
+    "checks": 0,
+    "check_status": {
+     "ok": 0,
+     "warn": 0,
+     "alert": 0
+    },
+    "per_check": [],
+    "final": {
+     "status": "alert",
+     "warming_up": false,
+     "reasons": [
+      "score PSI 3.490 >= 0.25",
+      "log_usd PSI 3.747 >= 0.25",
+      "fmt_code PSI 8.756 >= 0.25",
+      "cur_code PSI 4.684 >= 0.25",
+      "cross_bank PSI 11.742 >= 0.25",
+      "verify rate 22.07x the reference",
+      "hold rate 55.85x the reference",
+      "block rate 199.33x the reference"
+     ],
+     "window": {
+      "size": 28848,
+      "capacity": 50000,
+      "min_size": 1000
+     },
+     "score_psi": 3.4896,
+     "score": {
+      "n": 28848,
+      "psi": 3.4896,
+      "status": "alert"
+     },
+     "features": {
+      "log_usd": {
+       "n": 28848,
+       "psi": 3.7472,
+       "status": "alert"
+      },
+      "fmt_code": {
+       "n": 28848,
+       "psi": 8.756,
+       "status": "alert"
+      },
+      "cur_code": {
+       "n": 28848,
+       "psi": 4.6835,
+       "status": "alert"
+      },
+      "cross_bank": {
+       "n": 28848,
+       "psi": 11.7417,
+       "status": "alert"
+      },
+      "round_100": {
+       "n": 28848,
+       "psi": 0.0,
+       "status": "ok"
+      }
+     },
+     "bands": {
+      "verify": {
+       "rate": 0.2219,
+       "reference": 0.010055,
+       "ratio": 22.0708,
+       "checked": true,
+       "status": "alert"
+      },
+      "hold": {
+       "rate": 0.2146,
+       "reference": 0.003842,
+       "ratio": 55.8493,
+       "checked": true,
+       "status": "alert"
+      },
+      "block": {
+       "rate": 0.2476,
+       "reference": 0.001242,
+       "ratio": 199.3345,
+       "checked": true,
+       "status": "alert"
+      }
+     },
+     "top_psi": {
+      "name": "cross_bank",
+      "psi": 11.7417
+     },
+     "thresholds": {
+      "psi_warn": 0.1,
+      "psi_alert": 0.25,
+      "rate_ratio_warn": 2.0,
+      "rate_ratio_alert": 3.0,
+      "min_expected_band_count": 10.0
+     },
+     "reference": "HI-Small validation (rows 3,047,007 to 4,062,675); test not read"
+    }
+   },
+   "250000": {
+    "checks": 0,
+    "check_status": {
+     "ok": 0,
+     "warn": 0,
+     "alert": 0
+    },
+    "per_check": [],
+    "final": {
+     "status": "alert",
+     "warming_up": false,
+     "reasons": [
+      "score PSI 3.490 >= 0.25",
+      "log_usd PSI 3.747 >= 0.25",
+      "fmt_code PSI 8.756 >= 0.25",
+      "cur_code PSI 4.684 >= 0.25",
+      "cross_bank PSI 11.742 >= 0.25",
+      "verify rate 22.07x the reference",
+      "hold rate 55.85x the reference",
+      "block rate 199.33x the reference"
+     ],
+     "window": {
+      "size": 28848,
+      "capacity": 250000,
+      "min_size": 1000
+     },
+     "score_psi": 3.4896,
+     "score": {
+      "n": 28848,
+      "psi": 3.4896,
+      "status": "alert"
+     },
+     "features": {
+      "log_usd": {
+       "n": 28848,
+       "psi": 3.7472,
+       "status": "alert"
+      },
+      "fmt_code": {
+       "n": 28848,
+       "psi": 8.756,
+       "status": "alert"
+      },
+      "cur_code": {
+       "n": 28848,
+       "psi": 4.6835,
+       "status": "alert"
+      },
+      "cross_bank": {
+       "n": 28848,
+       "psi": 11.7417,
+       "status": "alert"
+      },
+      "round_100": {
+       "n": 28848,
+       "psi": 0.0,
+       "status": "ok"
+      }
+     },
+     "bands": {
+      "verify": {
+       "rate": 0.2219,
+       "reference": 0.010055,
+       "ratio": 22.0708,
+       "checked": true,
+       "status": "alert"
+      },
+      "hold": {
+       "rate": 0.2146,
+       "reference": 0.003842,
+       "ratio": 55.8493,
+       "checked": true,
+       "status": "alert"
+      },
+      "block": {
+       "rate": 0.2476,
+       "reference": 0.001242,
+       "ratio": 199.3345,
+       "checked": true,
+       "status": "alert"
+      }
+     },
+     "top_psi": {
+      "name": "cross_bank",
+      "psi": 11.7417
+     },
+     "thresholds": {
+      "psi_warn": 0.1,
+      "psi_alert": 0.25,
+      "rate_ratio_warn": 2.0,
+      "rate_ratio_alert": 3.0,
+      "min_expected_band_count": 10.0
+     },
+     "reference": "HI-Small validation (rows 3,047,007 to 4,062,675); test not read"
+    }
+   }
+  }
+ }
+}

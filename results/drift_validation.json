@@ -1,0 +1,7413 @@
+{
+ "script": "research/drift_replay.py",
+ "split": "HI-Small validation (rows 3,047,007 to 4,062,675); test not parsed",
+ "rule": "served default window = the smallest size with no alert check with full history; else 10,000",
+ "full_history": {
+  "observed": 1015669,
+  "check_every": 10000,
+  "windows": {
+   "10000": {
+    "checks": 101,
+    "check_status": {
+     "ok": 64,
+     "warn": 26,
+     "alert": 11
+    },
+    "per_check": [
+     {
+      "last_row": 3057006,
+      "status": "warn",
+      "score_psi": 0.0074,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0074
+      },
+      "reasons": [
+       "verify rate 2.70x the reference",
+       "block rate 2.01x the reference"
+      ]
+     },
+     {
+      "last_row": 3067006,
+      "status": "warn",
+      "score_psi": 0.0072,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0072
+      },
+      "reasons": [
+       "verify rate 2.52x the reference",
+       "block rate 2.25x the reference"
+      ]
+     },
+     {
+      "last_row": 3077006,
+      "status": "warn",
+      "score_psi": 0.0023,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0058
+      },
+      "reasons": [
+       "verify rate 2.07x the reference"
+      ]
+     },
+     {
+      "last_row": 3087006,
+      "status": "warn",
+      "score_psi": 0.0064,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0064
+      },
+      "reasons": [
+       "verify rate 2.05x the reference"
+      ]
+     },
+     {
+      "last_row": 3097006,
+      "status": "ok",
+      "score_psi": 0.005,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.005
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3107006,
+      "status": "warn",
+      "score_psi": 0.009,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.009
+      },
+      "reasons": [
+       "block rate 2.01x the reference"
+      ]
+     },
+     {
+      "last_row": 3117006,
+      "status": "ok",
+      "score_psi": 0.0105,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0105
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3127006,
+      "status": "ok",
+      "score_psi": 0.0144,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0144
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3137006,
+      "status": "ok",
+      "score_psi": 0.0174,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0174
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3147006,
+      "status": "warn",
+      "score_psi": 0.0212,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0212
+      },
+      "reasons": [
+       "block rate 2.01x the reference"
+      ]
+     },
+     {
+      "last_row": 3157006,
+      "status": "ok",
+      "score_psi": 0.0258,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0258
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3167006,
+      "status": "ok",
+      "score_psi": 0.0409,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0409
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3177006,
+      "status": "ok",
+      "score_psi": 0.0441,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0441
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3187006,
+      "status": "ok",
+      "score_psi": 0.0444,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0444
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3197006,
+      "status": "ok",
+      "score_psi": 0.0567,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0567
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3207006,
+      "status": "ok",
+      "score_psi": 0.0713,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0713
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3217006,
+      "status": "ok",
+      "score_psi": 0.0654,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0654
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3227006,
+      "status": "ok",
+      "score_psi": 0.0788,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0788
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3237006,
+      "status": "ok",
+      "score_psi": 0.0786,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0786
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3247006,
+      "status": "warn",
+      "score_psi": 0.1026,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1026
+      },
+      "reasons": [
+       "score PSI 0.103 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3257006,
+      "status": "alert",
+      "score_psi": 0.2197,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.5017
+      },
+      "reasons": [
+       "score PSI 0.220 >= 0.1",
+       "log_usd PSI 0.502 >= 0.25",
+       "fmt_code PSI 0.419 >= 0.25",
+       "block rate 0.32x the reference"
+      ]
+     },
+     {
+      "last_row": 3267006,
+      "status": "alert",
+      "score_psi": 0.3066,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.7507
+      },
+      "reasons": [
+       "score PSI 0.307 >= 0.25",
+       "log_usd PSI 0.751 >= 0.25",
+       "fmt_code PSI 0.681 >= 0.25",
+       "hold rate 0.34x the reference",
+       "block rate 0.08x the reference"
+      ]
+     },
+     {
+      "last_row": 3277006,
+      "status": "alert",
+      "score_psi": 0.0515,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.2833
+      },
+      "reasons": [
+       "log_usd PSI 0.283 >= 0.25",
+       "fmt_code PSI 0.235 >= 0.1",
+       "block rate 0.48x the reference"
+      ]
+     },
+     {
+      "last_row": 3287006,
+      "status": "alert",
+      "score_psi": 0.3658,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3658
+      },
+      "reasons": [
+       "score PSI 0.366 >= 0.25"
+      ]
+     },
+     {
+      "last_row": 3297006,
+      "status": "alert",
+      "score_psi": 0.3211,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3211
+      },
+      "reasons": [
+       "score PSI 0.321 >= 0.25"
+      ]
+     },
+     {
+      "last_row": 3307006,
+      "status": "alert",
+      "score_psi": 0.3066,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3066
+      },
+      "reasons": [
+       "score PSI 0.307 >= 0.25"
+      ]
+     },
+     {
+      "last_row": 3317006,
+      "status": "alert",
+      "score_psi": 0.2664,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2664
+      },
+      "reasons": [
+       "score PSI 0.266 >= 0.25"
+      ]
+     },
+     {
+      "last_row": 3327006,
+      "status": "warn",
+      "score_psi": 0.2313,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2313
+      },
+      "reasons": [
+       "score PSI 0.231 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3337006,
+      "status": "warn",
+      "score_psi": 0.2037,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2037
+      },
+      "reasons": [
+       "score PSI 0.204 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3347006,
+      "status": "warn",
+      "score_psi": 0.1789,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1789
+      },
+      "reasons": [
+       "score PSI 0.179 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3357006,
+      "status": "warn",
+      "score_psi": 0.1611,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1611
+      },
+      "reasons": [
+       "score PSI 0.161 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3367006,
+      "status": "warn",
+      "score_psi": 0.1391,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1391
+      },
+      "reasons": [
+       "score PSI 0.139 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3377006,
+      "status": "warn",
+      "score_psi": 0.1145,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1145
+      },
+      "reasons": [
+       "score PSI 0.115 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3387006,
+      "status": "ok",
+      "score_psi": 0.0955,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0955
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3397006,
+      "status": "ok",
+      "score_psi": 0.0977,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0977
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3407006,
+      "status": "ok",
+      "score_psi": 0.0872,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0872
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3417006,
+      "status": "ok",
+      "score_psi": 0.075,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.075
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3427006,
+      "status": "warn",
+      "score_psi": 0.0568,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0568
+      },
+      "reasons": [
+       "block rate 2.25x the reference"
+      ]
+     },
+     {
+      "last_row": 3437006,
+      "status": "ok",
+      "score_psi": 0.0361,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0361
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3447006,
+      "status": "ok",
+      "score_psi": 0.0382,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0382
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3457006,
+      "status": "ok",
+      "score_psi": 0.0393,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0393
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3467006,
+      "status": "ok",
+      "score_psi": 0.0209,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0209
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3477006,
+      "status": "ok",
+      "score_psi": 0.0168,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0168
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3487006,
+      "status": "ok",
+      "score_psi": 0.0126,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0126
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3497006,
+      "status": "warn",
+      "score_psi": 0.0088,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0088
+      },
+      "reasons": [
+       "block rate 2.09x the reference"
+      ]
+     },
+     {
+      "last_row": 3507006,
+      "status": "ok",
+      "score_psi": 0.0047,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0047
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3517006,
+      "status": "warn",
+      "score_psi": 0.0052,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0052
+      },
+      "reasons": [
+       "block rate 2.09x the reference"
+      ]
+     },
+     {
+      "last_row": 3527006,
+      "status": "ok",
+      "score_psi": 0.0018,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0044
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3537006,
+      "status": "ok",
+      "score_psi": 0.0008,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0033
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3547006,
+      "status": "ok",
+      "score_psi": 0.0016,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0044
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3557006,
+      "status": "ok",
+      "score_psi": 0.0033,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.007
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3567006,
+      "status": "ok",
+      "score_psi": 0.004,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.004
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3577006,
+      "status": "ok",
+      "score_psi": 0.004,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0047
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3587006,
+      "status": "ok",
+      "score_psi": 0.0123,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0123
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3597006,
+      "status": "ok",
+      "score_psi": 0.0132,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0132
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3607006,
+      "status": "ok",
+      "score_psi": 0.0216,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0216
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3617006,
+      "status": "ok",
+      "score_psi": 0.0177,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0177
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3627006,
+      "status": "ok",
+      "score_psi": 0.0275,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0275
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3637006,
+      "status": "ok",
+      "score_psi": 0.026,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.026
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3647006,
+      "status": "ok",
+      "score_psi": 0.046,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.046
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3657006,
+      "status": "warn",
+      "score_psi": 0.056,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.056
+      },
+      "reasons": [
+       "verify rate 0.42x the reference"
+      ]
+     },
+     {
+      "last_row": 3667006,
+      "status": "ok",
+      "score_psi": 0.0565,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0565
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3677006,
+      "status": "ok",
+      "score_psi": 0.0595,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0595
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3687006,
+      "status": "ok",
+      "score_psi": 0.0737,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0737
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3697006,
+      "status": "ok",
+      "score_psi": 0.088,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.088
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3707006,
+      "status": "ok",
+      "score_psi": 0.0995,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0995
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3717006,
+      "status": "warn",
+      "score_psi": 0.115,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.115
+      },
+      "reasons": [
+       "score PSI 0.115 >= 0.1",
+       "verify rate 0.39x the reference"
+      ]
+     },
+     {
+      "last_row": 3727006,
+      "status": "warn",
+      "score_psi": 0.1261,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1261
+      },
+      "reasons": [
+       "score PSI 0.126 >= 0.1",
+       "verify rate 0.34x the reference"
+      ]
+     },
+     {
+      "last_row": 3737006,
+      "status": "warn",
+      "score_psi": 0.1873,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.2275
+      },
+      "reasons": [
+       "score PSI 0.187 >= 0.1",
+       "log_usd PSI 0.228 >= 0.1",
+       "fmt_code PSI 0.174 >= 0.1",
+       "verify rate 0.44x the reference",
+       "hold rate 0.36x the reference"
+      ]
+     },
+     {
+      "last_row": 3747006,
+      "status": "alert",
+      "score_psi": 0.3912,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.7653
+      },
+      "reasons": [
+       "score PSI 0.391 >= 0.25",
+       "log_usd PSI 0.765 >= 0.25",
+       "fmt_code PSI 0.662 >= 0.25",
+       "hold rate 0.26x the reference",
+       "block rate 0.24x the reference"
+      ]
+     },
+     {
+      "last_row": 3757006,
+      "status": "alert",
+      "score_psi": 0.287,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.6299
+      },
+      "reasons": [
+       "score PSI 0.287 >= 0.25",
+       "log_usd PSI 0.630 >= 0.25",
+       "fmt_code PSI 0.540 >= 0.25",
+       "hold rate 0.36x the reference",
+       "block rate 0.00x the reference"
+      ]
+     },
+     {
+      "last_row": 3767006,
+      "status": "alert",
+      "score_psi": 0.2585,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2585
+      },
+      "reasons": [
+       "score PSI 0.259 >= 0.25"
+      ]
+     },
+     {
+      "last_row": 3777006,
+      "status": "warn",
+      "score_psi": 0.2037,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2037
+      },
+      "reasons": [
+       "score PSI 0.204 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3787006,
+      "status": "warn",
+      "score_psi": 0.173,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.173
+      },
+      "reasons": [
+       "score PSI 0.173 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3797006,
+      "status": "warn",
+      "score_psi": 0.1608,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1608
+      },
+      "reasons": [
+       "score PSI 0.161 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3807006,
+      "status": "warn",
+      "score_psi": 0.126,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.126
+      },
+      "reasons": [
+       "score PSI 0.126 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3817006,
+      "status": "alert",
+      "score_psi": 0.1288,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1288
+      },
+      "reasons": [
+       "score PSI 0.129 >= 0.1",
+       "block rate 0.24x the reference"
+      ]
+     },
+     {
+      "last_row": 3827006,
+      "status": "warn",
+      "score_psi": 0.1015,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1015
+      },
+      "reasons": [
+       "score PSI 0.102 >= 0.1",
+       "block rate 0.40x the reference"
+      ]
+     },
+     {
+      "last_row": 3837006,
+      "status": "ok",
+      "score_psi": 0.0797,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0797
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3847006,
+      "status": "ok",
+      "score_psi": 0.0646,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0646
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3857006,
+      "status": "ok",
+      "score_psi": 0.0485,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0485
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3867006,
+      "status": "ok",
+      "score_psi": 0.0489,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0489
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3877006,
+      "status": "ok",
+      "score_psi": 0.0347,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0347
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3887006,
+      "status": "ok",
+      "score_psi": 0.0237,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0237
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3897006,
+      "status": "ok",
+      "score_psi": 0.0185,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0185
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3907006,
+      "status": "ok",
+      "score_psi": 0.0126,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0126
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3917006,
+      "status": "ok",
+      "score_psi": 0.0121,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0121
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3927006,
+      "status": "ok",
+      "score_psi": 0.0051,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0058
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3937006,
+      "status": "ok",
+      "score_psi": 0.0032,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0055
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3947006,
+      "status": "ok",
+      "score_psi": 0.0032,
+      "top_psi": {
+       "name": "fmt_code",
+       "psi": 0.0042
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3957006,
+      "status": "ok",
+      "score_psi": 0.0024,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0042
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3967006,
+      "status": "ok",
+      "score_psi": 0.003,
+      "top_psi": {
+       "name": "fmt_code",
+       "psi": 0.0036
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3977006,
+      "status": "ok",
+      "score_psi": 0.0024,
+      "top_psi": {
+       "name": "cur_code",
+       "psi": 0.0044
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3987006,
+      "status": "ok",
+      "score_psi": 0.0022,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0065
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3997006,
+      "status": "warn",
+      "score_psi": 0.0054,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.009
+      },
+      "reasons": [
+       "block rate 2.42x the reference"
+      ]
+     },
+     {
+      "last_row": 4007006,
+      "status": "ok",
+      "score_psi": 0.0134,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0134
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4017006,
+      "status": "ok",
+      "score_psi": 0.0173,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0173
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4027006,
+      "status": "ok",
+      "score_psi": 0.0275,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0275
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4037006,
+      "status": "ok",
+      "score_psi": 0.0307,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0307
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4047006,
+      "status": "ok",
+      "score_psi": 0.0347,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0347
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4057006,
+      "status": "ok",
+      "score_psi": 0.0497,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0497
+      },
+      "reasons": []
+     }
+    ],
+    "final": {
+     "status": "ok",
+     "warming_up": false,
+     "reasons": [],
+     "window": {
+      "size": 10000,
+      "capacity": 10000,
+      "min_size": 1000
+     },
+     "score_psi": 0.0538,
+     "score": {
+      "n": 10000,
+      "psi": 0.0538,
+      "status": "ok"
+     },
+     "features": {
+      "log_usd": {
+       "n": 10000,
+       "psi": 0.0029,
+       "status": "ok"
+      },
+      "fmt_code": {
+       "n": 10000,
+       "psi": 0.0039,
+       "status": "ok"
+      },
+      "cur_code": {
+       "n": 10000,
+       "psi": 0.0025,
+       "status": "ok"
+      },
+      "cross_bank": {
+       "n": 10000,
+       "psi": 0.0,
+       "status": "ok"
+      },
+      "round_100": {
+       "n": 10000,
+       "psi": 0.0,
+       "status": "ok"
+      }
+     },
+     "bands": {
+      "verify": {
+       "rate": 0.0053,
+       "reference": 0.010055,
+       "ratio": 0.5271,
+       "checked": true,
+       "status": "ok"
+      },
+      "hold": {
+       "rate": 0.0028,
+       "reference": 0.003842,
+       "ratio": 0.7288,
+       "checked": true,
+       "status": "ok"
+      },
+      "block": {
+       "rate": 0.0014,
+       "reference": 0.001242,
+       "ratio": 1.1272,
+       "checked": true,
+       "status": "ok"
+      }
+     },
+     "top_psi": {
+      "name": "score",
+      "psi": 0.0538
+     },
+     "thresholds": {
+      "psi_warn": 0.1,
+      "psi_alert": 0.25,
+      "rate_ratio_warn": 2.0,
+      "rate_ratio_alert": 3.0,
+      "min_expected_band_count": 10.0
+     },
+     "reference": "HI-Small validation (rows 3,047,007 to 4,062,675); test not read"
+    }
+   },
+   "50000": {
+    "checks": 97,
+    "check_status": {
+     "ok": 71,
+     "warn": 24,
+     "alert": 2
+    },
+    "per_check": [
+     {
+      "last_row": 3097006,
+      "status": "warn",
+      "score_psi": 0.0044,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0044
+      },
+      "reasons": [
+       "verify rate 2.24x the reference"
+      ]
+     },
+     {
+      "last_row": 3107006,
+      "status": "warn",
+      "score_psi": 0.0042,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0042
+      },
+      "reasons": [
+       "verify rate 2.05x the reference"
+      ]
+     },
+     {
+      "last_row": 3117006,
+      "status": "ok",
+      "score_psi": 0.0049,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0049
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3127006,
+      "status": "ok",
+      "score_psi": 0.0077,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0077
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3137006,
+      "status": "ok",
+      "score_psi": 0.0101,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0101
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3147006,
+      "status": "ok",
+      "score_psi": 0.0135,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0135
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3157006,
+      "status": "ok",
+      "score_psi": 0.0169,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0169
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3167006,
+      "status": "ok",
+      "score_psi": 0.0221,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0221
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3177006,
+      "status": "ok",
+      "score_psi": 0.0281,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0281
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3187006,
+      "status": "ok",
+      "score_psi": 0.0338,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0338
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3197006,
+      "status": "ok",
+      "score_psi": 0.0409,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0409
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3207006,
+      "status": "ok",
+      "score_psi": 0.0504,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0504
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3217006,
+      "status": "ok",
+      "score_psi": 0.0552,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0552
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3227006,
+      "status": "ok",
+      "score_psi": 0.062,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.062
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3237006,
+      "status": "ok",
+      "score_psi": 0.0695,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0695
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3247006,
+      "status": "ok",
+      "score_psi": 0.0784,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0784
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3257006,
+      "status": "ok",
+      "score_psi": 0.0973,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0973
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3267006,
+      "status": "warn",
+      "score_psi": 0.133,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.133
+      },
+      "reasons": [
+       "score PSI 0.133 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3277006,
+      "status": "warn",
+      "score_psi": 0.12,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.1768
+      },
+      "reasons": [
+       "score PSI 0.120 >= 0.1",
+       "log_usd PSI 0.177 >= 0.1",
+       "fmt_code PSI 0.141 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3287006,
+      "status": "warn",
+      "score_psi": 0.0528,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.1783
+      },
+      "reasons": [
+       "log_usd PSI 0.178 >= 0.1",
+       "fmt_code PSI 0.143 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3297006,
+      "status": "warn",
+      "score_psi": 0.0255,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.1787
+      },
+      "reasons": [
+       "log_usd PSI 0.179 >= 0.1",
+       "fmt_code PSI 0.143 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3307006,
+      "status": "ok",
+      "score_psi": 0.0338,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0753
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3317006,
+      "status": "warn",
+      "score_psi": 0.1385,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1385
+      },
+      "reasons": [
+       "score PSI 0.138 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3327006,
+      "status": "alert",
+      "score_psi": 0.294,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.294
+      },
+      "reasons": [
+       "score PSI 0.294 >= 0.25"
+      ]
+     },
+     {
+      "last_row": 3337006,
+      "status": "alert",
+      "score_psi": 0.262,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.262
+      },
+      "reasons": [
+       "score PSI 0.262 >= 0.25"
+      ]
+     },
+     {
+      "last_row": 3347006,
+      "status": "warn",
+      "score_psi": 0.2329,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2329
+      },
+      "reasons": [
+       "score PSI 0.233 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3357006,
+      "status": "warn",
+      "score_psi": 0.205,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.205
+      },
+      "reasons": [
+       "score PSI 0.205 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3367006,
+      "status": "warn",
+      "score_psi": 0.18,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.18
+      },
+      "reasons": [
+       "score PSI 0.180 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3377006,
+      "status": "warn",
+      "score_psi": 0.1568,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1568
+      },
+      "reasons": [
+       "score PSI 0.157 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3387006,
+      "status": "warn",
+      "score_psi": 0.1351,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1351
+      },
+      "reasons": [
+       "score PSI 0.135 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3397006,
+      "status": "warn",
+      "score_psi": 0.1191,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1191
+      },
+      "reasons": [
+       "score PSI 0.119 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3407006,
+      "status": "warn",
+      "score_psi": 0.1052,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1052
+      },
+      "reasons": [
+       "score PSI 0.105 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3417006,
+      "status": "ok",
+      "score_psi": 0.0927,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0927
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3427006,
+      "status": "ok",
+      "score_psi": 0.0807,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0807
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3437006,
+      "status": "ok",
+      "score_psi": 0.0675,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0675
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3447006,
+      "status": "ok",
+      "score_psi": 0.0561,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0561
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3457006,
+      "status": "ok",
+      "score_psi": 0.0473,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0473
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3467006,
+      "status": "ok",
+      "score_psi": 0.0367,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0367
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3477006,
+      "status": "ok",
+      "score_psi": 0.0289,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0289
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3487006,
+      "status": "ok",
+      "score_psi": 0.0238,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0238
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3497006,
+      "status": "ok",
+      "score_psi": 0.0175,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0175
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3507006,
+      "status": "ok",
+      "score_psi": 0.0113,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0113
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3517006,
+      "status": "ok",
+      "score_psi": 0.0085,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0085
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3527006,
+      "status": "ok",
+      "score_psi": 0.0053,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0053
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3537006,
+      "status": "ok",
+      "score_psi": 0.0028,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0028
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3547006,
+      "status": "ok",
+      "score_psi": 0.0016,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0024
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3557006,
+      "status": "ok",
+      "score_psi": 0.001,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0035
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3567006,
+      "status": "ok",
+      "score_psi": 0.0006,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0033
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3577006,
+      "status": "ok",
+      "score_psi": 0.0016,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0035
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3587006,
+      "status": "ok",
+      "score_psi": 0.0033,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0035
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3597006,
+      "status": "ok",
+      "score_psi": 0.0057,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0057
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3607006,
+      "status": "ok",
+      "score_psi": 0.0094,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0094
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3617006,
+      "status": "ok",
+      "score_psi": 0.0124,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0124
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3627006,
+      "status": "ok",
+      "score_psi": 0.0175,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0175
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3637006,
+      "status": "ok",
+      "score_psi": 0.0202,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0202
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3647006,
+      "status": "ok",
+      "score_psi": 0.0265,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0265
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3657006,
+      "status": "ok",
+      "score_psi": 0.0327,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0327
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3667006,
+      "status": "ok",
+      "score_psi": 0.0407,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0407
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3677006,
+      "status": "ok",
+      "score_psi": 0.0473,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0473
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3687006,
+      "status": "ok",
+      "score_psi": 0.0576,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0576
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3697006,
+      "status": "ok",
+      "score_psi": 0.0658,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0658
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3707006,
+      "status": "ok",
+      "score_psi": 0.074,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.074
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3717006,
+      "status": "ok",
+      "score_psi": 0.0854,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0854
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3727006,
+      "status": "ok",
+      "score_psi": 0.0988,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0988
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3737006,
+      "status": "warn",
+      "score_psi": 0.1174,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1174
+      },
+      "reasons": [
+       "score PSI 0.117 >= 0.1",
+       "verify rate 0.48x the reference"
+      ]
+     },
+     {
+      "last_row": 3747006,
+      "status": "warn",
+      "score_psi": 0.1579,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1579
+      },
+      "reasons": [
+       "score PSI 0.158 >= 0.1",
+       "verify rate 0.45x the reference"
+      ]
+     },
+     {
+      "last_row": 3757006,
+      "status": "warn",
+      "score_psi": 0.1921,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1921
+      },
+      "reasons": [
+       "score PSI 0.192 >= 0.1",
+       "log_usd PSI 0.186 >= 0.1",
+       "fmt_code PSI 0.143 >= 0.1",
+       "verify rate 0.48x the reference",
+       "block rate 0.42x the reference"
+      ]
+     },
+     {
+      "last_row": 3767006,
+      "status": "warn",
+      "score_psi": 0.0996,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.1865
+      },
+      "reasons": [
+       "log_usd PSI 0.187 >= 0.1",
+       "fmt_code PSI 0.145 >= 0.1",
+       "block rate 0.43x the reference"
+      ]
+     },
+     {
+      "last_row": 3777006,
+      "status": "warn",
+      "score_psi": 0.045,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.1863
+      },
+      "reasons": [
+       "log_usd PSI 0.186 >= 0.1",
+       "fmt_code PSI 0.145 >= 0.1",
+       "hold rate 0.50x the reference",
+       "block rate 0.43x the reference"
+      ]
+     },
+     {
+      "last_row": 3787006,
+      "status": "warn",
+      "score_psi": 0.0148,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.1123
+      },
+      "reasons": [
+       "log_usd PSI 0.112 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3797006,
+      "status": "ok",
+      "score_psi": 0.0411,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0411
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3807006,
+      "status": "warn",
+      "score_psi": 0.1795,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1795
+      },
+      "reasons": [
+       "score PSI 0.179 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3817006,
+      "status": "warn",
+      "score_psi": 0.156,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.156
+      },
+      "reasons": [
+       "score PSI 0.156 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3827006,
+      "status": "warn",
+      "score_psi": 0.1357,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1357
+      },
+      "reasons": [
+       "score PSI 0.136 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3837006,
+      "status": "warn",
+      "score_psi": 0.1167,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1167
+      },
+      "reasons": [
+       "score PSI 0.117 >= 0.1"
+      ]
+     },
+     {
+      "last_row": 3847006,
+      "status": "ok",
+      "score_psi": 0.0976,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0976
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3857006,
+      "status": "ok",
+      "score_psi": 0.0812,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0812
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3867006,
+      "status": "ok",
+      "score_psi": 0.0665,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0665
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3877006,
+      "status": "ok",
+      "score_psi": 0.0533,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0533
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3887006,
+      "status": "ok",
+      "score_psi": 0.0421,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0421
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3897006,
+      "status": "ok",
+      "score_psi": 0.0326,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0326
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3907006,
+      "status": "ok",
+      "score_psi": 0.0251,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0251
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3917006,
+      "status": "ok",
+      "score_psi": 0.0185,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0185
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3927006,
+      "status": "ok",
+      "score_psi": 0.0127,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0127
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3937006,
+      "status": "ok",
+      "score_psi": 0.0088,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0088
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3947006,
+      "status": "ok",
+      "score_psi": 0.0057,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0057
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3957006,
+      "status": "ok",
+      "score_psi": 0.0031,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0037
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3967006,
+      "status": "ok",
+      "score_psi": 0.0015,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0034
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3977006,
+      "status": "ok",
+      "score_psi": 0.0016,
+      "top_psi": {
+       "name": "fmt_code",
+       "psi": 0.0029
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3987006,
+      "status": "ok",
+      "score_psi": 0.0019,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0031
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3997006,
+      "status": "ok",
+      "score_psi": 0.0026,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0039
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4007006,
+      "status": "ok",
+      "score_psi": 0.0041,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0046
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4017006,
+      "status": "ok",
+      "score_psi": 0.0061,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0061
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4027006,
+      "status": "ok",
+      "score_psi": 0.0107,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0107
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4037006,
+      "status": "ok",
+      "score_psi": 0.0168,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0168
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4047006,
+      "status": "ok",
+      "score_psi": 0.0235,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0235
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4057006,
+      "status": "ok",
+      "score_psi": 0.0306,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0306
+      },
+      "reasons": []
+     }
+    ],
+    "final": {
+     "status": "ok",
+     "warming_up": false,
+     "reasons": [],
+     "window": {
+      "size": 50000,
+      "capacity": 50000,
+      "min_size": 1000
+     },
+     "score_psi": 0.0364,
+     "score": {
+      "n": 50000,
+      "psi": 0.0364,
+      "status": "ok"
+     },
+     "features": {
+      "log_usd": {
+       "n": 50000,
+       "psi": 0.0037,
+       "status": "ok"
+      },
+      "fmt_code": {
+       "n": 50000,
+       "psi": 0.0019,
+       "status": "ok"
+      },
+      "cur_code": {
+       "n": 50000,
+       "psi": 0.0006,
+       "status": "ok"
+      },
+      "cross_bank": {
+       "n": 50000,
+       "psi": 0.0001,
+       "status": "ok"
+      },
+      "round_100": {
+       "n": 50000,
+       "psi": 0.0,
+       "status": "ok"
+      }
+     },
+     "bands": {
+      "verify": {
+       "rate": 0.0064,
+       "reference": 0.010055,
+       "ratio": 0.6385,
+       "checked": true,
+       "status": "ok"
+      },
+      "hold": {
+       "rate": 0.0033,
+       "reference": 0.003842,
+       "ratio": 0.8589,
+       "checked": true,
+       "status": "ok"
+      },
+      "block": {
+       "rate": 0.0016,
+       "reference": 0.001242,
+       "ratio": 1.2721,
+       "checked": true,
+       "status": "ok"
+      }
+     },
+     "top_psi": {
+      "name": "score",
+      "psi": 0.0364
+     },
+     "thresholds": {
+      "psi_warn": 0.1,
+      "psi_alert": 0.25,
+      "rate_ratio_warn": 2.0,
+      "rate_ratio_alert": 3.0,
+      "min_expected_band_count": 10.0
+     },
+     "reference": "HI-Small validation (rows 3,047,007 to 4,062,675); test not read"
+    }
+   },
+   "250000": {
+    "checks": 77,
+    "check_status": {
+     "ok": 77,
+     "warn": 0,
+     "alert": 0
+    },
+    "per_check": [
+     {
+      "last_row": 3297006,
+      "status": "ok",
+      "score_psi": 0.0171,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0171
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3307006,
+      "status": "ok",
+      "score_psi": 0.0134,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0134
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3317006,
+      "status": "ok",
+      "score_psi": 0.0104,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0104
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3327006,
+      "status": "ok",
+      "score_psi": 0.0079,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0079
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3337006,
+      "status": "ok",
+      "score_psi": 0.0056,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0056
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3347006,
+      "status": "ok",
+      "score_psi": 0.004,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.004
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3357006,
+      "status": "ok",
+      "score_psi": 0.0027,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0031
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3367006,
+      "status": "ok",
+      "score_psi": 0.002,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0032
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3377006,
+      "status": "ok",
+      "score_psi": 0.0017,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0033
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3387006,
+      "status": "ok",
+      "score_psi": 0.0019,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0034
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3397006,
+      "status": "ok",
+      "score_psi": 0.0029,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0035
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3407006,
+      "status": "ok",
+      "score_psi": 0.0043,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0043
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3417006,
+      "status": "ok",
+      "score_psi": 0.0066,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0066
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3427006,
+      "status": "ok",
+      "score_psi": 0.0094,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0094
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3437006,
+      "status": "ok",
+      "score_psi": 0.0126,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0126
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3447006,
+      "status": "ok",
+      "score_psi": 0.0166,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0166
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3457006,
+      "status": "ok",
+      "score_psi": 0.0218,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0218
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3467006,
+      "status": "ok",
+      "score_psi": 0.0269,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0269
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3477006,
+      "status": "ok",
+      "score_psi": 0.0328,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0328
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3487006,
+      "status": "ok",
+      "score_psi": 0.0392,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0392
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3497006,
+      "status": "ok",
+      "score_psi": 0.0464,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0464
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3507006,
+      "status": "ok",
+      "score_psi": 0.0574,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0574
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3517006,
+      "status": "ok",
+      "score_psi": 0.0726,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0726
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3527006,
+      "status": "ok",
+      "score_psi": 0.0778,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0778
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3537006,
+      "status": "ok",
+      "score_psi": 0.0657,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0657
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3547006,
+      "status": "ok",
+      "score_psi": 0.0553,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0553
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3557006,
+      "status": "ok",
+      "score_psi": 0.0458,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0458
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3567006,
+      "status": "ok",
+      "score_psi": 0.0368,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0368
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3577006,
+      "status": "ok",
+      "score_psi": 0.0294,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0294
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3587006,
+      "status": "ok",
+      "score_psi": 0.0227,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0227
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3597006,
+      "status": "ok",
+      "score_psi": 0.0171,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0171
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3607006,
+      "status": "ok",
+      "score_psi": 0.0122,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0122
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3617006,
+      "status": "ok",
+      "score_psi": 0.0084,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0084
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3627006,
+      "status": "ok",
+      "score_psi": 0.0054,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0054
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3637006,
+      "status": "ok",
+      "score_psi": 0.0032,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0033
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3647006,
+      "status": "ok",
+      "score_psi": 0.0016,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0034
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3657006,
+      "status": "ok",
+      "score_psi": 0.0009,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0033
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3667006,
+      "status": "ok",
+      "score_psi": 0.0009,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0034
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3677006,
+      "status": "ok",
+      "score_psi": 0.0016,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0033
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3687006,
+      "status": "ok",
+      "score_psi": 0.003,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0033
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3697006,
+      "status": "ok",
+      "score_psi": 0.0052,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0052
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3707006,
+      "status": "ok",
+      "score_psi": 0.0083,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0083
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3717006,
+      "status": "ok",
+      "score_psi": 0.0119,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0119
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3727006,
+      "status": "ok",
+      "score_psi": 0.0162,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0162
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3737006,
+      "status": "ok",
+      "score_psi": 0.0216,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0216
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3747006,
+      "status": "ok",
+      "score_psi": 0.0293,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0293
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3757006,
+      "status": "ok",
+      "score_psi": 0.0369,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0369
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3767006,
+      "status": "ok",
+      "score_psi": 0.0323,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0323
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3777006,
+      "status": "ok",
+      "score_psi": 0.028,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.028
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3787006,
+      "status": "ok",
+      "score_psi": 0.0239,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0239
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3797006,
+      "status": "ok",
+      "score_psi": 0.0203,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0203
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3807006,
+      "status": "ok",
+      "score_psi": 0.0169,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0169
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3817006,
+      "status": "ok",
+      "score_psi": 0.0136,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0136
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3827006,
+      "status": "ok",
+      "score_psi": 0.0109,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0109
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3837006,
+      "status": "ok",
+      "score_psi": 0.0084,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0084
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3847006,
+      "status": "ok",
+      "score_psi": 0.0064,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0064
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3857006,
+      "status": "ok",
+      "score_psi": 0.0045,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0045
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3867006,
+      "status": "ok",
+      "score_psi": 0.0031,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0031
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3877006,
+      "status": "ok",
+      "score_psi": 0.0022,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0031
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3887006,
+      "status": "ok",
+      "score_psi": 0.0015,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0032
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3897006,
+      "status": "ok",
+      "score_psi": 0.0012,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0032
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3907006,
+      "status": "ok",
+      "score_psi": 0.0011,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0032
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3917006,
+      "status": "ok",
+      "score_psi": 0.0015,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0033
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3927006,
+      "status": "ok",
+      "score_psi": 0.0021,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0032
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3937006,
+      "status": "ok",
+      "score_psi": 0.0031,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0032
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3947006,
+      "status": "ok",
+      "score_psi": 0.0044,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0044
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3957006,
+      "status": "ok",
+      "score_psi": 0.0059,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0059
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3967006,
+      "status": "ok",
+      "score_psi": 0.0078,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0078
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3977006,
+      "status": "ok",
+      "score_psi": 0.0102,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0102
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3987006,
+      "status": "ok",
+      "score_psi": 0.0135,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0135
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 3997006,
+      "status": "ok",
+      "score_psi": 0.0199,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0199
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4007006,
+      "status": "ok",
+      "score_psi": 0.0259,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0259
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4017006,
+      "status": "ok",
+      "score_psi": 0.0188,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0188
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4027006,
+      "status": "ok",
+      "score_psi": 0.0132,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0132
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4037006,
+      "status": "ok",
+      "score_psi": 0.0089,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0089
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4047006,
+      "status": "ok",
+      "score_psi": 0.0054,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0054
+      },
+      "reasons": []
+     },
+     {
+      "last_row": 4057006,
+      "status": "ok",
+      "score_psi": 0.0031,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.0034
+      },
+      "reasons": []
+     }
+    ],
+    "final": {
+     "status": "ok",
+     "warming_up": false,
+     "reasons": [],
+     "window": {
+      "size": 250000,
+      "capacity": 250000,
+      "min_size": 1000
+     },
+     "score_psi": 0.002,
+     "score": {
+      "n": 250000,
+      "psi": 0.002,
+      "status": "ok"
+     },
+     "features": {
+      "log_usd": {
+       "n": 250000,
+       "psi": 0.0034,
+       "status": "ok"
+      },
+      "fmt_code": {
+       "n": 250000,
+       "psi": 0.002,
+       "status": "ok"
+      },
+      "cur_code": {
+       "n": 250000,
+       "psi": 0.0002,
+       "status": "ok"
+      },
+      "cross_bank": {
+       "n": 250000,
+       "psi": 0.0,
+       "status": "ok"
+      },
+      "round_100": {
+       "n": 250000,
+       "psi": 0.0,
+       "status": "ok"
+      }
+     },
+     "bands": {
+      "verify": {
+       "rate": 0.0072,
+       "reference": 0.010055,
+       "ratio": 0.7113,
+       "checked": true,
+       "status": "ok"
+      },
+      "hold": {
+       "rate": 0.0036,
+       "reference": 0.003842,
+       "ratio": 0.9318,
+       "checked": true,
+       "status": "ok"
+      },
+      "block": {
+       "rate": 0.0015,
+       "reference": 0.001242,
+       "ratio": 1.1916,
+       "checked": true,
+       "status": "ok"
+      }
+     },
+     "top_psi": {
+      "name": "log_usd",
+      "psi": 0.0034
+     },
+     "thresholds": {
+      "psi_warn": 0.1,
+      "psi_alert": 0.25,
+      "rate_ratio_warn": 2.0,
+      "rate_ratio_alert": 3.0,
+      "min_expected_band_count": 10.0
+     },
+     "reference": "HI-Small validation (rows 3,047,007 to 4,062,675); test not read"
+    }
+   }
+  }
+ },
+ "demo_history": {
+  "observed": 1015669,
+  "check_every": 10000,
+  "windows": {
+   "10000": {
+    "checks": 101,
+    "check_status": {
+     "ok": 0,
+     "warn": 0,
+     "alert": 101
+    },
+    "per_check": [
+     {
+      "last_row": 3057006,
+      "status": "alert",
+      "score_psi": 0.4769,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4769
+      },
+      "reasons": [
+       "score PSI 0.477 >= 0.25",
+       "verify rate 6.24x the reference",
+       "hold rate 11.09x the reference"
+      ]
+     },
+     {
+      "last_row": 3067006,
+      "status": "alert",
+      "score_psi": 0.4954,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4954
+      },
+      "reasons": [
+       "score PSI 0.495 >= 0.25",
+       "verify rate 6.14x the reference",
+       "hold rate 10.98x the reference"
+      ]
+     },
+     {
+      "last_row": 3077006,
+      "status": "alert",
+      "score_psi": 0.4722,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4722
+      },
+      "reasons": [
+       "score PSI 0.472 >= 0.25",
+       "verify rate 5.69x the reference",
+       "hold rate 9.47x the reference"
+      ]
+     },
+     {
+      "last_row": 3087006,
+      "status": "alert",
+      "score_psi": 0.4936,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4936
+      },
+      "reasons": [
+       "score PSI 0.494 >= 0.25",
+       "verify rate 5.23x the reference",
+       "hold rate 10.54x the reference"
+      ]
+     },
+     {
+      "last_row": 3097006,
+      "status": "alert",
+      "score_psi": 0.5296,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5296
+      },
+      "reasons": [
+       "score PSI 0.530 >= 0.25",
+       "verify rate 5.76x the reference",
+       "hold rate 11.43x the reference"
+      ]
+     },
+     {
+      "last_row": 3107006,
+      "status": "alert",
+      "score_psi": 0.5262,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5262
+      },
+      "reasons": [
+       "score PSI 0.526 >= 0.25",
+       "verify rate 5.41x the reference",
+       "hold rate 11.32x the reference"
+      ]
+     },
+     {
+      "last_row": 3117006,
+      "status": "alert",
+      "score_psi": 0.5497,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5497
+      },
+      "reasons": [
+       "score PSI 0.550 >= 0.25",
+       "verify rate 4.93x the reference",
+       "hold rate 11.53x the reference"
+      ]
+     },
+     {
+      "last_row": 3127006,
+      "status": "alert",
+      "score_psi": 0.5251,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5251
+      },
+      "reasons": [
+       "score PSI 0.525 >= 0.25",
+       "verify rate 5.69x the reference",
+       "hold rate 11.17x the reference"
+      ]
+     },
+     {
+      "last_row": 3137006,
+      "status": "alert",
+      "score_psi": 0.53,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.53
+      },
+      "reasons": [
+       "score PSI 0.530 >= 0.25",
+       "verify rate 6.16x the reference",
+       "hold rate 11.30x the reference"
+      ]
+     },
+     {
+      "last_row": 3147006,
+      "status": "alert",
+      "score_psi": 0.5527,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5527
+      },
+      "reasons": [
+       "score PSI 0.553 >= 0.25",
+       "verify rate 6.04x the reference",
+       "hold rate 11.14x the reference",
+       "block rate 2.17x the reference"
+      ]
+     },
+     {
+      "last_row": 3157006,
+      "status": "alert",
+      "score_psi": 0.5477,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5477
+      },
+      "reasons": [
+       "score PSI 0.548 >= 0.25",
+       "verify rate 5.98x the reference",
+       "hold rate 9.71x the reference"
+      ]
+     },
+     {
+      "last_row": 3167006,
+      "status": "alert",
+      "score_psi": 0.5156,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5156
+      },
+      "reasons": [
+       "score PSI 0.516 >= 0.25",
+       "verify rate 5.83x the reference",
+       "hold rate 9.40x the reference"
+      ]
+     },
+     {
+      "last_row": 3177006,
+      "status": "alert",
+      "score_psi": 0.5267,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5267
+      },
+      "reasons": [
+       "score PSI 0.527 >= 0.25",
+       "verify rate 5.77x the reference",
+       "hold rate 10.18x the reference"
+      ]
+     },
+     {
+      "last_row": 3187006,
+      "status": "alert",
+      "score_psi": 0.5465,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5465
+      },
+      "reasons": [
+       "score PSI 0.546 >= 0.25",
+       "verify rate 5.63x the reference",
+       "hold rate 9.68x the reference"
+      ]
+     },
+     {
+      "last_row": 3197006,
+      "status": "alert",
+      "score_psi": 0.5299,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5299
+      },
+      "reasons": [
+       "score PSI 0.530 >= 0.25",
+       "verify rate 5.47x the reference",
+       "hold rate 9.14x the reference"
+      ]
+     },
+     {
+      "last_row": 3207006,
+      "status": "alert",
+      "score_psi": 0.4866,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4866
+      },
+      "reasons": [
+       "score PSI 0.487 >= 0.25",
+       "verify rate 5.21x the reference",
+       "hold rate 8.93x the reference",
+       "block rate 0.32x the reference"
+      ]
+     },
+     {
+      "last_row": 3217006,
+      "status": "alert",
+      "score_psi": 0.6204,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6204
+      },
+      "reasons": [
+       "score PSI 0.620 >= 0.25",
+       "verify rate 5.02x the reference",
+       "hold rate 8.90x the reference"
+      ]
+     },
+     {
+      "last_row": 3227006,
+      "status": "alert",
+      "score_psi": 0.6571,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6571
+      },
+      "reasons": [
+       "score PSI 0.657 >= 0.25",
+       "verify rate 5.48x the reference",
+       "hold rate 8.62x the reference"
+      ]
+     },
+     {
+      "last_row": 3237006,
+      "status": "alert",
+      "score_psi": 0.749,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.749
+      },
+      "reasons": [
+       "score PSI 0.749 >= 0.25",
+       "verify rate 6.25x the reference",
+       "hold rate 7.37x the reference",
+       "block rate 0.32x the reference"
+      ]
+     },
+     {
+      "last_row": 3247006,
+      "status": "alert",
+      "score_psi": 0.748,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.748
+      },
+      "reasons": [
+       "score PSI 0.748 >= 0.25",
+       "verify rate 5.54x the reference",
+       "hold rate 5.49x the reference"
+      ]
+     },
+     {
+      "last_row": 3257006,
+      "status": "alert",
+      "score_psi": 0.1376,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.5017
+      },
+      "reasons": [
+       "score PSI 0.138 >= 0.1",
+       "log_usd PSI 0.502 >= 0.25",
+       "fmt_code PSI 0.419 >= 0.25",
+       "verify rate 4.68x the reference",
+       "hold rate 4.19x the reference"
+      ]
+     },
+     {
+      "last_row": 3267006,
+      "status": "alert",
+      "score_psi": 0.1526,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.7507
+      },
+      "reasons": [
+       "score PSI 0.153 >= 0.1",
+       "log_usd PSI 0.751 >= 0.25",
+       "fmt_code PSI 0.681 >= 0.25",
+       "verify rate 4.68x the reference",
+       "hold rate 5.08x the reference"
+      ]
+     },
+     {
+      "last_row": 3277006,
+      "status": "alert",
+      "score_psi": 0.1978,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.2833
+      },
+      "reasons": [
+       "score PSI 0.198 >= 0.1",
+       "log_usd PSI 0.283 >= 0.25",
+       "fmt_code PSI 0.235 >= 0.1",
+       "verify rate 6.76x the reference",
+       "hold rate 7.05x the reference"
+      ]
+     },
+     {
+      "last_row": 3287006,
+      "status": "alert",
+      "score_psi": 0.8025,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.8025
+      },
+      "reasons": [
+       "score PSI 0.803 >= 0.25",
+       "verify rate 10.27x the reference",
+       "hold rate 10.18x the reference"
+      ]
+     },
+     {
+      "last_row": 3297006,
+      "status": "alert",
+      "score_psi": 0.9218,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9218
+      },
+      "reasons": [
+       "score PSI 0.922 >= 0.25",
+       "verify rate 9.91x the reference",
+       "hold rate 10.78x the reference"
+      ]
+     },
+     {
+      "last_row": 3307006,
+      "status": "alert",
+      "score_psi": 0.9684,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9684
+      },
+      "reasons": [
+       "score PSI 0.968 >= 0.25",
+       "verify rate 10.00x the reference",
+       "hold rate 9.86x the reference"
+      ]
+     },
+     {
+      "last_row": 3317006,
+      "status": "alert",
+      "score_psi": 0.9456,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9456
+      },
+      "reasons": [
+       "score PSI 0.946 >= 0.25",
+       "verify rate 9.71x the reference",
+       "hold rate 9.63x the reference",
+       "block rate 2.50x the reference"
+      ]
+     },
+     {
+      "last_row": 3327006,
+      "status": "alert",
+      "score_psi": 0.9722,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9722
+      },
+      "reasons": [
+       "score PSI 0.972 >= 0.25",
+       "verify rate 9.85x the reference",
+       "hold rate 10.28x the reference"
+      ]
+     },
+     {
+      "last_row": 3337006,
+      "status": "alert",
+      "score_psi": 0.925,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.925
+      },
+      "reasons": [
+       "score PSI 0.925 >= 0.25",
+       "verify rate 9.23x the reference",
+       "hold rate 10.39x the reference"
+      ]
+     },
+     {
+      "last_row": 3347006,
+      "status": "alert",
+      "score_psi": 0.9322,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9322
+      },
+      "reasons": [
+       "score PSI 0.932 >= 0.25",
+       "verify rate 9.29x the reference",
+       "hold rate 10.62x the reference",
+       "block rate 2.09x the reference"
+      ]
+     },
+     {
+      "last_row": 3357006,
+      "status": "alert",
+      "score_psi": 0.9249,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9249
+      },
+      "reasons": [
+       "score PSI 0.925 >= 0.25",
+       "verify rate 9.46x the reference",
+       "hold rate 10.70x the reference"
+      ]
+     },
+     {
+      "last_row": 3367006,
+      "status": "alert",
+      "score_psi": 0.8974,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.8974
+      },
+      "reasons": [
+       "score PSI 0.897 >= 0.25",
+       "verify rate 9.08x the reference",
+       "hold rate 9.99x the reference"
+      ]
+     },
+     {
+      "last_row": 3377006,
+      "status": "alert",
+      "score_psi": 0.9336,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9336
+      },
+      "reasons": [
+       "score PSI 0.934 >= 0.25",
+       "verify rate 9.39x the reference",
+       "hold rate 8.95x the reference",
+       "block rate 2.09x the reference"
+      ]
+     },
+     {
+      "last_row": 3387006,
+      "status": "alert",
+      "score_psi": 0.923,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.923
+      },
+      "reasons": [
+       "score PSI 0.923 >= 0.25",
+       "verify rate 8.36x the reference",
+       "hold rate 11.11x the reference",
+       "block rate 2.74x the reference"
+      ]
+     },
+     {
+      "last_row": 3397006,
+      "status": "alert",
+      "score_psi": 0.9482,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9482
+      },
+      "reasons": [
+       "score PSI 0.948 >= 0.25",
+       "verify rate 10.01x the reference",
+       "hold rate 11.09x the reference",
+       "block rate 2.42x the reference"
+      ]
+     },
+     {
+      "last_row": 3407006,
+      "status": "alert",
+      "score_psi": 1.0062,
+      "top_psi": {
+       "name": "score",
+       "psi": 1.0062
+      },
+      "reasons": [
+       "score PSI 1.006 >= 0.25",
+       "verify rate 9.41x the reference",
+       "hold rate 10.12x the reference",
+       "block rate 2.01x the reference"
+      ]
+     },
+     {
+      "last_row": 3417006,
+      "status": "alert",
+      "score_psi": 0.9847,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9847
+      },
+      "reasons": [
+       "score PSI 0.985 >= 0.25",
+       "verify rate 9.29x the reference",
+       "hold rate 11.56x the reference"
+      ]
+     },
+     {
+      "last_row": 3427006,
+      "status": "alert",
+      "score_psi": 0.9255,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9255
+      },
+      "reasons": [
+       "score PSI 0.925 >= 0.25",
+       "verify rate 8.49x the reference",
+       "hold rate 9.99x the reference",
+       "block rate 3.06x the reference"
+      ]
+     },
+     {
+      "last_row": 3437006,
+      "status": "alert",
+      "score_psi": 0.9309,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9309
+      },
+      "reasons": [
+       "score PSI 0.931 >= 0.25",
+       "verify rate 9.28x the reference",
+       "hold rate 10.88x the reference",
+       "block rate 2.33x the reference"
+      ]
+     },
+     {
+      "last_row": 3447006,
+      "status": "alert",
+      "score_psi": 0.8254,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.8254
+      },
+      "reasons": [
+       "score PSI 0.825 >= 0.25",
+       "verify rate 8.61x the reference",
+       "hold rate 11.76x the reference",
+       "block rate 2.09x the reference"
+      ]
+     },
+     {
+      "last_row": 3457006,
+      "status": "alert",
+      "score_psi": 0.7902,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.7902
+      },
+      "reasons": [
+       "score PSI 0.790 >= 0.25",
+       "verify rate 8.88x the reference",
+       "hold rate 10.78x the reference",
+       "block rate 2.25x the reference"
+      ]
+     },
+     {
+      "last_row": 3467006,
+      "status": "alert",
+      "score_psi": 0.69,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.69
+      },
+      "reasons": [
+       "score PSI 0.690 >= 0.25",
+       "verify rate 8.75x the reference",
+       "hold rate 9.29x the reference",
+       "block rate 2.17x the reference"
+      ]
+     },
+     {
+      "last_row": 3477006,
+      "status": "alert",
+      "score_psi": 0.6555,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6555
+      },
+      "reasons": [
+       "score PSI 0.655 >= 0.25",
+       "verify rate 8.21x the reference",
+       "hold rate 9.58x the reference"
+      ]
+     },
+     {
+      "last_row": 3487006,
+      "status": "alert",
+      "score_psi": 0.6462,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6462
+      },
+      "reasons": [
+       "score PSI 0.646 >= 0.25",
+       "verify rate 8.49x the reference",
+       "hold rate 10.23x the reference",
+       "block rate 3.14x the reference"
+      ]
+     },
+     {
+      "last_row": 3497006,
+      "status": "alert",
+      "score_psi": 0.5817,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5817
+      },
+      "reasons": [
+       "score PSI 0.582 >= 0.25",
+       "verify rate 8.06x the reference",
+       "hold rate 8.49x the reference",
+       "block rate 2.74x the reference"
+      ]
+     },
+     {
+      "last_row": 3507006,
+      "status": "alert",
+      "score_psi": 0.5297,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5297
+      },
+      "reasons": [
+       "score PSI 0.530 >= 0.25",
+       "verify rate 7.95x the reference",
+       "hold rate 8.59x the reference",
+       "block rate 3.95x the reference"
+      ]
+     },
+     {
+      "last_row": 3517006,
+      "status": "alert",
+      "score_psi": 0.5607,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5607
+      },
+      "reasons": [
+       "score PSI 0.561 >= 0.25",
+       "verify rate 7.36x the reference",
+       "hold rate 8.90x the reference",
+       "block rate 2.98x the reference"
+      ]
+     },
+     {
+      "last_row": 3527006,
+      "status": "alert",
+      "score_psi": 0.4764,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4764
+      },
+      "reasons": [
+       "score PSI 0.476 >= 0.25",
+       "verify rate 7.32x the reference",
+       "hold rate 9.68x the reference",
+       "block rate 2.25x the reference"
+      ]
+     },
+     {
+      "last_row": 3537006,
+      "status": "alert",
+      "score_psi": 0.4604,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4604
+      },
+      "reasons": [
+       "score PSI 0.460 >= 0.25",
+       "verify rate 7.40x the reference",
+       "hold rate 9.24x the reference",
+       "block rate 2.50x the reference"
+      ]
+     },
+     {
+      "last_row": 3547006,
+      "status": "alert",
+      "score_psi": 0.4397,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4397
+      },
+      "reasons": [
+       "score PSI 0.440 >= 0.25",
+       "verify rate 7.23x the reference",
+       "hold rate 7.34x the reference",
+       "block rate 2.98x the reference"
+      ]
+     },
+     {
+      "last_row": 3557006,
+      "status": "alert",
+      "score_psi": 0.4403,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4403
+      },
+      "reasons": [
+       "score PSI 0.440 >= 0.25",
+       "verify rate 7.27x the reference",
+       "hold rate 8.51x the reference",
+       "block rate 3.22x the reference"
+      ]
+     },
+     {
+      "last_row": 3567006,
+      "status": "alert",
+      "score_psi": 0.3816,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3816
+      },
+      "reasons": [
+       "score PSI 0.382 >= 0.25",
+       "verify rate 7.30x the reference",
+       "hold rate 8.62x the reference"
+      ]
+     },
+     {
+      "last_row": 3577006,
+      "status": "alert",
+      "score_psi": 0.3843,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3843
+      },
+      "reasons": [
+       "score PSI 0.384 >= 0.25",
+       "verify rate 6.98x the reference",
+       "hold rate 7.21x the reference",
+       "block rate 3.30x the reference"
+      ]
+     },
+     {
+      "last_row": 3587006,
+      "status": "alert",
+      "score_psi": 0.3574,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3574
+      },
+      "reasons": [
+       "score PSI 0.357 >= 0.25",
+       "verify rate 6.21x the reference",
+       "hold rate 6.51x the reference",
+       "block rate 2.01x the reference"
+      ]
+     },
+     {
+      "last_row": 3597006,
+      "status": "alert",
+      "score_psi": 0.3345,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3345
+      },
+      "reasons": [
+       "score PSI 0.334 >= 0.25",
+       "verify rate 6.09x the reference",
+       "hold rate 7.11x the reference",
+       "block rate 2.66x the reference"
+      ]
+     },
+     {
+      "last_row": 3607006,
+      "status": "alert",
+      "score_psi": 0.3,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3
+      },
+      "reasons": [
+       "score PSI 0.300 >= 0.25",
+       "verify rate 5.60x the reference",
+       "hold rate 6.14x the reference",
+       "block rate 2.33x the reference"
+      ]
+     },
+     {
+      "last_row": 3617006,
+      "status": "alert",
+      "score_psi": 0.3056,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3056
+      },
+      "reasons": [
+       "score PSI 0.306 >= 0.25",
+       "verify rate 6.05x the reference",
+       "hold rate 7.26x the reference"
+      ]
+     },
+     {
+      "last_row": 3627006,
+      "status": "alert",
+      "score_psi": 0.3077,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3077
+      },
+      "reasons": [
+       "score PSI 0.308 >= 0.25",
+       "verify rate 5.92x the reference",
+       "hold rate 8.51x the reference"
+      ]
+     },
+     {
+      "last_row": 3637006,
+      "status": "alert",
+      "score_psi": 0.2912,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2912
+      },
+      "reasons": [
+       "score PSI 0.291 >= 0.25",
+       "verify rate 6.04x the reference",
+       "hold rate 6.12x the reference"
+      ]
+     },
+     {
+      "last_row": 3647006,
+      "status": "alert",
+      "score_psi": 0.2741,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2741
+      },
+      "reasons": [
+       "score PSI 0.274 >= 0.25",
+       "verify rate 5.16x the reference",
+       "hold rate 6.30x the reference",
+       "block rate 2.25x the reference"
+      ]
+     },
+     {
+      "last_row": 3657006,
+      "status": "alert",
+      "score_psi": 0.247,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.247
+      },
+      "reasons": [
+       "score PSI 0.247 >= 0.1",
+       "verify rate 4.99x the reference",
+       "hold rate 6.98x the reference"
+      ]
+     },
+     {
+      "last_row": 3667006,
+      "status": "alert",
+      "score_psi": 0.2263,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2263
+      },
+      "reasons": [
+       "score PSI 0.226 >= 0.1",
+       "verify rate 4.99x the reference",
+       "hold rate 5.31x the reference"
+      ]
+     },
+     {
+      "last_row": 3677006,
+      "status": "alert",
+      "score_psi": 0.2213,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2213
+      },
+      "reasons": [
+       "score PSI 0.221 >= 0.1",
+       "verify rate 5.42x the reference",
+       "hold rate 4.69x the reference"
+      ]
+     },
+     {
+      "last_row": 3687006,
+      "status": "alert",
+      "score_psi": 0.2179,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2179
+      },
+      "reasons": [
+       "score PSI 0.218 >= 0.1",
+       "verify rate 4.65x the reference",
+       "hold rate 5.05x the reference"
+      ]
+     },
+     {
+      "last_row": 3697006,
+      "status": "alert",
+      "score_psi": 0.2116,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2116
+      },
+      "reasons": [
+       "score PSI 0.212 >= 0.1",
+       "verify rate 3.98x the reference",
+       "hold rate 4.53x the reference"
+      ]
+     },
+     {
+      "last_row": 3707006,
+      "status": "alert",
+      "score_psi": 0.2234,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2234
+      },
+      "reasons": [
+       "score PSI 0.223 >= 0.1",
+       "verify rate 3.78x the reference",
+       "hold rate 3.93x the reference"
+      ]
+     },
+     {
+      "last_row": 3717006,
+      "status": "alert",
+      "score_psi": 0.2432,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2432
+      },
+      "reasons": [
+       "score PSI 0.243 >= 0.1",
+       "verify rate 3.49x the reference",
+       "hold rate 4.24x the reference"
+      ]
+     },
+     {
+      "last_row": 3727006,
+      "status": "alert",
+      "score_psi": 0.2217,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2217
+      },
+      "reasons": [
+       "score PSI 0.222 >= 0.1",
+       "verify rate 2.99x the reference",
+       "hold rate 3.31x the reference",
+       "block rate 0.32x the reference"
+      ]
+     },
+     {
+      "last_row": 3737006,
+      "status": "alert",
+      "score_psi": 0.0901,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.2275
+      },
+      "reasons": [
+       "log_usd PSI 0.228 >= 0.1",
+       "fmt_code PSI 0.174 >= 0.1",
+       "verify rate 3.26x the reference",
+       "hold rate 2.45x the reference"
+      ]
+     },
+     {
+      "last_row": 3747006,
+      "status": "alert",
+      "score_psi": 0.1221,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.7653
+      },
+      "reasons": [
+       "score PSI 0.122 >= 0.1",
+       "log_usd PSI 0.765 >= 0.25",
+       "fmt_code PSI 0.662 >= 0.25",
+       "verify rate 4.01x the reference",
+       "hold rate 2.63x the reference",
+       "block rate 0.24x the reference"
+      ]
+     },
+     {
+      "last_row": 3757006,
+      "status": "alert",
+      "score_psi": 0.1016,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.6299
+      },
+      "reasons": [
+       "score PSI 0.102 >= 0.1",
+       "log_usd PSI 0.630 >= 0.25",
+       "fmt_code PSI 0.540 >= 0.25",
+       "verify rate 4.65x the reference",
+       "hold rate 2.71x the reference"
+      ]
+     },
+     {
+      "last_row": 3767006,
+      "status": "alert",
+      "score_psi": 0.6537,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6537
+      },
+      "reasons": [
+       "score PSI 0.654 >= 0.25",
+       "verify rate 9.58x the reference",
+       "hold rate 4.14x the reference"
+      ]
+     },
+     {
+      "last_row": 3777006,
+      "status": "alert",
+      "score_psi": 0.5765,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5765
+      },
+      "reasons": [
+       "score PSI 0.576 >= 0.25",
+       "verify rate 9.14x the reference",
+       "hold rate 4.11x the reference"
+      ]
+     },
+     {
+      "last_row": 3787006,
+      "status": "alert",
+      "score_psi": 0.4914,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4914
+      },
+      "reasons": [
+       "score PSI 0.491 >= 0.25",
+       "verify rate 9.17x the reference",
+       "hold rate 4.06x the reference"
+      ]
+     },
+     {
+      "last_row": 3797006,
+      "status": "alert",
+      "score_psi": 0.4674,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4674
+      },
+      "reasons": [
+       "score PSI 0.467 >= 0.25",
+       "verify rate 8.09x the reference",
+       "hold rate 3.28x the reference"
+      ]
+     },
+     {
+      "last_row": 3807006,
+      "status": "alert",
+      "score_psi": 0.46,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.46
+      },
+      "reasons": [
+       "score PSI 0.460 >= 0.25",
+       "verify rate 9.48x the reference",
+       "hold rate 3.36x the reference"
+      ]
+     },
+     {
+      "last_row": 3817006,
+      "status": "alert",
+      "score_psi": 0.4158,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4158
+      },
+      "reasons": [
+       "score PSI 0.416 >= 0.25",
+       "verify rate 8.49x the reference",
+       "hold rate 4.27x the reference"
+      ]
+     },
+     {
+      "last_row": 3827006,
+      "status": "alert",
+      "score_psi": 0.3597,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3597
+      },
+      "reasons": [
+       "score PSI 0.360 >= 0.25",
+       "verify rate 8.84x the reference",
+       "hold rate 3.57x the reference"
+      ]
+     },
+     {
+      "last_row": 3837006,
+      "status": "alert",
+      "score_psi": 0.3193,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3193
+      },
+      "reasons": [
+       "score PSI 0.319 >= 0.25",
+       "verify rate 8.22x the reference",
+       "hold rate 3.80x the reference"
+      ]
+     },
+     {
+      "last_row": 3847006,
+      "status": "alert",
+      "score_psi": 0.2924,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2924
+      },
+      "reasons": [
+       "score PSI 0.292 >= 0.25",
+       "verify rate 8.11x the reference",
+       "hold rate 3.36x the reference"
+      ]
+     },
+     {
+      "last_row": 3857006,
+      "status": "alert",
+      "score_psi": 0.2777,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2777
+      },
+      "reasons": [
+       "score PSI 0.278 >= 0.25",
+       "verify rate 8.17x the reference",
+       "hold rate 3.64x the reference"
+      ]
+     },
+     {
+      "last_row": 3867006,
+      "status": "alert",
+      "score_psi": 0.2581,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2581
+      },
+      "reasons": [
+       "score PSI 0.258 >= 0.25",
+       "verify rate 7.73x the reference",
+       "hold rate 3.51x the reference",
+       "block rate 0.48x the reference"
+      ]
+     },
+     {
+      "last_row": 3877006,
+      "status": "alert",
+      "score_psi": 0.2208,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2208
+      },
+      "reasons": [
+       "score PSI 0.221 >= 0.1",
+       "verify rate 8.13x the reference",
+       "hold rate 3.67x the reference"
+      ]
+     },
+     {
+      "last_row": 3887006,
+      "status": "alert",
+      "score_psi": 0.2174,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2174
+      },
+      "reasons": [
+       "score PSI 0.217 >= 0.1",
+       "verify rate 7.73x the reference",
+       "hold rate 3.90x the reference"
+      ]
+     },
+     {
+      "last_row": 3897006,
+      "status": "alert",
+      "score_psi": 0.1788,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1788
+      },
+      "reasons": [
+       "score PSI 0.179 >= 0.1",
+       "verify rate 7.55x the reference",
+       "hold rate 2.37x the reference"
+      ]
+     },
+     {
+      "last_row": 3907006,
+      "status": "alert",
+      "score_psi": 0.1742,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1742
+      },
+      "reasons": [
+       "score PSI 0.174 >= 0.1",
+       "verify rate 7.65x the reference",
+       "hold rate 3.07x the reference"
+      ]
+     },
+     {
+      "last_row": 3917006,
+      "status": "alert",
+      "score_psi": 0.1643,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1643
+      },
+      "reasons": [
+       "score PSI 0.164 >= 0.1",
+       "verify rate 7.37x the reference",
+       "hold rate 3.49x the reference"
+      ]
+     },
+     {
+      "last_row": 3927006,
+      "status": "alert",
+      "score_psi": 0.1495,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1495
+      },
+      "reasons": [
+       "score PSI 0.150 >= 0.1",
+       "verify rate 7.61x the reference",
+       "hold rate 2.58x the reference",
+       "block rate 0.40x the reference"
+      ]
+     },
+     {
+      "last_row": 3937006,
+      "status": "alert",
+      "score_psi": 0.1449,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1449
+      },
+      "reasons": [
+       "score PSI 0.145 >= 0.1",
+       "verify rate 7.54x the reference",
+       "hold rate 2.92x the reference"
+      ]
+     },
+     {
+      "last_row": 3947006,
+      "status": "alert",
+      "score_psi": 0.1274,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1274
+      },
+      "reasons": [
+       "score PSI 0.127 >= 0.1",
+       "verify rate 7.17x the reference",
+       "hold rate 3.28x the reference"
+      ]
+     },
+     {
+      "last_row": 3957006,
+      "status": "alert",
+      "score_psi": 0.1196,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1196
+      },
+      "reasons": [
+       "score PSI 0.120 >= 0.1",
+       "verify rate 7.41x the reference",
+       "hold rate 2.71x the reference"
+      ]
+     },
+     {
+      "last_row": 3967006,
+      "status": "alert",
+      "score_psi": 0.0978,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0978
+      },
+      "reasons": [
+       "verify rate 7.00x the reference",
+       "hold rate 2.47x the reference"
+      ]
+     },
+     {
+      "last_row": 3977006,
+      "status": "alert",
+      "score_psi": 0.0979,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0979
+      },
+      "reasons": [
+       "verify rate 6.84x the reference",
+       "hold rate 2.86x the reference"
+      ]
+     },
+     {
+      "last_row": 3987006,
+      "status": "alert",
+      "score_psi": 0.1073,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1073
+      },
+      "reasons": [
+       "score PSI 0.107 >= 0.1",
+       "verify rate 6.59x the reference",
+       "hold rate 3.10x the reference"
+      ]
+     },
+     {
+      "last_row": 3997006,
+      "status": "alert",
+      "score_psi": 0.0944,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0944
+      },
+      "reasons": [
+       "verify rate 7.33x the reference",
+       "hold rate 3.12x the reference"
+      ]
+     },
+     {
+      "last_row": 4007006,
+      "status": "alert",
+      "score_psi": 0.071,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.071
+      },
+      "reasons": [
+       "verify rate 6.27x the reference",
+       "hold rate 2.86x the reference"
+      ]
+     },
+     {
+      "last_row": 4017006,
+      "status": "alert",
+      "score_psi": 0.0775,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0775
+      },
+      "reasons": [
+       "verify rate 6.58x the reference",
+       "hold rate 2.84x the reference"
+      ]
+     },
+     {
+      "last_row": 4027006,
+      "status": "alert",
+      "score_psi": 0.07,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.07
+      },
+      "reasons": [
+       "verify rate 6.45x the reference",
+       "hold rate 2.39x the reference"
+      ]
+     },
+     {
+      "last_row": 4037006,
+      "status": "alert",
+      "score_psi": 0.0783,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0783
+      },
+      "reasons": [
+       "verify rate 6.40x the reference",
+       "hold rate 2.45x the reference"
+      ]
+     },
+     {
+      "last_row": 4047006,
+      "status": "alert",
+      "score_psi": 0.0707,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0707
+      },
+      "reasons": [
+       "verify rate 6.42x the reference",
+       "hold rate 2.08x the reference"
+      ]
+     },
+     {
+      "last_row": 4057006,
+      "status": "alert",
+      "score_psi": 0.0782,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0782
+      },
+      "reasons": [
+       "verify rate 6.28x the reference",
+       "hold rate 2.71x the reference"
+      ]
+     }
+    ],
+    "final": {
+     "status": "alert",
+     "warming_up": false,
+     "reasons": [
+      "verify rate 6.15x the reference",
+      "hold rate 2.21x the reference"
+     ],
+     "window": {
+      "size": 10000,
+      "capacity": 10000,
+      "min_size": 1000
+     },
+     "score_psi": 0.0761,
+     "score": {
+      "n": 10000,
+      "psi": 0.0761,
+      "status": "ok"
+     },
+     "features": {
+      "log_usd": {
+       "n": 10000,
+       "psi": 0.0029,
+       "status": "ok"
+      },
+      "fmt_code": {
+       "n": 10000,
+       "psi": 0.0039,
+       "status": "ok"
+      },
+      "cur_code": {
+       "n": 10000,
+       "psi": 0.0025,
+       "status": "ok"
+      },
+      "cross_bank": {
+       "n": 10000,
+       "psi": 0.0,
+       "status": "ok"
+      },
+      "round_100": {
+       "n": 10000,
+       "psi": 0.0,
+       "status": "ok"
+      }
+     },
+     "bands": {
+      "verify": {
+       "rate": 0.0618,
+       "reference": 0.010055,
+       "ratio": 6.1462,
+       "checked": true,
+       "status": "alert"
+      },
+      "hold": {
+       "rate": 0.0085,
+       "reference": 0.003842,
+       "ratio": 2.2124,
+       "checked": true,
+       "status": "warn"
+      },
+      "block": {
+       "rate": 0.0011,
+       "reference": 0.001242,
+       "ratio": 0.8857,
+       "checked": true,
+       "status": "ok"
+      }
+     },
+     "top_psi": {
+      "name": "score",
+      "psi": 0.0761
+     },
+     "thresholds": {
+      "psi_warn": 0.1,
+      "psi_alert": 0.25,
+      "rate_ratio_warn": 2.0,
+      "rate_ratio_alert": 3.0,
+      "min_expected_band_count": 10.0
+     },
+     "reference": "HI-Small validation (rows 3,047,007 to 4,062,675); test not read"
+    }
+   },
+   "50000": {
+    "checks": 97,
+    "check_status": {
+     "ok": 0,
+     "warn": 0,
+     "alert": 97
+    },
+    "per_check": [
+     {
+      "last_row": 3097006,
+      "status": "alert",
+      "score_psi": 0.4919,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4919
+      },
+      "reasons": [
+       "score PSI 0.492 >= 0.25",
+       "verify rate 5.81x the reference",
+       "hold rate 10.70x the reference"
+      ]
+     },
+     {
+      "last_row": 3107006,
+      "status": "alert",
+      "score_psi": 0.5021,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5021
+      },
+      "reasons": [
+       "score PSI 0.502 >= 0.25",
+       "verify rate 5.64x the reference",
+       "hold rate 10.75x the reference"
+      ]
+     },
+     {
+      "last_row": 3117006,
+      "status": "alert",
+      "score_psi": 0.5126,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5126
+      },
+      "reasons": [
+       "score PSI 0.513 >= 0.25",
+       "verify rate 5.40x the reference",
+       "hold rate 10.86x the reference"
+      ]
+     },
+     {
+      "last_row": 3127006,
+      "status": "alert",
+      "score_psi": 0.5238,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5238
+      },
+      "reasons": [
+       "score PSI 0.524 >= 0.25",
+       "verify rate 5.40x the reference",
+       "hold rate 11.20x the reference"
+      ]
+     },
+     {
+      "last_row": 3137006,
+      "status": "alert",
+      "score_psi": 0.5313,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5313
+      },
+      "reasons": [
+       "score PSI 0.531 >= 0.25",
+       "verify rate 5.59x the reference",
+       "hold rate 11.35x the reference"
+      ]
+     },
+     {
+      "last_row": 3147006,
+      "status": "alert",
+      "score_psi": 0.5356,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5356
+      },
+      "reasons": [
+       "score PSI 0.536 >= 0.25",
+       "verify rate 5.64x the reference",
+       "hold rate 11.29x the reference"
+      ]
+     },
+     {
+      "last_row": 3157006,
+      "status": "alert",
+      "score_psi": 0.54,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.54
+      },
+      "reasons": [
+       "score PSI 0.540 >= 0.25",
+       "verify rate 5.76x the reference",
+       "hold rate 10.97x the reference"
+      ]
+     },
+     {
+      "last_row": 3167006,
+      "status": "alert",
+      "score_psi": 0.5335,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5335
+      },
+      "reasons": [
+       "score PSI 0.534 >= 0.25",
+       "verify rate 5.94x the reference",
+       "hold rate 10.54x the reference"
+      ]
+     },
+     {
+      "last_row": 3177006,
+      "status": "alert",
+      "score_psi": 0.5339,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5339
+      },
+      "reasons": [
+       "score PSI 0.534 >= 0.25",
+       "verify rate 5.95x the reference",
+       "hold rate 10.34x the reference"
+      ]
+     },
+     {
+      "last_row": 3187006,
+      "status": "alert",
+      "score_psi": 0.5372,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5372
+      },
+      "reasons": [
+       "score PSI 0.537 >= 0.25",
+       "verify rate 5.85x the reference",
+       "hold rate 10.02x the reference"
+      ]
+     },
+     {
+      "last_row": 3197006,
+      "status": "alert",
+      "score_psi": 0.5326,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5326
+      },
+      "reasons": [
+       "score PSI 0.533 >= 0.25",
+       "verify rate 5.73x the reference",
+       "hold rate 9.62x the reference"
+      ]
+     },
+     {
+      "last_row": 3207006,
+      "status": "alert",
+      "score_psi": 0.5199,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5199
+      },
+      "reasons": [
+       "score PSI 0.520 >= 0.25",
+       "verify rate 5.58x the reference",
+       "hold rate 9.46x the reference"
+      ]
+     },
+     {
+      "last_row": 3217006,
+      "status": "alert",
+      "score_psi": 0.539,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.539
+      },
+      "reasons": [
+       "score PSI 0.539 >= 0.25",
+       "verify rate 5.42x the reference",
+       "hold rate 9.36x the reference"
+      ]
+     },
+     {
+      "last_row": 3227006,
+      "status": "alert",
+      "score_psi": 0.5631,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5631
+      },
+      "reasons": [
+       "score PSI 0.563 >= 0.25",
+       "verify rate 5.36x the reference",
+       "hold rate 9.05x the reference"
+      ]
+     },
+     {
+      "last_row": 3237006,
+      "status": "alert",
+      "score_psi": 0.5996,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5996
+      },
+      "reasons": [
+       "score PSI 0.600 >= 0.25",
+       "verify rate 5.49x the reference",
+       "hold rate 8.59x the reference"
+      ]
+     },
+     {
+      "last_row": 3247006,
+      "status": "alert",
+      "score_psi": 0.6435,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6435
+      },
+      "reasons": [
+       "score PSI 0.643 >= 0.25",
+       "verify rate 5.50x the reference",
+       "hold rate 7.86x the reference"
+      ]
+     },
+     {
+      "last_row": 3257006,
+      "status": "alert",
+      "score_psi": 0.4167,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4167
+      },
+      "reasons": [
+       "score PSI 0.417 >= 0.25",
+       "verify rate 5.39x the reference",
+       "hold rate 6.91x the reference"
+      ]
+     },
+     {
+      "last_row": 3267006,
+      "status": "alert",
+      "score_psi": 0.2803,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2803
+      },
+      "reasons": [
+       "score PSI 0.280 >= 0.25",
+       "verify rate 5.33x the reference",
+       "hold rate 6.15x the reference"
+      ]
+     },
+     {
+      "last_row": 3277006,
+      "status": "alert",
+      "score_psi": 0.2331,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2331
+      },
+      "reasons": [
+       "score PSI 0.233 >= 0.1",
+       "log_usd PSI 0.177 >= 0.1",
+       "fmt_code PSI 0.141 >= 0.1",
+       "verify rate 5.58x the reference",
+       "hold rate 5.84x the reference"
+      ]
+     },
+     {
+      "last_row": 3287006,
+      "status": "alert",
+      "score_psi": 0.2249,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2249
+      },
+      "reasons": [
+       "score PSI 0.225 >= 0.1",
+       "log_usd PSI 0.178 >= 0.1",
+       "fmt_code PSI 0.143 >= 0.1",
+       "verify rate 6.39x the reference",
+       "hold rate 6.40x the reference"
+      ]
+     },
+     {
+      "last_row": 3297006,
+      "status": "alert",
+      "score_psi": 0.2254,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2254
+      },
+      "reasons": [
+       "score PSI 0.225 >= 0.1",
+       "log_usd PSI 0.179 >= 0.1",
+       "fmt_code PSI 0.143 >= 0.1",
+       "verify rate 7.26x the reference",
+       "hold rate 7.45x the reference"
+      ]
+     },
+     {
+      "last_row": 3307006,
+      "status": "alert",
+      "score_psi": 0.3478,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3478
+      },
+      "reasons": [
+       "score PSI 0.348 >= 0.25",
+       "verify rate 8.32x the reference",
+       "hold rate 8.59x the reference"
+      ]
+     },
+     {
+      "last_row": 3317006,
+      "status": "alert",
+      "score_psi": 0.5938,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5938
+      },
+      "reasons": [
+       "score PSI 0.594 >= 0.25",
+       "verify rate 9.33x the reference",
+       "hold rate 9.50x the reference"
+      ]
+     },
+     {
+      "last_row": 3327006,
+      "status": "alert",
+      "score_psi": 0.9174,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9174
+      },
+      "reasons": [
+       "score PSI 0.917 >= 0.25",
+       "verify rate 9.95x the reference",
+       "hold rate 10.15x the reference"
+      ]
+     },
+     {
+      "last_row": 3337006,
+      "status": "alert",
+      "score_psi": 0.9449,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9449
+      },
+      "reasons": [
+       "score PSI 0.945 >= 0.25",
+       "verify rate 9.74x the reference",
+       "hold rate 10.19x the reference"
+      ]
+     },
+     {
+      "last_row": 3347006,
+      "status": "alert",
+      "score_psi": 0.947,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.947
+      },
+      "reasons": [
+       "score PSI 0.947 >= 0.25",
+       "verify rate 9.61x the reference",
+       "hold rate 10.16x the reference"
+      ]
+     },
+     {
+      "last_row": 3357006,
+      "status": "alert",
+      "score_psi": 0.938,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.938
+      },
+      "reasons": [
+       "score PSI 0.938 >= 0.25",
+       "verify rate 9.51x the reference",
+       "hold rate 10.32x the reference"
+      ]
+     },
+     {
+      "last_row": 3367006,
+      "status": "alert",
+      "score_psi": 0.9283,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9283
+      },
+      "reasons": [
+       "score PSI 0.928 >= 0.25",
+       "verify rate 9.38x the reference",
+       "hold rate 10.40x the reference"
+      ]
+     },
+     {
+      "last_row": 3377006,
+      "status": "alert",
+      "score_psi": 0.9218,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9218
+      },
+      "reasons": [
+       "score PSI 0.922 >= 0.25",
+       "verify rate 9.29x the reference",
+       "hold rate 10.13x the reference"
+      ]
+     },
+     {
+      "last_row": 3387006,
+      "status": "alert",
+      "score_psi": 0.9214,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9214
+      },
+      "reasons": [
+       "score PSI 0.921 >= 0.25",
+       "verify rate 9.12x the reference",
+       "hold rate 10.28x the reference"
+      ]
+     },
+     {
+      "last_row": 3397006,
+      "status": "alert",
+      "score_psi": 0.9247,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9247
+      },
+      "reasons": [
+       "score PSI 0.925 >= 0.25",
+       "verify rate 9.26x the reference",
+       "hold rate 10.37x the reference",
+       "block rate 2.03x the reference"
+      ]
+     },
+     {
+      "last_row": 3407006,
+      "status": "alert",
+      "score_psi": 0.9398,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9398
+      },
+      "reasons": [
+       "score PSI 0.940 >= 0.25",
+       "verify rate 9.25x the reference",
+       "hold rate 10.26x the reference",
+       "block rate 2.17x the reference"
+      ]
+     },
+     {
+      "last_row": 3417006,
+      "status": "alert",
+      "score_psi": 0.9574,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9574
+      },
+      "reasons": [
+       "score PSI 0.957 >= 0.25",
+       "verify rate 9.29x the reference",
+       "hold rate 10.57x the reference",
+       "block rate 2.21x the reference"
+      ]
+     },
+     {
+      "last_row": 3427006,
+      "status": "alert",
+      "score_psi": 0.9556,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9556
+      },
+      "reasons": [
+       "score PSI 0.956 >= 0.25",
+       "verify rate 9.11x the reference",
+       "hold rate 10.78x the reference",
+       "block rate 2.40x the reference"
+      ]
+     },
+     {
+      "last_row": 3437006,
+      "status": "alert",
+      "score_psi": 0.9573,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9573
+      },
+      "reasons": [
+       "score PSI 0.957 >= 0.25",
+       "verify rate 9.30x the reference",
+       "hold rate 10.73x the reference",
+       "block rate 2.32x the reference"
+      ]
+     },
+     {
+      "last_row": 3447006,
+      "status": "alert",
+      "score_psi": 0.9299,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.9299
+      },
+      "reasons": [
+       "score PSI 0.930 >= 0.25",
+       "verify rate 9.02x the reference",
+       "hold rate 10.86x the reference",
+       "block rate 2.25x the reference"
+      ]
+     },
+     {
+      "last_row": 3457006,
+      "status": "alert",
+      "score_psi": 0.8827,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.8827
+      },
+      "reasons": [
+       "score PSI 0.883 >= 0.25",
+       "verify rate 8.91x the reference",
+       "hold rate 10.99x the reference",
+       "block rate 2.30x the reference"
+      ]
+     },
+     {
+      "last_row": 3467006,
+      "status": "alert",
+      "score_psi": 0.8206,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.8206
+      },
+      "reasons": [
+       "score PSI 0.821 >= 0.25",
+       "verify rate 8.80x the reference",
+       "hold rate 10.54x the reference",
+       "block rate 2.38x the reference"
+      ]
+     },
+     {
+      "last_row": 3477006,
+      "status": "alert",
+      "score_psi": 0.7666,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.7666
+      },
+      "reasons": [
+       "score PSI 0.767 >= 0.25",
+       "verify rate 8.75x the reference",
+       "hold rate 10.46x the reference",
+       "block rate 2.14x the reference"
+      ]
+     },
+     {
+      "last_row": 3487006,
+      "status": "alert",
+      "score_psi": 0.7156,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.7156
+      },
+      "reasons": [
+       "score PSI 0.716 >= 0.25",
+       "verify rate 8.59x the reference",
+       "hold rate 10.33x the reference",
+       "block rate 2.30x the reference"
+      ]
+     },
+     {
+      "last_row": 3497006,
+      "status": "alert",
+      "score_psi": 0.6682,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6682
+      },
+      "reasons": [
+       "score PSI 0.668 >= 0.25",
+       "verify rate 8.48x the reference",
+       "hold rate 9.67x the reference",
+       "block rate 2.43x the reference"
+      ]
+     },
+     {
+      "last_row": 3507006,
+      "status": "alert",
+      "score_psi": 0.6166,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6166
+      },
+      "reasons": [
+       "score PSI 0.617 >= 0.25",
+       "verify rate 8.29x the reference",
+       "hold rate 9.23x the reference",
+       "block rate 2.77x the reference"
+      ]
+     },
+     {
+      "last_row": 3517006,
+      "status": "alert",
+      "score_psi": 0.5917,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5917
+      },
+      "reasons": [
+       "score PSI 0.592 >= 0.25",
+       "verify rate 8.01x the reference",
+       "hold rate 9.16x the reference",
+       "block rate 2.93x the reference"
+      ]
+     },
+     {
+      "last_row": 3527006,
+      "status": "alert",
+      "score_psi": 0.5542,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5542
+      },
+      "reasons": [
+       "score PSI 0.554 >= 0.25",
+       "verify rate 7.83x the reference",
+       "hold rate 9.18x the reference",
+       "block rate 3.01x the reference"
+      ]
+     },
+     {
+      "last_row": 3537006,
+      "status": "alert",
+      "score_psi": 0.5179,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5179
+      },
+      "reasons": [
+       "score PSI 0.518 >= 0.25",
+       "verify rate 7.62x the reference",
+       "hold rate 8.98x the reference",
+       "block rate 2.88x the reference"
+      ]
+     },
+     {
+      "last_row": 3547006,
+      "status": "alert",
+      "score_psi": 0.4901,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4901
+      },
+      "reasons": [
+       "score PSI 0.490 >= 0.25",
+       "verify rate 7.45x the reference",
+       "hold rate 8.75x the reference",
+       "block rate 2.93x the reference"
+      ]
+     },
+     {
+      "last_row": 3557006,
+      "status": "alert",
+      "score_psi": 0.4721,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4721
+      },
+      "reasons": [
+       "score PSI 0.472 >= 0.25",
+       "verify rate 7.32x the reference",
+       "hold rate 8.74x the reference",
+       "block rate 2.79x the reference"
+      ]
+     },
+     {
+      "last_row": 3567006,
+      "status": "alert",
+      "score_psi": 0.4377,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4377
+      },
+      "reasons": [
+       "score PSI 0.438 >= 0.25",
+       "verify rate 7.30x the reference",
+       "hold rate 8.68x the reference",
+       "block rate 2.51x the reference"
+      ]
+     },
+     {
+      "last_row": 3577006,
+      "status": "alert",
+      "score_psi": 0.4193,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4193
+      },
+      "reasons": [
+       "score PSI 0.419 >= 0.25",
+       "verify rate 7.24x the reference",
+       "hold rate 8.18x the reference",
+       "block rate 2.72x the reference"
+      ]
+     },
+     {
+      "last_row": 3587006,
+      "status": "alert",
+      "score_psi": 0.3988,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3988
+      },
+      "reasons": [
+       "score PSI 0.399 >= 0.25",
+       "verify rate 7.00x the reference",
+       "hold rate 7.64x the reference",
+       "block rate 2.62x the reference"
+      ]
+     },
+     {
+      "last_row": 3597006,
+      "status": "alert",
+      "score_psi": 0.3778,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3778
+      },
+      "reasons": [
+       "score PSI 0.378 >= 0.25",
+       "verify rate 6.77x the reference",
+       "hold rate 7.59x the reference",
+       "block rate 2.56x the reference"
+      ]
+     },
+     {
+      "last_row": 3607006,
+      "status": "alert",
+      "score_psi": 0.3499,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3499
+      },
+      "reasons": [
+       "score PSI 0.350 >= 0.25",
+       "verify rate 6.43x the reference",
+       "hold rate 7.12x the reference",
+       "block rate 2.38x the reference"
+      ]
+     },
+     {
+      "last_row": 3617006,
+      "status": "alert",
+      "score_psi": 0.334,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.334
+      },
+      "reasons": [
+       "score PSI 0.334 >= 0.25",
+       "verify rate 6.18x the reference",
+       "hold rate 6.85x the reference",
+       "block rate 2.37x the reference"
+      ]
+     },
+     {
+      "last_row": 3627006,
+      "status": "alert",
+      "score_psi": 0.3191,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3191
+      },
+      "reasons": [
+       "score PSI 0.319 >= 0.25",
+       "verify rate 5.97x the reference",
+       "hold rate 7.11x the reference",
+       "block rate 2.06x the reference"
+      ]
+     },
+     {
+      "last_row": 3637006,
+      "status": "alert",
+      "score_psi": 0.3062,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3062
+      },
+      "reasons": [
+       "score PSI 0.306 >= 0.25",
+       "verify rate 5.94x the reference",
+       "hold rate 7.03x the reference",
+       "block rate 2.01x the reference"
+      ]
+     },
+     {
+      "last_row": 3647006,
+      "status": "alert",
+      "score_psi": 0.2943,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2943
+      },
+      "reasons": [
+       "score PSI 0.294 >= 0.25",
+       "verify rate 5.75x the reference",
+       "hold rate 6.87x the reference"
+      ]
+     },
+     {
+      "last_row": 3657006,
+      "status": "alert",
+      "score_psi": 0.2837,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2837
+      },
+      "reasons": [
+       "score PSI 0.284 >= 0.25",
+       "verify rate 5.63x the reference",
+       "hold rate 7.03x the reference"
+      ]
+     },
+     {
+      "last_row": 3667006,
+      "status": "alert",
+      "score_psi": 0.2672,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2672
+      },
+      "reasons": [
+       "score PSI 0.267 >= 0.25",
+       "verify rate 5.42x the reference",
+       "hold rate 6.64x the reference"
+      ]
+     },
+     {
+      "last_row": 3677006,
+      "status": "alert",
+      "score_psi": 0.2503,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2503
+      },
+      "reasons": [
+       "score PSI 0.250 >= 0.25",
+       "verify rate 5.32x the reference",
+       "hold rate 5.88x the reference"
+      ]
+     },
+     {
+      "last_row": 3687006,
+      "status": "alert",
+      "score_psi": 0.2361,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2361
+      },
+      "reasons": [
+       "score PSI 0.236 >= 0.1",
+       "verify rate 5.04x the reference",
+       "hold rate 5.66x the reference"
+      ]
+     },
+     {
+      "last_row": 3697006,
+      "status": "alert",
+      "score_psi": 0.2238,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2238
+      },
+      "reasons": [
+       "score PSI 0.224 >= 0.1",
+       "verify rate 4.81x the reference",
+       "hold rate 5.31x the reference"
+      ]
+     },
+     {
+      "last_row": 3707006,
+      "status": "alert",
+      "score_psi": 0.2194,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2194
+      },
+      "reasons": [
+       "score PSI 0.219 >= 0.1",
+       "verify rate 4.56x the reference",
+       "hold rate 4.70x the reference"
+      ]
+     },
+     {
+      "last_row": 3717006,
+      "status": "alert",
+      "score_psi": 0.2224,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2224
+      },
+      "reasons": [
+       "score PSI 0.222 >= 0.1",
+       "verify rate 4.26x the reference",
+       "hold rate 4.49x the reference"
+      ]
+     },
+     {
+      "last_row": 3727006,
+      "status": "alert",
+      "score_psi": 0.2226,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2226
+      },
+      "reasons": [
+       "score PSI 0.223 >= 0.1",
+       "verify rate 3.78x the reference",
+       "hold rate 4.21x the reference"
+      ]
+     },
+     {
+      "last_row": 3737006,
+      "status": "alert",
+      "score_psi": 0.1859,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1859
+      },
+      "reasons": [
+       "score PSI 0.186 >= 0.1",
+       "verify rate 3.50x the reference",
+       "hold rate 3.69x the reference"
+      ]
+     },
+     {
+      "last_row": 3747006,
+      "status": "alert",
+      "score_psi": 0.1448,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1448
+      },
+      "reasons": [
+       "score PSI 0.145 >= 0.1",
+       "verify rate 3.51x the reference",
+       "hold rate 3.31x the reference"
+      ]
+     },
+     {
+      "last_row": 3757006,
+      "status": "alert",
+      "score_psi": 0.1209,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.1856
+      },
+      "reasons": [
+       "score PSI 0.121 >= 0.1",
+       "log_usd PSI 0.186 >= 0.1",
+       "fmt_code PSI 0.143 >= 0.1",
+       "verify rate 3.68x the reference",
+       "hold rate 3.07x the reference"
+      ]
+     },
+     {
+      "last_row": 3767006,
+      "status": "alert",
+      "score_psi": 0.1192,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.1865
+      },
+      "reasons": [
+       "score PSI 0.119 >= 0.1",
+       "log_usd PSI 0.187 >= 0.1",
+       "fmt_code PSI 0.145 >= 0.1",
+       "verify rate 4.90x the reference",
+       "hold rate 3.05x the reference"
+      ]
+     },
+     {
+      "last_row": 3777006,
+      "status": "alert",
+      "score_psi": 0.1305,
+      "top_psi": {
+       "name": "log_usd",
+       "psi": 0.1863
+      },
+      "reasons": [
+       "score PSI 0.131 >= 0.1",
+       "log_usd PSI 0.186 >= 0.1",
+       "fmt_code PSI 0.145 >= 0.1",
+       "verify rate 6.13x the reference",
+       "hold rate 3.21x the reference"
+      ]
+     },
+     {
+      "last_row": 3787006,
+      "status": "alert",
+      "score_psi": 0.1859,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1859
+      },
+      "reasons": [
+       "score PSI 0.186 >= 0.1",
+       "log_usd PSI 0.112 >= 0.1",
+       "verify rate 7.31x the reference",
+       "hold rate 3.53x the reference"
+      ]
+     },
+     {
+      "last_row": 3797006,
+      "status": "alert",
+      "score_psi": 0.3158,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3158
+      },
+      "reasons": [
+       "score PSI 0.316 >= 0.25",
+       "verify rate 8.13x the reference",
+       "hold rate 3.66x the reference"
+      ]
+     },
+     {
+      "last_row": 3807006,
+      "status": "alert",
+      "score_psi": 0.5203,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5203
+      },
+      "reasons": [
+       "score PSI 0.520 >= 0.25",
+       "verify rate 9.09x the reference",
+       "hold rate 3.79x the reference"
+      ]
+     },
+     {
+      "last_row": 3817006,
+      "status": "alert",
+      "score_psi": 0.4761,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4761
+      },
+      "reasons": [
+       "score PSI 0.476 >= 0.25",
+       "verify rate 8.87x the reference",
+       "hold rate 3.82x the reference"
+      ]
+     },
+     {
+      "last_row": 3827006,
+      "status": "alert",
+      "score_psi": 0.4336,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4336
+      },
+      "reasons": [
+       "score PSI 0.434 >= 0.25",
+       "verify rate 8.81x the reference",
+       "hold rate 3.71x the reference"
+      ]
+     },
+     {
+      "last_row": 3837006,
+      "status": "alert",
+      "score_psi": 0.3981,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3981
+      },
+      "reasons": [
+       "score PSI 0.398 >= 0.25",
+       "verify rate 8.62x the reference",
+       "hold rate 3.65x the reference"
+      ]
+     },
+     {
+      "last_row": 3847006,
+      "status": "alert",
+      "score_psi": 0.3637,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3637
+      },
+      "reasons": [
+       "score PSI 0.364 >= 0.25",
+       "verify rate 8.63x the reference",
+       "hold rate 3.67x the reference"
+      ]
+     },
+     {
+      "last_row": 3857006,
+      "status": "alert",
+      "score_psi": 0.3274,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3274
+      },
+      "reasons": [
+       "score PSI 0.327 >= 0.25",
+       "verify rate 8.37x the reference",
+       "hold rate 3.73x the reference"
+      ]
+     },
+     {
+      "last_row": 3867006,
+      "status": "alert",
+      "score_psi": 0.2979,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2979
+      },
+      "reasons": [
+       "score PSI 0.298 >= 0.25",
+       "verify rate 8.21x the reference",
+       "hold rate 3.58x the reference"
+      ]
+     },
+     {
+      "last_row": 3877006,
+      "status": "alert",
+      "score_psi": 0.271,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.271
+      },
+      "reasons": [
+       "score PSI 0.271 >= 0.25",
+       "verify rate 8.07x the reference",
+       "hold rate 3.60x the reference"
+      ]
+     },
+     {
+      "last_row": 3887006,
+      "status": "alert",
+      "score_psi": 0.2508,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2508
+      },
+      "reasons": [
+       "score PSI 0.251 >= 0.25",
+       "verify rate 7.97x the reference",
+       "hold rate 3.62x the reference"
+      ]
+     },
+     {
+      "last_row": 3897006,
+      "status": "alert",
+      "score_psi": 0.2281,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2281
+      },
+      "reasons": [
+       "score PSI 0.228 >= 0.1",
+       "verify rate 7.86x the reference",
+       "hold rate 3.42x the reference"
+      ]
+     },
+     {
+      "last_row": 3907006,
+      "status": "alert",
+      "score_psi": 0.207,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.207
+      },
+      "reasons": [
+       "score PSI 0.207 >= 0.1",
+       "verify rate 7.76x the reference",
+       "hold rate 3.31x the reference"
+      ]
+     },
+     {
+      "last_row": 3917006,
+      "status": "alert",
+      "score_psi": 0.1889,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1889
+      },
+      "reasons": [
+       "score PSI 0.189 >= 0.1",
+       "verify rate 7.68x the reference",
+       "hold rate 3.30x the reference"
+      ]
+     },
+     {
+      "last_row": 3927006,
+      "status": "alert",
+      "score_psi": 0.1748,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1748
+      },
+      "reasons": [
+       "score PSI 0.175 >= 0.1",
+       "verify rate 7.58x the reference",
+       "hold rate 3.08x the reference"
+      ]
+     },
+     {
+      "last_row": 3937006,
+      "status": "alert",
+      "score_psi": 0.1604,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1604
+      },
+      "reasons": [
+       "score PSI 0.160 >= 0.1",
+       "verify rate 7.54x the reference",
+       "hold rate 2.88x the reference"
+      ]
+     },
+     {
+      "last_row": 3947006,
+      "status": "alert",
+      "score_psi": 0.1496,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1496
+      },
+      "reasons": [
+       "score PSI 0.150 >= 0.1",
+       "verify rate 7.47x the reference",
+       "hold rate 3.07x the reference"
+      ]
+     },
+     {
+      "last_row": 3957006,
+      "status": "alert",
+      "score_psi": 0.1387,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1387
+      },
+      "reasons": [
+       "score PSI 0.139 >= 0.1",
+       "verify rate 7.42x the reference",
+       "hold rate 2.99x the reference"
+      ]
+     },
+     {
+      "last_row": 3967006,
+      "status": "alert",
+      "score_psi": 0.1253,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1253
+      },
+      "reasons": [
+       "score PSI 0.125 >= 0.1",
+       "verify rate 7.35x the reference",
+       "hold rate 2.79x the reference"
+      ]
+     },
+     {
+      "last_row": 3977006,
+      "status": "alert",
+      "score_psi": 0.1156,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1156
+      },
+      "reasons": [
+       "score PSI 0.116 >= 0.1",
+       "verify rate 7.19x the reference",
+       "hold rate 2.85x the reference"
+      ]
+     },
+     {
+      "last_row": 3987006,
+      "status": "alert",
+      "score_psi": 0.1088,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1088
+      },
+      "reasons": [
+       "score PSI 0.109 >= 0.1",
+       "verify rate 7.00x the reference",
+       "hold rate 2.88x the reference"
+      ]
+     },
+     {
+      "last_row": 3997006,
+      "status": "alert",
+      "score_psi": 0.1026,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1026
+      },
+      "reasons": [
+       "score PSI 0.103 >= 0.1",
+       "verify rate 7.04x the reference",
+       "hold rate 2.85x the reference"
+      ]
+     },
+     {
+      "last_row": 4007006,
+      "status": "alert",
+      "score_psi": 0.0922,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0922
+      },
+      "reasons": [
+       "verify rate 6.81x the reference",
+       "hold rate 2.88x the reference"
+      ]
+     },
+     {
+      "last_row": 4017006,
+      "status": "alert",
+      "score_psi": 0.0871,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0871
+      },
+      "reasons": [
+       "verify rate 6.72x the reference",
+       "hold rate 2.96x the reference"
+      ]
+     },
+     {
+      "last_row": 4027006,
+      "status": "alert",
+      "score_psi": 0.0812,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0812
+      },
+      "reasons": [
+       "verify rate 6.65x the reference",
+       "hold rate 2.86x the reference"
+      ]
+     },
+     {
+      "last_row": 4037006,
+      "status": "alert",
+      "score_psi": 0.0763,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0763
+      },
+      "reasons": [
+       "verify rate 6.61x the reference",
+       "hold rate 2.73x the reference"
+      ]
+     },
+     {
+      "last_row": 4047006,
+      "status": "alert",
+      "score_psi": 0.0724,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0724
+      },
+      "reasons": [
+       "verify rate 6.43x the reference",
+       "hold rate 2.52x the reference"
+      ]
+     },
+     {
+      "last_row": 4057006,
+      "status": "alert",
+      "score_psi": 0.0739,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.0739
+      },
+      "reasons": [
+       "verify rate 6.43x the reference",
+       "hold rate 2.49x the reference"
+      ]
+     }
+    ],
+    "final": {
+     "status": "alert",
+     "warming_up": false,
+     "reasons": [
+      "verify rate 6.35x the reference",
+      "hold rate 2.36x the reference"
+     ],
+     "window": {
+      "size": 50000,
+      "capacity": 50000,
+      "min_size": 1000
+     },
+     "score_psi": 0.075,
+     "score": {
+      "n": 50000,
+      "psi": 0.075,
+      "status": "ok"
+     },
+     "features": {
+      "log_usd": {
+       "n": 50000,
+       "psi": 0.0037,
+       "status": "ok"
+      },
+      "fmt_code": {
+       "n": 50000,
+       "psi": 0.0019,
+       "status": "ok"
+      },
+      "cur_code": {
+       "n": 50000,
+       "psi": 0.0006,
+       "status": "ok"
+      },
+      "cross_bank": {
+       "n": 50000,
+       "psi": 0.0001,
+       "status": "ok"
+      },
+      "round_100": {
+       "n": 50000,
+       "psi": 0.0,
+       "status": "ok"
+      }
+     },
+     "bands": {
+      "verify": {
+       "rate": 0.0639,
+       "reference": 0.010055,
+       "ratio": 6.3531,
+       "checked": true,
+       "status": "alert"
+      },
+      "hold": {
+       "rate": 0.0091,
+       "reference": 0.003842,
+       "ratio": 2.3581,
+       "checked": true,
+       "status": "warn"
+      },
+      "block": {
+       "rate": 0.0012,
+       "reference": 0.001242,
+       "ratio": 0.9662,
+       "checked": true,
+       "status": "ok"
+      }
+     },
+     "top_psi": {
+      "name": "score",
+      "psi": 0.075
+     },
+     "thresholds": {
+      "psi_warn": 0.1,
+      "psi_alert": 0.25,
+      "rate_ratio_warn": 2.0,
+      "rate_ratio_alert": 3.0,
+      "min_expected_band_count": 10.0
+     },
+     "reference": "HI-Small validation (rows 3,047,007 to 4,062,675); test not read"
+    }
+   },
+   "250000": {
+    "checks": 77,
+    "check_status": {
+     "ok": 0,
+     "warn": 0,
+     "alert": 77
+    },
+    "per_check": [
+     {
+      "last_row": 3297006,
+      "status": "alert",
+      "score_psi": 0.4198,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4198
+      },
+      "reasons": [
+       "score PSI 0.420 >= 0.25",
+       "verify rate 5.99x the reference",
+       "hold rate 9.39x the reference"
+      ]
+     },
+     {
+      "last_row": 3307006,
+      "status": "alert",
+      "score_psi": 0.4304,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4304
+      },
+      "reasons": [
+       "score PSI 0.430 >= 0.25",
+       "verify rate 6.14x the reference",
+       "hold rate 9.34x the reference"
+      ]
+     },
+     {
+      "last_row": 3317006,
+      "status": "alert",
+      "score_psi": 0.4409,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4409
+      },
+      "reasons": [
+       "score PSI 0.441 >= 0.25",
+       "verify rate 6.28x the reference",
+       "hold rate 9.28x the reference"
+      ]
+     },
+     {
+      "last_row": 3327006,
+      "status": "alert",
+      "score_psi": 0.4526,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4526
+      },
+      "reasons": [
+       "score PSI 0.453 >= 0.25",
+       "verify rate 6.45x the reference",
+       "hold rate 9.31x the reference"
+      ]
+     },
+     {
+      "last_row": 3337006,
+      "status": "alert",
+      "score_psi": 0.4635,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4635
+      },
+      "reasons": [
+       "score PSI 0.464 >= 0.25",
+       "verify rate 6.61x the reference",
+       "hold rate 9.31x the reference"
+      ]
+     },
+     {
+      "last_row": 3347006,
+      "status": "alert",
+      "score_psi": 0.4738,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4738
+      },
+      "reasons": [
+       "score PSI 0.474 >= 0.25",
+       "verify rate 6.75x the reference",
+       "hold rate 9.28x the reference"
+      ]
+     },
+     {
+      "last_row": 3357006,
+      "status": "alert",
+      "score_psi": 0.4848,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4848
+      },
+      "reasons": [
+       "score PSI 0.485 >= 0.25",
+       "verify rate 6.91x the reference",
+       "hold rate 9.25x the reference"
+      ]
+     },
+     {
+      "last_row": 3367006,
+      "status": "alert",
+      "score_psi": 0.4947,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4947
+      },
+      "reasons": [
+       "score PSI 0.495 >= 0.25",
+       "verify rate 7.08x the reference",
+       "hold rate 9.19x the reference"
+      ]
+     },
+     {
+      "last_row": 3377006,
+      "status": "alert",
+      "score_psi": 0.5059,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5059
+      },
+      "reasons": [
+       "score PSI 0.506 >= 0.25",
+       "verify rate 7.23x the reference",
+       "hold rate 9.10x the reference"
+      ]
+     },
+     {
+      "last_row": 3387006,
+      "status": "alert",
+      "score_psi": 0.5169,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5169
+      },
+      "reasons": [
+       "score PSI 0.517 >= 0.25",
+       "verify rate 7.31x the reference",
+       "hold rate 9.09x the reference"
+      ]
+     },
+     {
+      "last_row": 3397006,
+      "status": "alert",
+      "score_psi": 0.5282,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5282
+      },
+      "reasons": [
+       "score PSI 0.528 >= 0.25",
+       "verify rate 7.47x the reference",
+       "hold rate 9.09x the reference"
+      ]
+     },
+     {
+      "last_row": 3407006,
+      "status": "alert",
+      "score_psi": 0.5408,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5408
+      },
+      "reasons": [
+       "score PSI 0.541 >= 0.25",
+       "verify rate 7.61x the reference",
+       "hold rate 9.11x the reference"
+      ]
+     },
+     {
+      "last_row": 3417006,
+      "status": "alert",
+      "score_psi": 0.5549,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5549
+      },
+      "reasons": [
+       "score PSI 0.555 >= 0.25",
+       "verify rate 7.75x the reference",
+       "hold rate 9.20x the reference"
+      ]
+     },
+     {
+      "last_row": 3427006,
+      "status": "alert",
+      "score_psi": 0.5679,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5679
+      },
+      "reasons": [
+       "score PSI 0.568 >= 0.25",
+       "verify rate 7.86x the reference",
+       "hold rate 9.19x the reference"
+      ]
+     },
+     {
+      "last_row": 3437006,
+      "status": "alert",
+      "score_psi": 0.5805,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5805
+      },
+      "reasons": [
+       "score PSI 0.581 >= 0.25",
+       "verify rate 8.00x the reference",
+       "hold rate 9.24x the reference"
+      ]
+     },
+     {
+      "last_row": 3447006,
+      "status": "alert",
+      "score_psi": 0.5924,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5924
+      },
+      "reasons": [
+       "score PSI 0.592 >= 0.25",
+       "verify rate 8.13x the reference",
+       "hold rate 9.34x the reference"
+      ]
+     },
+     {
+      "last_row": 3457006,
+      "status": "alert",
+      "score_psi": 0.6054,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6054
+      },
+      "reasons": [
+       "score PSI 0.605 >= 0.25",
+       "verify rate 8.28x the reference",
+       "hold rate 9.41x the reference"
+      ]
+     },
+     {
+      "last_row": 3467006,
+      "status": "alert",
+      "score_psi": 0.6094,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6094
+      },
+      "reasons": [
+       "score PSI 0.609 >= 0.25",
+       "verify rate 8.43x the reference",
+       "hold rate 9.43x the reference"
+      ]
+     },
+     {
+      "last_row": 3477006,
+      "status": "alert",
+      "score_psi": 0.6106,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6106
+      },
+      "reasons": [
+       "score PSI 0.611 >= 0.25",
+       "verify rate 8.54x the reference",
+       "hold rate 9.47x the reference"
+      ]
+     },
+     {
+      "last_row": 3487006,
+      "status": "alert",
+      "score_psi": 0.608,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.608
+      },
+      "reasons": [
+       "score PSI 0.608 >= 0.25",
+       "verify rate 8.63x the reference",
+       "hold rate 9.58x the reference"
+      ]
+     },
+     {
+      "last_row": 3497006,
+      "status": "alert",
+      "score_psi": 0.6035,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6035
+      },
+      "reasons": [
+       "score PSI 0.604 >= 0.25",
+       "verify rate 8.73x the reference",
+       "hold rate 9.70x the reference"
+      ]
+     },
+     {
+      "last_row": 3507006,
+      "status": "alert",
+      "score_psi": 0.6636,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6636
+      },
+      "reasons": [
+       "score PSI 0.664 >= 0.25",
+       "verify rate 8.86x the reference",
+       "hold rate 9.88x the reference",
+       "block rate 2.08x the reference"
+      ]
+     },
+     {
+      "last_row": 3517006,
+      "status": "alert",
+      "score_psi": 0.7485,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.7485
+      },
+      "reasons": [
+       "score PSI 0.748 >= 0.25",
+       "verify rate 8.96x the reference",
+       "hold rate 10.03x the reference",
+       "block rate 2.16x the reference"
+      ]
+     },
+     {
+      "last_row": 3527006,
+      "status": "alert",
+      "score_psi": 0.7967,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.7967
+      },
+      "reasons": [
+       "score PSI 0.797 >= 0.25",
+       "verify rate 8.99x the reference",
+       "hold rate 10.14x the reference",
+       "block rate 2.21x the reference"
+      ]
+     },
+     {
+      "last_row": 3537006,
+      "status": "alert",
+      "score_psi": 0.7767,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.7767
+      },
+      "reasons": [
+       "score PSI 0.777 >= 0.25",
+       "verify rate 8.87x the reference",
+       "hold rate 10.10x the reference",
+       "block rate 2.26x the reference"
+      ]
+     },
+     {
+      "last_row": 3547006,
+      "status": "alert",
+      "score_psi": 0.7524,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.7524
+      },
+      "reasons": [
+       "score PSI 0.752 >= 0.25",
+       "verify rate 8.76x the reference",
+       "hold rate 9.96x the reference",
+       "block rate 2.32x the reference"
+      ]
+     },
+     {
+      "last_row": 3557006,
+      "status": "alert",
+      "score_psi": 0.7271,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.7271
+      },
+      "reasons": [
+       "score PSI 0.727 >= 0.25",
+       "verify rate 8.66x the reference",
+       "hold rate 9.91x the reference",
+       "block rate 2.39x the reference"
+      ]
+     },
+     {
+      "last_row": 3567006,
+      "status": "alert",
+      "score_psi": 0.6992,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6992
+      },
+      "reasons": [
+       "score PSI 0.699 >= 0.25",
+       "verify rate 8.56x the reference",
+       "hold rate 9.87x the reference",
+       "block rate 2.36x the reference"
+      ]
+     },
+     {
+      "last_row": 3577006,
+      "status": "alert",
+      "score_psi": 0.6735,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6735
+      },
+      "reasons": [
+       "score PSI 0.674 >= 0.25",
+       "verify rate 8.44x the reference",
+       "hold rate 9.74x the reference",
+       "block rate 2.42x the reference"
+      ]
+     },
+     {
+      "last_row": 3587006,
+      "status": "alert",
+      "score_psi": 0.6477,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.6477
+      },
+      "reasons": [
+       "score PSI 0.648 >= 0.25",
+       "verify rate 8.32x the reference",
+       "hold rate 9.59x the reference",
+       "block rate 2.42x the reference"
+      ]
+     },
+     {
+      "last_row": 3597006,
+      "status": "alert",
+      "score_psi": 0.621,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.621
+      },
+      "reasons": [
+       "score PSI 0.621 >= 0.25",
+       "verify rate 8.20x the reference",
+       "hold rate 9.45x the reference",
+       "block rate 2.44x the reference"
+      ]
+     },
+     {
+      "last_row": 3607006,
+      "status": "alert",
+      "score_psi": 0.5934,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5934
+      },
+      "reasons": [
+       "score PSI 0.593 >= 0.25",
+       "verify rate 8.04x the reference",
+       "hold rate 9.27x the reference",
+       "block rate 2.48x the reference"
+      ]
+     },
+     {
+      "last_row": 3617006,
+      "status": "alert",
+      "score_psi": 0.5679,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5679
+      },
+      "reasons": [
+       "score PSI 0.568 >= 0.25",
+       "verify rate 7.92x the reference",
+       "hold rate 9.16x the reference",
+       "block rate 2.48x the reference"
+      ]
+     },
+     {
+      "last_row": 3627006,
+      "status": "alert",
+      "score_psi": 0.5428,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.5428
+      },
+      "reasons": [
+       "score PSI 0.543 >= 0.25",
+       "verify rate 7.78x the reference",
+       "hold rate 9.14x the reference",
+       "block rate 2.47x the reference"
+      ]
+     },
+     {
+      "last_row": 3637006,
+      "status": "alert",
+      "score_psi": 0.518,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.518
+      },
+      "reasons": [
+       "score PSI 0.518 >= 0.25",
+       "verify rate 7.69x the reference",
+       "hold rate 8.94x the reference",
+       "block rate 2.43x the reference"
+      ]
+     },
+     {
+      "last_row": 3647006,
+      "status": "alert",
+      "score_psi": 0.4926,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4926
+      },
+      "reasons": [
+       "score PSI 0.493 >= 0.25",
+       "verify rate 7.49x the reference",
+       "hold rate 8.75x the reference",
+       "block rate 2.42x the reference"
+      ]
+     },
+     {
+      "last_row": 3657006,
+      "status": "alert",
+      "score_psi": 0.4663,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4663
+      },
+      "reasons": [
+       "score PSI 0.466 >= 0.25",
+       "verify rate 7.32x the reference",
+       "hold rate 8.62x the reference",
+       "block rate 2.42x the reference"
+      ]
+     },
+     {
+      "last_row": 3667006,
+      "status": "alert",
+      "score_psi": 0.44,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.44
+      },
+      "reasons": [
+       "score PSI 0.440 >= 0.25",
+       "verify rate 7.15x the reference",
+       "hold rate 8.37x the reference",
+       "block rate 2.42x the reference"
+      ]
+     },
+     {
+      "last_row": 3677006,
+      "status": "alert",
+      "score_psi": 0.4162,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.4162
+      },
+      "reasons": [
+       "score PSI 0.416 >= 0.25",
+       "verify rate 7.02x the reference",
+       "hold rate 8.16x the reference",
+       "block rate 2.35x the reference"
+      ]
+     },
+     {
+      "last_row": 3687006,
+      "status": "alert",
+      "score_psi": 0.3936,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3936
+      },
+      "reasons": [
+       "score PSI 0.394 >= 0.25",
+       "verify rate 6.84x the reference",
+       "hold rate 7.93x the reference",
+       "block rate 2.31x the reference"
+      ]
+     },
+     {
+      "last_row": 3697006,
+      "status": "alert",
+      "score_psi": 0.3726,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3726
+      },
+      "reasons": [
+       "score PSI 0.373 >= 0.25",
+       "verify rate 6.65x the reference",
+       "hold rate 7.64x the reference",
+       "block rate 2.29x the reference"
+      ]
+     },
+     {
+      "last_row": 3707006,
+      "status": "alert",
+      "score_psi": 0.3538,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3538
+      },
+      "reasons": [
+       "score PSI 0.354 >= 0.25",
+       "verify rate 6.45x the reference",
+       "hold rate 7.36x the reference",
+       "block rate 2.23x the reference"
+      ]
+     },
+     {
+      "last_row": 3717006,
+      "status": "alert",
+      "score_psi": 0.3386,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3386
+      },
+      "reasons": [
+       "score PSI 0.339 >= 0.25",
+       "verify rate 6.24x the reference",
+       "hold rate 7.16x the reference",
+       "block rate 2.17x the reference"
+      ]
+     },
+     {
+      "last_row": 3727006,
+      "status": "alert",
+      "score_psi": 0.3241,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.3241
+      },
+      "reasons": [
+       "score PSI 0.324 >= 0.25",
+       "verify rate 6.03x the reference",
+       "hold rate 6.91x the reference",
+       "block rate 2.11x the reference"
+      ]
+     },
+     {
+      "last_row": 3737006,
+      "status": "alert",
+      "score_psi": 0.2985,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2985
+      },
+      "reasons": [
+       "score PSI 0.299 >= 0.25",
+       "verify rate 5.82x the reference",
+       "hold rate 6.60x the reference",
+       "block rate 2.03x the reference"
+      ]
+     },
+     {
+      "last_row": 3747006,
+      "status": "alert",
+      "score_psi": 0.2697,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2697
+      },
+      "reasons": [
+       "score PSI 0.270 >= 0.25",
+       "verify rate 5.66x the reference",
+       "hold rate 6.37x the reference"
+      ]
+     },
+     {
+      "last_row": 3757006,
+      "status": "alert",
+      "score_psi": 0.2483,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2483
+      },
+      "reasons": [
+       "score PSI 0.248 >= 0.1",
+       "verify rate 5.53x the reference",
+       "hold rate 6.13x the reference"
+      ]
+     },
+     {
+      "last_row": 3767006,
+      "status": "alert",
+      "score_psi": 0.2474,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2474
+      },
+      "reasons": [
+       "score PSI 0.247 >= 0.1",
+       "verify rate 5.61x the reference",
+       "hold rate 5.94x the reference"
+      ]
+     },
+     {
+      "last_row": 3777006,
+      "status": "alert",
+      "score_psi": 0.2467,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2467
+      },
+      "reasons": [
+       "score PSI 0.247 >= 0.1",
+       "verify rate 5.69x the reference",
+       "hold rate 5.72x the reference"
+      ]
+     },
+     {
+      "last_row": 3787006,
+      "status": "alert",
+      "score_psi": 0.2453,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2453
+      },
+      "reasons": [
+       "score PSI 0.245 >= 0.1",
+       "verify rate 5.76x the reference",
+       "hold rate 5.51x the reference"
+      ]
+     },
+     {
+      "last_row": 3797006,
+      "status": "alert",
+      "score_psi": 0.2438,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2438
+      },
+      "reasons": [
+       "score PSI 0.244 >= 0.1",
+       "verify rate 5.79x the reference",
+       "hold rate 5.35x the reference"
+      ]
+     },
+     {
+      "last_row": 3807006,
+      "status": "alert",
+      "score_psi": 0.2432,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2432
+      },
+      "reasons": [
+       "score PSI 0.243 >= 0.1",
+       "verify rate 5.88x the reference",
+       "hold rate 5.14x the reference"
+      ]
+     },
+     {
+      "last_row": 3817006,
+      "status": "alert",
+      "score_psi": 0.2426,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2426
+      },
+      "reasons": [
+       "score PSI 0.243 >= 0.1",
+       "verify rate 5.93x the reference",
+       "hold rate 4.97x the reference"
+      ]
+     },
+     {
+      "last_row": 3827006,
+      "status": "alert",
+      "score_psi": 0.2411,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2411
+      },
+      "reasons": [
+       "score PSI 0.241 >= 0.1",
+       "verify rate 6.00x the reference",
+       "hold rate 4.82x the reference"
+      ]
+     },
+     {
+      "last_row": 3837006,
+      "status": "alert",
+      "score_psi": 0.2392,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2392
+      },
+      "reasons": [
+       "score PSI 0.239 >= 0.1",
+       "verify rate 6.08x the reference",
+       "hold rate 4.71x the reference"
+      ]
+     },
+     {
+      "last_row": 3847006,
+      "status": "alert",
+      "score_psi": 0.237,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.237
+      },
+      "reasons": [
+       "score PSI 0.237 >= 0.1",
+       "verify rate 6.16x the reference",
+       "hold rate 4.56x the reference"
+      ]
+     },
+     {
+      "last_row": 3857006,
+      "status": "alert",
+      "score_psi": 0.236,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.236
+      },
+      "reasons": [
+       "score PSI 0.236 >= 0.1",
+       "verify rate 6.27x the reference",
+       "hold rate 4.46x the reference"
+      ]
+     },
+     {
+      "last_row": 3867006,
+      "status": "alert",
+      "score_psi": 0.2339,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2339
+      },
+      "reasons": [
+       "score PSI 0.234 >= 0.1",
+       "verify rate 6.33x the reference",
+       "hold rate 4.31x the reference"
+      ]
+     },
+     {
+      "last_row": 3877006,
+      "status": "alert",
+      "score_psi": 0.2303,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2303
+      },
+      "reasons": [
+       "score PSI 0.230 >= 0.1",
+       "verify rate 6.42x the reference",
+       "hold rate 4.12x the reference"
+      ]
+     },
+     {
+      "last_row": 3887006,
+      "status": "alert",
+      "score_psi": 0.2274,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2274
+      },
+      "reasons": [
+       "score PSI 0.227 >= 0.1",
+       "verify rate 6.49x the reference",
+       "hold rate 4.03x the reference"
+      ]
+     },
+     {
+      "last_row": 3897006,
+      "status": "alert",
+      "score_psi": 0.2235,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2235
+      },
+      "reasons": [
+       "score PSI 0.224 >= 0.1",
+       "verify rate 6.59x the reference",
+       "hold rate 3.87x the reference"
+      ]
+     },
+     {
+      "last_row": 3907006,
+      "status": "alert",
+      "score_psi": 0.2206,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2206
+      },
+      "reasons": [
+       "score PSI 0.221 >= 0.1",
+       "verify rate 6.69x the reference",
+       "hold rate 3.72x the reference"
+      ]
+     },
+     {
+      "last_row": 3917006,
+      "status": "alert",
+      "score_psi": 0.2182,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2182
+      },
+      "reasons": [
+       "score PSI 0.218 >= 0.1",
+       "verify rate 6.79x the reference",
+       "hold rate 3.64x the reference"
+      ]
+     },
+     {
+      "last_row": 3927006,
+      "status": "alert",
+      "score_psi": 0.2152,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2152
+      },
+      "reasons": [
+       "score PSI 0.215 >= 0.1",
+       "verify rate 6.87x the reference",
+       "hold rate 3.56x the reference"
+      ]
+     },
+     {
+      "last_row": 3937006,
+      "status": "alert",
+      "score_psi": 0.2122,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2122
+      },
+      "reasons": [
+       "score PSI 0.212 >= 0.1",
+       "verify rate 6.99x the reference",
+       "hold rate 3.48x the reference"
+      ]
+     },
+     {
+      "last_row": 3947006,
+      "status": "alert",
+      "score_psi": 0.2085,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2085
+      },
+      "reasons": [
+       "score PSI 0.209 >= 0.1",
+       "verify rate 7.12x the reference",
+       "hold rate 3.43x the reference"
+      ]
+     },
+     {
+      "last_row": 3957006,
+      "status": "alert",
+      "score_psi": 0.2038,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2038
+      },
+      "reasons": [
+       "score PSI 0.204 >= 0.1",
+       "verify rate 7.26x the reference",
+       "hold rate 3.38x the reference"
+      ]
+     },
+     {
+      "last_row": 3967006,
+      "status": "alert",
+      "score_psi": 0.1971,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1971
+      },
+      "reasons": [
+       "score PSI 0.197 >= 0.1",
+       "verify rate 7.40x the reference",
+       "hold rate 3.31x the reference"
+      ]
+     },
+     {
+      "last_row": 3977006,
+      "status": "alert",
+      "score_psi": 0.1916,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1916
+      },
+      "reasons": [
+       "score PSI 0.192 >= 0.1",
+       "verify rate 7.56x the reference",
+       "hold rate 3.29x the reference"
+      ]
+     },
+     {
+      "last_row": 3987006,
+      "status": "alert",
+      "score_psi": 0.1951,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1951
+      },
+      "reasons": [
+       "score PSI 0.195 >= 0.1",
+       "verify rate 7.69x the reference",
+       "hold rate 3.31x the reference"
+      ]
+     },
+     {
+      "last_row": 3997006,
+      "status": "alert",
+      "score_psi": 0.2029,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2029
+      },
+      "reasons": [
+       "score PSI 0.203 >= 0.1",
+       "verify rate 7.82x the reference",
+       "hold rate 3.33x the reference"
+      ]
+     },
+     {
+      "last_row": 4007006,
+      "status": "alert",
+      "score_psi": 0.2051,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.2051
+      },
+      "reasons": [
+       "score PSI 0.205 >= 0.1",
+       "verify rate 7.89x the reference",
+       "hold rate 3.34x the reference"
+      ]
+     },
+     {
+      "last_row": 4017006,
+      "status": "alert",
+      "score_psi": 0.1872,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1872
+      },
+      "reasons": [
+       "score PSI 0.187 >= 0.1",
+       "verify rate 7.77x the reference",
+       "hold rate 3.29x the reference"
+      ]
+     },
+     {
+      "last_row": 4027006,
+      "status": "alert",
+      "score_psi": 0.1709,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1709
+      },
+      "reasons": [
+       "score PSI 0.171 >= 0.1",
+       "verify rate 7.66x the reference",
+       "hold rate 3.22x the reference"
+      ]
+     },
+     {
+      "last_row": 4037006,
+      "status": "alert",
+      "score_psi": 0.1572,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1572
+      },
+      "reasons": [
+       "score PSI 0.157 >= 0.1",
+       "verify rate 7.55x the reference",
+       "hold rate 3.15x the reference"
+      ]
+     },
+     {
+      "last_row": 4047006,
+      "status": "alert",
+      "score_psi": 0.1444,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.1444
+      },
+      "reasons": [
+       "score PSI 0.144 >= 0.1",
+       "verify rate 7.48x the reference",
+       "hold rate 3.11x the reference"
+      ]
+     },
+     {
+      "last_row": 4057006,
+      "status": "alert",
+      "score_psi": 0.132,
+      "top_psi": {
+       "name": "score",
+       "psi": 0.132
+      },
+      "reasons": [
+       "score PSI 0.132 >= 0.1",
+       "verify rate 7.36x the reference",
+       "hold rate 3.08x the reference"
+      ]
+     }
+    ],
+    "final": {
+     "status": "alert",
+     "warming_up": false,
+     "reasons": [
+      "score PSI 0.125 >= 0.1",
+      "verify rate 7.29x the reference",
+      "hold rate 3.03x the reference"
+     ],
+     "window": {
+      "size": 250000,
+      "capacity": 250000,
+      "min_size": 1000
+     },
+     "score_psi": 0.1253,
+     "score": {
+      "n": 250000,
+      "psi": 0.1253,
+      "status": "warn"
+     },
+     "features": {
+      "log_usd": {
+       "n": 250000,
+       "psi": 0.0034,
+       "status": "ok"
+      },
+      "fmt_code": {
+       "n": 250000,
+       "psi": 0.002,
+       "status": "ok"
+      },
+      "cur_code": {
+       "n": 250000,
+       "psi": 0.0002,
+       "status": "ok"
+      },
+      "cross_bank": {
+       "n": 250000,
+       "psi": 0.0,
+       "status": "ok"
+      },
+      "round_100": {
+       "n": 250000,
+       "psi": 0.0,
+       "status": "ok"
+      }
+     },
+     "bands": {
+      "verify": {
+       "rate": 0.0733,
+       "reference": 0.010055,
+       "ratio": 7.2911,
+       "checked": true,
+       "status": "alert"
+      },
+      "hold": {
+       "rate": 0.0116,
+       "reference": 0.003842,
+       "ratio": 3.0255,
+       "checked": true,
+       "status": "alert"
+      },
+      "block": {
+       "rate": 0.0014,
+       "reference": 0.001242,
+       "ratio": 1.1079,
+       "checked": true,
+       "status": "ok"
+      }
+     },
+     "top_psi": {
+      "name": "score",
+      "psi": 0.1253
+     },
+     "thresholds": {
+      "psi_warn": 0.1,
+      "psi_alert": 0.25,
+      "rate_ratio_warn": 2.0,
+      "rate_ratio_alert": 3.0,
+      "min_expected_band_count": 10.0
+     },
+     "reference": "HI-Small validation (rows 3,047,007 to 4,062,675); test not read"
+    }
+   }
+  }
+ },
+ "chosen_window": 250000
+}
