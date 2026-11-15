@@ -28,7 +28,7 @@ pytest tests/
 - With the out of fold intent model fused in (default since ctx-1.2): 28% of scams escalated, 77% verify or more; legitimate messages 0% escalated, 6% verify or more.
 - Payment side on 60,000 IBM payments without messages: 34 verification steps (0.06%), 2 of 97 laundering payments; removing either the transaction or the graph domain drops this to 0.
 - Mule replay fixture: 11 of 24 payments reach verification with ctx-1.1 (was 2 with ctx-1.0); the payment engine alone approves 23 of 24.
-- Load test: 2,000 requests from 8 threads, 220 requests/s, p95 72 ms, p99 85 ms on a 2 CPU machine (target p95 below 100 ms).
+- Load test: 2,000 requests from 8 threads, 220 requests/s, p95 72 ms, p99 85 ms on a 2 CPU machine (target p95 below 100 ms). This was the old Python server; the Rust server's end-to-end numbers are in `results/e2e_bench.json` (`docs/SCALING.md`, section 3b).
 
 ## Demo
 

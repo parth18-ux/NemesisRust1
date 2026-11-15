@@ -452,6 +452,20 @@ asks for it when a lure or the context layer raised a payment the cascade approv
   do not ship) is not met because of the failed clause in (b); the change is in an open pull request so that call
   stays with the reviewer.
 
+**8aa. CI and an end-to-end benchmark of the Rust server.** Hardening, independent of the motif work (8z).
+(1) `.github/workflows/ci.yml` runs on pushes and pull requests to `main`: `cargo clippy --workspace --all-targets --
+-D warnings` and `cargo test --release --workspace` on a pinned toolchain, with cargo caching and actions pinned to
+commit SHAs. The Redis tests start their own `redis-server`, so CI installs the binary rather than a service container
+(which they would not use) and fails if they report skipping. `cargo fmt --check` is left out: the code is not
+rustfmt-clean, and reformatting every file would bury real changes in one diff.
+(2) The only load test was of the retired Python server (`results/load_test.json`). `examples/e2e_bench` drives the
+real Rust binary over HTTP, both the payment route and the signed webhook, in memory and with Redis, and writes
+`results/e2e_bench.json`. On one 4-CPU container: `/api/v2/payment` at concurrency 1 runs 1,979.86 requests per
+second with p95 1.51 ms; the webhook at concurrency 32 runs 1,961.23 per second (p95 23.6 ms) in memory and
+1,146.63 (p95 35.41 ms) with Redis; with Redis at concurrency 1 its p95 is 1.06 ms. Client, server and Redis share the
+CPUs and there is no network or TLS, so this is a floor for one instance, not a Vercel or production figure
+(`docs/SCALING.md`, section 3b).
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
