@@ -493,6 +493,19 @@ stays covered by 8z (a) and (b). The 8z-result record of the failed M1(b) clause
 code firing on held fan-in deposits, not that the original clause passed. The lure carries most of the weight here, so
 it says nothing about how often a real mule's deposits are held without a message.
 
+**8ab. Phase D pilot pack, as documents only.** From the execution plan's phase D (threat model, shadow-mode
+configuration, pilot proposal) and its 90-day targets (one organisation willing to discuss a controlled shadow
+evaluation; a documented security and data-handling plan with no claim of certification). Four files, no code change,
+nothing run: `docs/THREAT_MODEL.md` (STRIDE over the components as they are, with the file that holds each control and
+the open gaps: public demo mode, no external penetration test, no dependency scan in CI, Upstash and the webhook
+secret not configured on the public deployment, a consortium that is simulated inside one process);
+`docs/PILOT_PROPOSAL.md` (a one-page shadow pilot built from `docs/PILOT.md` and `docs/live.md`, with success metrics
+agreed before results are read and an explicit list of what is not claimed; the price is left to the user);
+`docs/OUTREACH.md` (an email template and an NDA, data terms and DPDP Act checklist, marked as not legal advice); and
+`docs/HOLDOUT_PREREG_DRAFT.md` (a draft rule for a fresh holdout, on a new AMLworld seed or the unused AMLSim
+generator, awaiting the user's approval and not run). No metric is typed into them; they point to the files in
+`results/` and `research/out/`.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
