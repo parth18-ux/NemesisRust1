@@ -3,7 +3,7 @@
 //! L2 XGBoost and L2 LightGBM scores and the label. Every payment is scored by both L2 halves (not only those that pass
 //! L1) so that offline analysis can study the gate and the halves separately.
 //!
-//! cargo run --release -p rusetect --example research_dump -- <in.csv[.gz]> <out.csv[.gz]> [genuine keep rate]
+//! cargo run --release -p rusetect --example research_dump -- <in.csv[.gz]> <out.csv[.gz]> [genuine keep rate] [first row]
 //!
 //! The analysis scripts in research/ read the output. State starts empty, exactly as in the console demo.
 use rusetect::{paths, payment, Engine, Payment};
@@ -113,6 +113,8 @@ fn main() -> anyhow::Result<()> {
     // optional share of genuine payments to keep (every positive is kept). State is still updated for every payment;
     // dropped rows skip scoring and formatting, which is most of the time on the Large files. Totals go to <out>.json.
     let neg_rate: f64 = args.next().map(|r| r.parse()).transpose()?.unwrap_or(1.0);
+    // optional first row to write: earlier rows only build state (research/evasion_validation.py scores validation only)
+    let first: usize = args.next().map(|r| r.parse()).transpose()?.unwrap_or(0);
     let mut rng = 0x9E37_79B9_7F4A_7C15u64; // xorshift64: deterministic, no extra dependency
     let (mut kept, mut pos) = (0usize, 0usize);
     // stream rows one at a time so files larger than memory (HI-Medium, 32M payments) work
@@ -142,6 +144,9 @@ fn main() -> anyhow::Result<()> {
         let f = eng.features(&p);
         let y1 = r.y == "1";
         pos += y1 as usize;
+        if i < first {
+            continue;
+        }
         if !y1 && neg_rate < 1.0 {
             rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17;
             if (rng >> 11) as f64 / (1u64 << 53) as f64 >= neg_rate { continue; }
