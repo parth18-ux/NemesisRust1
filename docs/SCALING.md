@@ -123,6 +123,25 @@ cargo build --release -p rusetect-server --bins --examples
 target/release/examples/e2e_bench            # optional argument: requests per level (default 5000); needs redis-server
 ```
 
+## 3c. S1: scaling the Redis webhook on one node (pre-registered)
+
+The Redis-mode webhook ran fully serial in section 3b: `events_payment` held the one state mutex for the whole
+ingest, six synchronous Redis round trips included. S1 takes Redis I/O and scoring out of that mutex (a small
+connection pool, per-payer stripes, a ledger-order lock) and cuts the round trips from six to four.
+
+**Protocol, registered before any measurement of the changed code** (`results/e2e_bench_s1_protocol.json`):
+
+* Harness: `e2e_bench s1 baseline|after`, closed loop, concurrency 1, 8, 32, 64, 128; 20,000 requests per level after
+  a 1,000 request warm-up; 3 repetitions on fresh processes, median reported next to all three; `RUSETECT_LIVE_POOL`
+  recorded. Same workload as 3b (400 payers, 300 payees, unique signed events).
+* Correctness gate, every level of every repetition (a level that fails it voids the run): no errors; `live:ledger`
+  grew by exactly N; `live:seq` advanced by exactly N; 100 sampled events resent come back `Idempotent-Replayed:
+  true` with identical bodies and no ledger growth.
+* Pass: Redis webhook at concurrency 32, median of 3, at least 3,000 requests per second with p99 under 50 ms and the
+  gate green. Stretch, reported either way: 5,000 requests per second at any level up to 128 with p99 under 50 ms.
+  No regression: memory-mode `/api/v2/payment` and memory-mode webhook within 10% of the baseline.
+* The baseline is the unchanged code, same machine, same session. Output: `results/e2e_bench_s1.json`.
+
 ## 4. From here to a bank
 
 1. **Throughput.** UPI runs at roughly 20 billion payments a month, about 7,000 to 8,000 a second on average with
