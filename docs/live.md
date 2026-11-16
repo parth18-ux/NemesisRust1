@@ -88,9 +88,9 @@ async function send(event, url) {
 | `durable`, `store` | `true`/`redis` when committed to Redis; `false`/`memory` otherwise |
 
 Errors: `401` bad or missing signature, or timestamp outside 5 minutes; `422` invalid body (same messages as
-`/api/v2/assess`); `409` the same `event_id` is still being processed (retry after a minute); `429` rate limited;
-`503` secret not set, account state full, or durable store unreachable (nothing is committed; the response carries
-`Retry-After`; retry).
+`/api/v2/assess`); `409` the same `event_id` is still being processed (the response carries `Retry-After: 60`, the
+claim's lifetime); `429` rate limited; `503` secret not set, account state full, or durable store unreachable (the
+response carries `Retry-After`; retry; section 4 covers the one case where the commit may already be applied).
 
 ## 4. Idempotency and retries
 
@@ -101,14 +101,17 @@ not scored or written again. With Redis this holds across all function instances
 life of one instance.
 
 Every 5xx is safe to retry. When Redis fails before the commit, the claim on the `event_id` is released, so the retry
-is scored afresh; per-account state is deduped by event (`seen:` keys), so a payment is never counted twice. When the
-outcome of the commit is unknown, the claim expires after 60 s and the retry then gets either the stored result or a
-fresh scoring, never a second commit.
+is scored afresh; per-account totals are deduped by event (`seen:` keys), so they never count a payment twice (the 24 h
+pair window can: see Limits). When the outcome of the commit is unknown, the claim expires after 60 s and the retry
+then gets either the stored result or a fresh scoring, never a second commit. Each claim is a token unique to its
+request, and the commit and the release apply only while the token is still there: a request that outlives its claim
+cannot commit over a retry or delete the retry's claim or result; it answers with the retry's result, a `409`, or a
+`503` when nothing was committed.
 
 Back off exponentially with full jitter, honouring `Retry-After` when it is larger:
 
 ```python
-import random, time
+import http.client, random, time, urllib.error
 
 def send_with_retry(event, url, attempts=8, base=1.0, cap=60.0):
     for n in range(attempts):
@@ -117,10 +120,15 @@ def send_with_retry(event, url, attempts=8, base=1.0, cap=60.0):
         except urllib.error.HTTPError as e:
             if e.code < 500 and e.code not in (409, 429):
                 raise                          # 401, 413, 422: retrying will not help
-            wait = max(float(e.headers.get("Retry-After") or 0), random.uniform(0, min(cap, base * 2 ** n)))
-        except OSError:                        # network error or timeout: the event may or may not be committed
+            try:                               # seconds; an HTTP-date or garbage counts as 0
+                after = min(max(float(e.headers.get("Retry-After") or 0), 0.0), 120.0)
+            except ValueError:
+                after = 0.0
+            wait = max(after, random.uniform(0, min(cap, base * 2 ** n)))
+        except (OSError, http.client.HTTPException, ValueError):  # network error, timeout, garbled reply: may be committed
             wait = random.uniform(0, min(cap, base * 2 ** n))
-        time.sleep(wait)
+        if n < attempts - 1:
+            time.sleep(wait)                   # no sleep after the last attempt
     raise RuntimeError(f"gave up on {event['event_id']}; queue it and alert")
 ```
 
@@ -172,8 +180,14 @@ the alert from `live:alerts`, and a review action writes the updated alert back.
 - Review actions on one live alert from two instances at the same moment are not locked: the last write wins. The
   pause-screen, re-verification and duress routes change only the instance's copy and are not written back.
 - With Redis, scoring and Redis calls run outside the server's state lock on a small connection pool
-  (`RUSETECT_LIVE_POOL`, default 2 x logical CPUs); one payer's payments are scored one at a time, and the state lock
-  is held only for PRAMAAN, the alert and the desk chain (`docs/SCALING.md` section 3c). On Vercel an instance serves
-  one request at a time anyway.
+  (`RUSETECT_LIVE_POOL`, default 2 x logical CPUs); payments that share a payer or a payee are scored one at a time
+  (both accounts' stripes), and the state lock is held only for PRAMAAN, the alert and the desk chain
+  (`docs/SCALING.md` section 3c). Reading, listing and reviewing live alerts and the live feed also run their Redis calls
+  outside the state lock. On Vercel an instance serves one request at a time anyway.
+- Known limits, left as they are: a commit that fails after scoring leaves the alert and desk-chain entry it opened on
+  that instance (an orphan; the retry opens its own); a retry that is scored afresh adds its risk to the 24 h pair
+  window a second time (account totals are deduped, the pair window is not); the drift monitor is fed by demo replay
+  traffic as well as live events; with Redis an instance holds two engines in memory (the desk's and the stateless one
+  the Redis path scores with).
 - The per-client rate limit (`RUSETECT_RATE_LIMIT`, requests per 10 s) applies to the webhook too and the webhook is not
   exempt; a high-volume sender needs it raised (`docs/RUNBOOK.md` section 8).

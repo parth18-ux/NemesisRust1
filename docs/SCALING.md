@@ -127,7 +127,8 @@ target/release/examples/e2e_bench            # optional argument: requests per l
 
 The Redis-mode webhook ran fully serial in section 3b: `events_payment` held the one state mutex for the whole
 ingest, six synchronous Redis round trips included. S1 takes Redis I/O and scoring out of that mutex (a small
-connection pool, per-payer stripes, a ledger-order lock) and cuts the round trips from six to four.
+connection pool, per-payer stripes, a ledger-order lock) and cuts the round trips from six to four. (Since S1 the
+stripes cover the payee too, so payee features are not read stale under concurrency; this was not re-measured.)
 
 **Protocol, registered before any measurement of the changed code** (`results/e2e_bench_s1_protocol.json`):
 
@@ -145,6 +146,8 @@ connection pool, per-payer stripes, a ledger-order lock) and cuts the round trip
 **Result** (`results/e2e_bench_s1.json`; baseline at `0ae8027-dirty`, whose binaries were built from the unchanged
 server code before the edits that make it `-dirty`; after at `4be9aeb`; `RUSETECT_LIVE_POOL` unset in both, so
 the after run used the default of 2 x 4 logical CPUs). Medians of 3 repetitions; "after rps by repetition" lists all three.
+The correctness gate is checked on the Redis webhook rows only (it counts `live:ledger` and `live:seq`); memory rows show
+`n/a`.
 
 | Store | Endpoint | Concurrency | Baseline rps | Baseline p99 ms | After rps | p50 ms | p95 ms | p99 ms | max ms | After rps by repetition | Gate |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -153,16 +156,16 @@ the after run used the default of 2 x 4 logical CPUs). Medians of 3 repetitions;
 | redis | `POST /api/v2/events/payment` | 32 | 1,293.44 | 32.04 | 5,282.43 | 5.94 | 7.81 | 8.86 | 13.52 | 5,002.02 / 5,955.65 / 5,282.43 | green |
 | redis | `POST /api/v2/events/payment` | 64 | 1,312.12 | 81.35 | 4,823.22 | 12.23 | 24.43 | 30.56 | 40.29 | 4,413.48 / 5,575.19 / 4,823.22 | green |
 | redis | `POST /api/v2/events/payment` | 128 | 1,084.9 | 185.32 | 3,231.58 | 35.39 | 64.18 | 70.92 | 80.74 | 3,231.58 / 4,485.62 / 3,179.32 | green |
-| memory | `POST /api/v2/payment` | 1 | 2,419.11 | 1.73 | 2,303.58 | 0.28 | 1.56 | 1.82 | 8.67 | 2,361.48 / 2,303.58 / 2,055.72 | green |
-| memory | `POST /api/v2/payment` | 8 | 2,823.69 | 7.47 | 2,725.64 | 2.73 | 5.79 | 7.71 | 15.1 | 2,790.48 / 2,676.13 / 2,725.64 | green |
-| memory | `POST /api/v2/payment` | 32 | 3,295.03 | 31.09 | 3,116.95 | 10.16 | 22.84 | 31.28 | 65.65 | 3,217.28 / 3,109.5 / 3,116.95 | green |
-| memory | `POST /api/v2/payment` | 64 | 3,712.43 | 56.59 | 3,269.37 | 18.56 | 45.06 | 58.66 | 123.67 | 3,378.47 / 3,122.24 / 3,269.37 | green |
-| memory | `POST /api/v2/payment` | 128 | 3,911.95 | 103.12 | 3,579.52 | 33.45 | 79.14 | 108.31 | 214.6 | 3,838.98 / 3,579.52 / 3,499.51 | green |
-| memory | `POST /api/v2/events/payment` | 1 | 1,212.19 | 2.39 | 1,225.31 | 0.63 | 2.2 | 2.41 | 14.95 | 1,225.31 / 1,225.27 / 1,230.71 | green |
-| memory | `POST /api/v2/events/payment` | 8 | 1,876.69 | 9.85 | 1,851.48 | 3.97 | 7.43 | 9.57 | 20.63 | 1,851.48 / 1,747.73 / 1,950.44 | green |
-| memory | `POST /api/v2/events/payment` | 32 | 1,848.51 | 43.48 | 1,871.63 | 16.1 | 29.07 | 35.45 | 48.98 | 1,859.29 / 1,886.48 / 1,871.63 | green |
-| memory | `POST /api/v2/events/payment` | 64 | 1,857.5 | 85.27 | 1,905.0 | 32.08 | 57.44 | 69.67 | 92.19 | 1,905.0 / 1,932.16 / 1,776.23 | green |
-| memory | `POST /api/v2/events/payment` | 128 | 1,351.85 | 282.67 | 1,304.57 | 72.85 | 267.5 | 378.88 | 560.27 | 1,277.79 / 1,337.3 / 1,304.57 | green |
+| memory | `POST /api/v2/payment` | 1 | 2,419.11 | 1.73 | 2,303.58 | 0.28 | 1.56 | 1.82 | 8.67 | 2,361.48 / 2,303.58 / 2,055.72 | n/a |
+| memory | `POST /api/v2/payment` | 8 | 2,823.69 | 7.47 | 2,725.64 | 2.73 | 5.79 | 7.71 | 15.1 | 2,790.48 / 2,676.13 / 2,725.64 | n/a |
+| memory | `POST /api/v2/payment` | 32 | 3,295.03 | 31.09 | 3,116.95 | 10.16 | 22.84 | 31.28 | 65.65 | 3,217.28 / 3,109.5 / 3,116.95 | n/a |
+| memory | `POST /api/v2/payment` | 64 | 3,712.43 | 56.59 | 3,269.37 | 18.56 | 45.06 | 58.66 | 123.67 | 3,378.47 / 3,122.24 / 3,269.37 | n/a |
+| memory | `POST /api/v2/payment` | 128 | 3,911.95 | 103.12 | 3,579.52 | 33.45 | 79.14 | 108.31 | 214.6 | 3,838.98 / 3,579.52 / 3,499.51 | n/a |
+| memory | `POST /api/v2/events/payment` | 1 | 1,212.19 | 2.39 | 1,225.31 | 0.63 | 2.2 | 2.41 | 14.95 | 1,225.31 / 1,225.27 / 1,230.71 | n/a |
+| memory | `POST /api/v2/events/payment` | 8 | 1,876.69 | 9.85 | 1,851.48 | 3.97 | 7.43 | 9.57 | 20.63 | 1,851.48 / 1,747.73 / 1,950.44 | n/a |
+| memory | `POST /api/v2/events/payment` | 32 | 1,848.51 | 43.48 | 1,871.63 | 16.1 | 29.07 | 35.45 | 48.98 | 1,859.29 / 1,886.48 / 1,871.63 | n/a |
+| memory | `POST /api/v2/events/payment` | 64 | 1,857.5 | 85.27 | 1,905.0 | 32.08 | 57.44 | 69.67 | 92.19 | 1,905.0 / 1,932.16 / 1,776.23 | n/a |
+| memory | `POST /api/v2/events/payment` | 128 | 1,351.85 | 282.67 | 1,304.57 | 72.85 | 267.5 | 378.88 | 560.27 | 1,277.79 / 1,337.3 / 1,304.57 | n/a |
 
 Against the pre-registered rule (`pass` in the file):
 
