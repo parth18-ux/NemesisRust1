@@ -142,6 +142,53 @@ connection pool, per-payer stripes, a ledger-order lock) and cuts the round trip
   No regression: memory-mode `/api/v2/payment` and memory-mode webhook within 10% of the baseline.
 * The baseline is the unchanged code, same machine, same session. Output: `results/e2e_bench_s1.json`.
 
+**Result** (`results/e2e_bench_s1.json`; baseline at `0ae8027-dirty`, whose binaries were built from the unchanged
+server code before the edits that make it `-dirty`; after at `4be9aeb`; `RUSETECT_LIVE_POOL` unset in both, so
+the after run used the default of 2 x 4 logical CPUs). Medians of 3 repetitions; "after rps by repetition" lists all three.
+
+| Store | Endpoint | Concurrency | Baseline rps | Baseline p99 ms | After rps | p50 ms | p95 ms | p99 ms | max ms | After rps by repetition | Gate |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| redis | `POST /api/v2/events/payment` | 1 | 1,166.26 | 1.49 | 1,356.15 | 0.67 | 1.12 | 1.33 | 6.25 | 1,695.81 / 1,347.29 / 1,356.15 | green |
+| redis | `POST /api/v2/events/payment` | 8 | 1,320.85 | 8.05 | 4,648.73 | 1.65 | 2.64 | 3.3 | 7.8 | 4,648.73 / 5,035.58 / 4,549.65 | green |
+| redis | `POST /api/v2/events/payment` | 32 | 1,293.44 | 32.04 | 5,282.43 | 5.94 | 7.81 | 8.86 | 13.52 | 5,002.02 / 5,955.65 / 5,282.43 | green |
+| redis | `POST /api/v2/events/payment` | 64 | 1,312.12 | 81.35 | 4,823.22 | 12.23 | 24.43 | 30.56 | 40.29 | 4,413.48 / 5,575.19 / 4,823.22 | green |
+| redis | `POST /api/v2/events/payment` | 128 | 1,084.9 | 185.32 | 3,231.58 | 35.39 | 64.18 | 70.92 | 80.74 | 3,231.58 / 4,485.62 / 3,179.32 | green |
+| memory | `POST /api/v2/payment` | 1 | 2,419.11 | 1.73 | 2,303.58 | 0.28 | 1.56 | 1.82 | 8.67 | 2,361.48 / 2,303.58 / 2,055.72 | green |
+| memory | `POST /api/v2/payment` | 8 | 2,823.69 | 7.47 | 2,725.64 | 2.73 | 5.79 | 7.71 | 15.1 | 2,790.48 / 2,676.13 / 2,725.64 | green |
+| memory | `POST /api/v2/payment` | 32 | 3,295.03 | 31.09 | 3,116.95 | 10.16 | 22.84 | 31.28 | 65.65 | 3,217.28 / 3,109.5 / 3,116.95 | green |
+| memory | `POST /api/v2/payment` | 64 | 3,712.43 | 56.59 | 3,269.37 | 18.56 | 45.06 | 58.66 | 123.67 | 3,378.47 / 3,122.24 / 3,269.37 | green |
+| memory | `POST /api/v2/payment` | 128 | 3,911.95 | 103.12 | 3,579.52 | 33.45 | 79.14 | 108.31 | 214.6 | 3,838.98 / 3,579.52 / 3,499.51 | green |
+| memory | `POST /api/v2/events/payment` | 1 | 1,212.19 | 2.39 | 1,225.31 | 0.63 | 2.2 | 2.41 | 14.95 | 1,225.31 / 1,225.27 / 1,230.71 | green |
+| memory | `POST /api/v2/events/payment` | 8 | 1,876.69 | 9.85 | 1,851.48 | 3.97 | 7.43 | 9.57 | 20.63 | 1,851.48 / 1,747.73 / 1,950.44 | green |
+| memory | `POST /api/v2/events/payment` | 32 | 1,848.51 | 43.48 | 1,871.63 | 16.1 | 29.07 | 35.45 | 48.98 | 1,859.29 / 1,886.48 / 1,871.63 | green |
+| memory | `POST /api/v2/events/payment` | 64 | 1,857.5 | 85.27 | 1,905.0 | 32.08 | 57.44 | 69.67 | 92.19 | 1,905.0 / 1,932.16 / 1,776.23 | green |
+| memory | `POST /api/v2/events/payment` | 128 | 1,351.85 | 282.67 | 1,304.57 | 72.85 | 267.5 | 378.88 | 560.27 | 1,277.79 / 1,337.3 / 1,304.57 | green |
+
+Against the pre-registered rule (`pass` in the file):
+
+* Correctness gate: green at every level of every repetition (no errors, exact ledger growth, exact
+  `live:seq` advance, 100 identical replays per level with no ledger growth). The baseline was green too.
+* Primary: **met**. Concurrency 32 median 5,282.43 requests per second, p99 8.86 ms.
+* Stretch (5,000 requests per second with p99 under 50 ms): **met** at concurrency 32.
+* No regression: **not met**. Below 90% of baseline: `POST /api/v2/payment` at concurrency 64: 3,269.37 against 3,712.43.
+  The change does not touch `/api/v2/payment` (no code on its path changed), so this is most likely run-to-run
+  variation on the shared container, but the rule was fixed in advance and is applied as written. The rerun that might
+  clear it was not done.
+* **Overall: fail**, on the no-regression clause alone.
+
+Past concurrency 32, throughput falls and p99 rises (best median 5,282.43 at concurrency
+32). Load generator, server, Redis and the blocking pool all compete for the same 4 logical CPUs,
+and Redis runs its commands on one thread. Where the time goes was not profiled, so no bottleneck is named.
+
+**10,000 requests per second on one node is not credible on this box.** It would take nearly twice the best median
+above. Every event already costs four Redis round trips and a scoring pass, and Redis, the server and the load
+generator share four CPUs. More concurrency made it slower, not faster. Getting there needs more cores or separate
+machines for Redis and the load generator, or fewer round trips per event (group commit, change D, deliberately not
+built). It also needs a measurement made under a rule written first.
+
+High-volume senders must raise `RUSETECT_RATE_LIMIT` (requests per 10 s per client): at its default the per-client
+limit sits far below these rates. The webhook is deliberately not exempt from the limiter (`docs/RUNBOOK.md` section 8).
+
 ## 4. From here to a bank
 
 1. **Throughput.** UPI runs at roughly 20 billion payments a month, about 7,000 to 8,000 a second on average with
