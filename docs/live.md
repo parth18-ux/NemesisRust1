@@ -171,7 +171,9 @@ the alert from `live:alerts`, and a review action writes the updated alert back.
   `event_seq`, not chained to each other, and `allow` entries are not chained at all.
 - Review actions on one live alert from two instances at the same moment are not locked: the last write wins. The
   pause-screen, re-verification and duress routes change only the instance's copy and are not written back.
-- Redis calls are made while the server's state lock is held, so one instance handles one request at a time (on
-  Vercel an instance serves one request at a time anyway).
-- The per-client rate limit (`RUSETECT_RATE_LIMIT`, requests per 10 s) applies to the webhook too; raise it for a
-  high-volume sender.
+- With Redis, scoring and Redis calls run outside the server's state lock on a small connection pool
+  (`RUSETECT_LIVE_POOL`, default 2 x logical CPUs); one payer's payments are scored one at a time, and the state lock
+  is held only for PRAMAAN, the alert and the desk chain (`docs/SCALING.md` section 3c). On Vercel an instance serves
+  one request at a time anyway.
+- The per-client rate limit (`RUSETECT_RATE_LIMIT`, requests per 10 s) applies to the webhook too and the webhook is not
+  exempt; a high-volume sender needs it raised (`docs/RUNBOOK.md` section 8).

@@ -348,3 +348,172 @@ async fn redis_outage_fails_closed_and_recovers() {
     assert_eq!(body["durable"], true);
     assert_eq!(get(&app, "/api/health").await["ready"], true);
 }
+
+fn llen(con: &mut redis::Connection, k: &str) -> i64 {
+    redis::cmd("LLEN").arg(k).query(con).unwrap()
+}
+
+fn get_int(con: &mut redis::Connection, k: &str) -> i64 {
+    redis::cmd("GET").arg(k).query::<Option<i64>>(con).unwrap().unwrap_or(0)
+}
+
+/// 32 concurrent sends of one event_id: one is scored and committed, the others wait (409) or replay it unchanged; a
+/// replay does not take a sequence number.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_duplicates_commit_once() {
+    let Some(r) = redis_server() else { return };
+    let (app, shared) = app();
+    shared.state.lock().unwrap().live = rusetect_server::live::Live::redis(&r.1, "cd:").unwrap();
+    let e = event("evt-dup", "CD1");
+    let tasks: Vec<_> = (0..32).map(|_| {
+        let (app, e) = (app.clone(), e.clone());
+        tokio::spawn(async move { send(&app, &e, now(), None).await })
+    }).collect();
+    let mut res = vec![];
+    for t in tasks {
+        res.push(t.await.unwrap());
+    }
+    let first: Vec<&Value> = res.iter().filter(|(s, _, rp)| *s == StatusCode::OK && !rp).map(|x| &x.1).collect();
+    assert_eq!(first.len(), 1, "exactly one non-replayed 200");
+    for (s, b, rp) in &res {
+        assert!(*s == StatusCode::CONFLICT || (*s == StatusCode::OK && (!rp || b == first[0])), "{s} {b}");
+    }
+    let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
+    assert_eq!(llen(&mut con, "cd:live:ledger"), 1);
+    let out_n: i64 = redis::cmd("HGET").arg("cd:a:{070|CD1}").arg("out_n").query(&mut con).unwrap();
+    assert_eq!(out_n, 1, "account state written once");
+    assert_eq!(get_int(&mut con, "cd:live:seq"), 1);
+    let (s, again, replayed) = send(&app, &e, now(), None).await;
+    assert_eq!((s, replayed, &again), (StatusCode::OK, true, first[0]));
+    assert_eq!(get_int(&mut con, "cd:live:seq"), 1, "a replay does not advance live:seq");
+}
+
+/// 200 events from 16 concurrent senders, a quarter from one payer, some raised by PRAMAAN: sequence numbers are unique
+/// and gap-free, every event has one ledger entry, the shared payer's count is exact, and the chained entries reach
+/// live:ledger in chain order.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_events_keep_ledger_and_state_consistent() {
+    let Some(r) = redis_server() else { return };
+    let (app, shared) = app();
+    shared.state.lock().unwrap().live = rusetect_server::live::Live::redis(&r.1, "cc:").unwrap();
+    let tasks: Vec<_> = (0..16).map(|t| {
+        let app = app.clone();
+        tokio::spawn(async move {
+            let mut out = vec![];
+            for i in (t..200).step_by(16) {
+                let mut e = event(&format!("cc-{i}"), &if i % 4 == 0 { "CCSAME".to_string() } else { format!("CC{i}") });
+                if i % 10 == 1 {
+                    let mut a = auth(1.767e9, 60000.0);
+                    a["user_id"] = json!(format!("cc-user-{i}"));
+                    e["auth"] = a;
+                }
+                out.push(send(&app, &e, now(), None).await);
+            }
+            out
+        })
+    }).collect();
+    let mut res = vec![];
+    for t in tasks {
+        res.extend(t.await.unwrap());
+    }
+    assert!(res.iter().all(|(s, _, rp)| *s == StatusCode::OK && !rp), "every event scored once");
+    let mut seqs: Vec<u64> = res.iter().map(|x| x.1["seq"].as_u64().unwrap()).collect();
+    seqs.sort();
+    assert_eq!(seqs, (1..=200).collect::<Vec<u64>>(), "unique and gap-free");
+    let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
+    assert_eq!(llen(&mut con, "cc:live:ledger"), 200);
+    let out_n: i64 = redis::cmd("HGET").arg("cc:a:{070|CCSAME}").arg("out_n").query(&mut con).unwrap();
+    assert_eq!(out_n, 50, "the shared payer's count is exact");
+    let ledger: Vec<String> = redis::cmd("LRANGE").arg("cc:live:ledger").arg(0).arg(-1).query(&mut con).unwrap();
+    let st = shared.state.lock().unwrap();
+    let chained: Vec<Value> = ledger.iter().map(|x| serde_json::from_str::<Value>(x).unwrap()).filter(|e| !e["seq"].is_null()).collect();
+    assert!(chained.len() >= 20, "the PRAMAAN-raised events are chained: {}", chained.len());
+    let mut last = 0;
+    for e in &chained {
+        let n = e["seq"].as_u64().unwrap();
+        assert!(n > last, "chained entries in increasing seq");
+        let prev = if n == 1 { "0".repeat(64) } else { st.desk.log[n as usize - 2]["hash"].as_str().unwrap().to_string() };
+        assert_eq!(e["prev"].as_str(), Some(prev.as_str()), "prev is the previous hash");
+        assert_eq!(e, &st.desk.log[n as usize - 1]);
+        last = n;
+    }
+    assert!(st.desk.verify_chain(), "the desk chain verifies");
+}
+
+/// Redis killed under 16 senders: every response is 200 or 503, every 200 has its stored ev: record (Redis persists
+/// every write here), and once Redis is back each 503 event is processed on retry, not replayed (unless its commit
+/// had been applied before the reply was lost).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_outage_fails_closed() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let Some(probe) = redis_server() else { return };
+    drop(probe);
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port().to_string();
+    let dir = std::env::temp_dir().join(format!("rusetect-outage-{port}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let url = format!("redis://127.0.0.1:{port}/0");
+    let start = || {
+        let c = Command::new("redis-server").args(["--port", &port, "--save", "", "--appendonly", "yes", "--appendfsync", "always"])
+            .arg("--dir").arg(&dir).stdout(Stdio::null()).spawn().unwrap();
+        for _ in 0..100 {
+            if redis::Client::open(url.as_str()).ok().and_then(|c| c.get_connection().ok()).is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        Redis(c, url.clone())
+    };
+    let mut r = start();
+    let (app, shared) = app();
+    shared.state.lock().unwrap().live = rusetect_server::live::Live::redis(&url, "co:").unwrap();
+    let done = std::sync::Arc::new(AtomicUsize::new(0));
+    let tasks: Vec<_> = (0..16).map(|t| {
+        let (app, done) = (app.clone(), done.clone());
+        tokio::spawn(async move {
+            let mut out = vec![];
+            for k in 0..40 {
+                let e = event(&format!("co-{t}-{k}"), &format!("CO{t}"));
+                let (s, b, _) = send(&app, &e, now(), None).await;
+                done.fetch_add(1, Ordering::Relaxed);
+                out.push((e, s, b));
+            }
+            out
+        })
+    }).collect();
+    while done.load(Ordering::Relaxed) < 48 {
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    }
+    let _ = r.0.kill();
+    let _ = r.0.wait();
+    let mut res = vec![];
+    for t in tasks {
+        res.extend(t.await.unwrap());
+    }
+    assert!(res.iter().all(|x| x.1 == StatusCode::OK || x.1 == StatusCode::SERVICE_UNAVAILABLE), "200 or 503 only");
+    assert!(res.iter().any(|x| x.1 == StatusCode::SERVICE_UNAVAILABLE), "the outage was hit");
+    r = start();
+    let mut con = redis::Client::open(url.as_str()).unwrap().get_connection().unwrap();
+    for (e, s, b) in &res {
+        let id = e["event_id"].as_str().unwrap();
+        let stored: Option<String> = redis::cmd("GET").arg(format!("co:live:ev:{id}")).query(&mut con).unwrap();
+        if *s == StatusCode::OK {
+            assert_eq!(stored.as_deref().map(|v| serde_json::from_str::<Value>(v).unwrap()).as_ref(), Some(b), "a 200 has its stored record");
+            continue;
+        }
+        let applied = stored.as_deref().is_some_and(|v| v != "pending");
+        // an unfinished claim from before the outage expires after CLAIM_TTL_S (60 s): until then the retry is a 409
+        let mut tries = 0;
+        let (s, body, replayed) = loop {
+            let x = send(&app, e, now(), None).await;
+            if x.0 != StatusCode::CONFLICT || tries == 70 {
+                break x;
+            }
+            tries += 1;
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        };
+        assert_eq!(s, StatusCode::OK, "{body}");
+        assert!(!replayed || applied, "a 503 event is processed on retry, not replayed: {id}");
+    }
+    drop(r);
+    let _ = std::fs::remove_dir_all(&dir);
+}

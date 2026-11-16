@@ -9,7 +9,8 @@
 //!   pr:{acct}>payee  zset  cascade risks of this payer->payee pair in the last 24 h (structuring window), member "eid|risk"
 //!   seen:{eid}  string  set once per payment eid (26 h), so a redelivered payment does not write account state twice
 //! Per payment: one pipelined read round trip, features computed exactly as Engine::features, then one Lua script that
-//! claims seen:{eid} and applies the writes atomically (a crash cannot leave the claim without the writes).
+//! claims seen:{eid} and applies the writes atomically (a crash cannot leave the claim without the writes). score_one
+//! sends that script and the pair window in one round trip.
 //! The script touches payer, payee, bp and seen keys, which sit in different hash slots: it needs a single Redis node
 //! (or a proxy that does not split scripts), not Redis Cluster.
 use rusetect::engine::{fx, CascadeConfig, Features, MIN24};
@@ -63,16 +64,27 @@ impl RedisState {
     /// worker keeps it: 24 h noisy-OR of the cascade risks of this payer's payments to `payee` (all payees when `payee`
     /// is empty), current one included. A redelivered payment (same eid) is counted once. Returns (payments, noisy-OR).
     pub fn pair_window(&mut self, p: &Payment, payee: &str, risk: f64) -> redis::RedisResult<(usize, f64)> {
+        let mut pl = redis::pipe();
+        self.pair_window_cmds(&mut pl, p, payee, risk);
+        let (members,): (Vec<String>,) = pl.query(&mut self.con)?;
+        Ok(Self::pair_window_of(&members))
+    }
+
+    /// Append the pair window's commands to `pl`: one reply that is not ignored, the window's members (current payment
+    /// included), for `pair_window_of`.
+    pub fn pair_window_cmds(&self, pl: &mut redis::Pipeline, p: &Payment, payee: &str, risk: f64) {
         let key = format!("{}>{}", self.k("pr", &format!("{}|{}", p.from_bank, p.from_account)), payee);
         let eid = p.eid.map(|e| e.to_string()).unwrap_or_else(|| format!("{}.{}", p.tmin, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
-        let (members,): (Vec<String>,) = redis::pipe()
-            .cmd("ZREMRANGEBYSCORE").arg(&key).arg("-inf").arg(p.tmin - MIN24).ignore()
+        pl.cmd("ZREMRANGEBYSCORE").arg(&key).arg("-inf").arg(p.tmin - MIN24).ignore()
             .cmd("ZADD").arg(&key).arg(p.tmin).arg(format!("{eid}|{risk}")).ignore()
             .cmd("ZRANGE").arg(&key).arg(0).arg(-1)
-            .cmd("EXPIRE").arg(&key).arg(MIN24 * 60 + 3600).ignore()
-            .query(&mut self.con)?;
+            .cmd("EXPIRE").arg(&key).arg(MIN24 * 60 + 3600).ignore();
+    }
+
+    /// (payments, noisy-OR) of the window's members.
+    pub fn pair_window_of(members: &[String]) -> (usize, f64) {
         let prod: f64 = members.iter().map(|m| 1.0 - m.rsplit_once('|').and_then(|x| x.1.parse::<f64>().ok()).unwrap_or(0.0)).product();
-        Ok((members.len(), 1.0 - prod))
+        (members.len(), 1.0 - prod)
     }
 
     fn k(&self, kind: &str, acct: &str) -> String {
@@ -80,6 +92,14 @@ impl RedisState {
     }
 
     pub fn features(&mut self, p: &Payment) -> redis::RedisResult<Features> {
+        let (f, w) = self.features_read(p)?;
+        w.query::<i64>(&mut self.con)?;
+        Ok(f)
+    }
+
+    /// The read half of `features` (one pipelined round trip) and the account-state write it implies, as a command the
+    /// caller sends (alone, or in one round trip with the pair window).
+    pub fn features_read(&mut self, p: &Payment) -> redis::RedisResult<(Features, redis::Cmd)> {
         let s = format!("{}|{}", p.from_bank, p.from_account);
         let d = format!("{}|{}", p.to_bank, p.to_account);
         let t = p.tmin;
@@ -169,8 +189,7 @@ impl RedisState {
         for x in &w {
             c.arg(x.len()).arg(x);
         }
-        c.query::<i64>(&mut self.con)?;
-        Ok(Features(f))
+        Ok((Features(f), c))
     }
 
     pub fn sender_fan_in_24h(&mut self, p: &Payment) -> redis::RedisResult<usize> {

@@ -1,0 +1,33 @@
+{
+  "what": "Pre-registered protocol for S1 (scale the signed Redis webhook, POST /api/v2/events/payment, on one node)",
+  "registered_before": "any measurement of the changed code; the baseline is run on the unchanged code in the same session",
+  "generated_by": "crates/rusetect-server/examples/e2e_bench.rs (target/release/examples/e2e_bench s1 baseline|after)",
+  "output": "results/e2e_bench_s1.json (keys: baseline, repetitions, protocol, pass); results/e2e_bench.json is left as history",
+  "harness": {
+    "client": "closed loop, keep-alive HTTP/1.1 on loopback, one connection per concurrent client",
+    "concurrency_levels": [1, 8, 32, 64, 128],
+    "requests_per_level": 20000,
+    "warmup_requests_per_level": 1000,
+    "repetitions": 3,
+    "fresh_processes_per_repetition": "new rusetect-server (and new redis-server in redis mode) for every repetition",
+    "recorded": ["RUSETECT_LIVE_POOL (unset means the server default)", "git head", "machine"],
+    "workload": "400 payers, 300 payees, timestamps one minute apart, every webhook event HMAC signed with a unique event_id (unchanged from results/e2e_bench.json)"
+  },
+  "metric": "200 responses per second (closed loop) and latency p50/p95/p99/max per level; the median of the 3 repetitions is reported next to all 3",
+  "correctness_gate": {
+    "applies_to": "redis-mode webhook, every level of every repetition; a level that fails it voids the run",
+    "checks": [
+      "errors == 0 (every response is 200)",
+      "LLEN of live:ledger grew by exactly N (the ledger list is emptied after the warm-up, before the N measured requests)",
+      "live:seq advanced by exactly N",
+      "resending 100 sampled events of the level returns 200 with Idempotent-Replayed: true, a body identical to the first response, and no ledger growth"
+    ]
+  },
+  "pass_rule": {
+    "primary": "redis webhook at concurrency 32: median of 3 repetitions >= 3000 requests per second, median p99 < 50 ms, and the correctness gate green",
+    "stretch": "reported either way: median >= 5000 requests per second with median p99 < 50 ms at any level <= 128",
+    "no_regression": "memory-mode POST /api/v2/payment and memory-mode webhook: median requests per second at every level not more than 10% below the baseline median"
+  },
+  "deferred": "group commit (change D) is not built; if the gate or the rule fails, the measured bottleneck is reported instead",
+  "scope": "one shared 4 logical CPU container: load generator, server and redis-server share the CPUs; not the Vercel deployment"
+}
