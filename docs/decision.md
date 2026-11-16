@@ -591,6 +591,17 @@ Monitoring. Limits: the reference comes from the same synthetic generator as tra
 weeks will very likely alert until a reference is rebuilt from that bank's validation period; and a window of a day
 reacts to a change only after a large share of a day has passed.
 
+**8ah. S1: the Redis webhook on one node (pre-registered; overall fail).** The protocol
+(`results/e2e_bench_s1_protocol.json`) was committed before the changed code was measured; the result is
+`results/e2e_bench_s1.json`, table and discussion in `docs/SCALING.md` section 3c. Correctness gate green at every
+level of every repetition. Primary met: concurrency 32 median 5,282.43 requests per second, p99 8.86 ms (rule: 3,000
+with p99 under 50 ms). Stretch met at concurrency 32. No-regression not met: memory-mode `POST /api/v2/payment` at
+concurrency 64 ran 3,269.37 against a baseline of 3,712.43, below the 90% floor. No code on that path changed, so it
+is most likely run-to-run noise on the shared container, but the rule was fixed in advance: **overall fail**. The run
+was not repeated to clear it. The S1 code stays served (the webhook path met its targets and the gate); a later
+review fenced the idempotency claim with a per-request token and added the payee to the scoring stripes, which this
+measurement predates.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

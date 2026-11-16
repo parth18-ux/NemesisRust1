@@ -225,7 +225,8 @@ impl ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let mut r = PyJson(StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), json!({"detail": self.detail})).into_response();
-        // every 503 is temporary and nothing was committed: tell senders when to retry (docs/live.md section 4)
+        // every 503 is temporary: tell senders when to retry. Usually nothing was committed; when a commit's reply was
+        // lost and its outcome is unknown, the retry replays the stored result or is processed (docs/live.md section 4)
         if self.status == 503 {
             r.headers_mut().insert("retry-after", HeaderValue::from_static(RETRY_AFTER_S));
         }
@@ -266,12 +267,19 @@ async fn with_state<F>(app: AppRef, f: F) -> ApiResult
 where
     F: FnOnce(&mut AppState) -> ApiResult + Send + 'static,
 {
-    tokio::task::spawn_blocking(move || {
+    blocking(move || {
         let mut st = app.state.lock().unwrap_or_else(|p| p.into_inner());
         f(&mut st)
     })
     .await
-    .unwrap_or_else(|e| Err(ApiError::new(500, format!("internal error: {e}"))))
+}
+
+/// Run a handler body on the blocking pool (it takes the state lock itself, e.g. around Redis I/O done without it).
+async fn blocking<F>(f: F) -> ApiResult
+where
+    F: FnOnce() -> ApiResult + Send + 'static,
+{
+    tokio::task::spawn_blocking(f).await.unwrap_or_else(|e| Err(ApiError::new(500, format!("internal error: {e}"))))
 }
 
 // ---------------------------------------------------------------- router
@@ -645,8 +653,8 @@ struct StatusQ {
 /// Alerts awaiting or after human review, newest first.
 async fn v2_alerts(State(app): State<AppRef>, h: HeaderMap, Query(q): Query<StatusQ>) -> ApiResult {
     require_reader(&h)?;
-    with_state(app, move |s| {
-        let al: Vec<Value> = live::all_alerts(s)?.into_iter().filter(|a| q.status.as_deref().map(|st| a["status"] == st).unwrap_or(true)).collect();
+    blocking(move || {
+        let al: Vec<Value> = live::all_alerts(&app)?.into_iter().filter(|a| q.status.as_deref().map(|st| a["status"] == st).unwrap_or(true)).collect();
         ok(Value::Array(al))
     }).await
 }
@@ -683,58 +691,54 @@ async fn v2_review(State(app): State<AppRef>, Path(alert_id): Path<String>, h: H
         (action, note)
     })?;
     let (key, nonce) = (header(&h, "x-analyst-key"), header(&h, "x-nonce"));
-    with_state(app, move |s| {
+    blocking(move || {
         let who = analyst_for(key.as_deref()).ok_or_else(|| ApiError::new(401, "missing or unknown X-Analyst-Key"))?;
         if !allowed(&who.role, &action) {
             return Err(ApiError::new(403, format!("role {} cannot {}", who.role, action)));
         }
-        if !s.nonces.use_nonce(nonce.as_deref()) {
-            return Err(ApiError::new(409, "X-Nonce missing or already used"));
-        }
-        live::load_alert(s, &alert_id)?;
-        let a = s.desk.act(&alert_id, &who.analyst, &action, &note).map_err(review_err)?;
-        if a["status"] == "blocked" && a.get("published").map(|p| p.is_null() || p == &json!(false) || p == &json!(0)).unwrap_or(true) {
-            let p = &a["payment"];
-            let ident = format!("{}:{}", p["to_bank"].as_str().unwrap_or(""), p["to_account"].as_str().unwrap_or(""));
-            let pack_hash = s.desk.evidence(&alert_id).and_then(|e| e["pack_hash"].as_str().map(String::from));
-            // the block stands even when the ledger refuses the entry (e.g. full); the alert records why it was not shared
-            match s.consortium.publish(THIS_BANK, "mule_account", &ident, "block approved by two analysts", pack_hash.as_deref()) {
-                Ok(e) => {
-                    s.desk.set_field(&alert_id, "published", e["seq"].clone());
-                    s.desk.system_event(&alert_id, "consortium_published", "system", &format!("ledger entry {}", e["seq"]), false).map_err(review_err)?;
-                }
-                Err(m) => {
-                    s.desk.set_field(&alert_id, "published", json!(false));
-                    s.desk.set_field(&alert_id, "publish_error", json!(m));
-                    s.desk.system_event(&alert_id, "consortium_publish_failed", "system", &m, false).map_err(review_err)?;
+        let nonce_ok = |s: &mut AppState| if s.nonces.use_nonce(nonce.as_deref()) { Ok(()) } else { Err(ApiError::new(409, "X-Nonce missing or already used")) };
+        live::act_on_alert(&app, &alert_id, nonce_ok, |s| {
+            let a = s.desk.act(&alert_id, &who.analyst, &action, &note).map_err(review_err)?;
+            if a["status"] == "blocked" && a.get("published").map(|p| p.is_null() || p == &json!(false) || p == &json!(0)).unwrap_or(true) {
+                let p = &a["payment"];
+                let ident = format!("{}:{}", p["to_bank"].as_str().unwrap_or(""), p["to_account"].as_str().unwrap_or(""));
+                let pack_hash = s.desk.evidence(&alert_id).and_then(|e| e["pack_hash"].as_str().map(String::from));
+                // the block stands even when the ledger refuses the entry (e.g. full); the alert records why it was not shared
+                match s.consortium.publish(THIS_BANK, "mule_account", &ident, "block approved by two analysts", pack_hash.as_deref()) {
+                    Ok(e) => {
+                        s.desk.set_field(&alert_id, "published", e["seq"].clone());
+                        s.desk.system_event(&alert_id, "consortium_published", "system", &format!("ledger entry {}", e["seq"]), false).map_err(review_err)?;
+                    }
+                    Err(m) => {
+                        s.desk.set_field(&alert_id, "published", json!(false));
+                        s.desk.set_field(&alert_id, "publish_error", json!(m));
+                        s.desk.system_event(&alert_id, "consortium_publish_failed", "system", &m, false).map_err(review_err)?;
+                    }
                 }
             }
-        }
-        live::save_alert(s, &alert_id)?;
-        ok(s.desk.alerts[&alert_id].clone())
+            ok(s.desk.alerts[&alert_id].clone())
+        })
     }).await
 }
 
 async fn v2_evidence(State(app): State<AppRef>, h: HeaderMap, Path(alert_id): Path<String>) -> ApiResult {
     require_reader(&h)?;
-    with_state(app, move |s| {
-        live::load_alert(s, &alert_id)?;
+    blocking(move || live::with_alert(&app, &alert_id.clone(), |s| {
         let mut pack = s.desk.evidence(&alert_id).ok_or_else(|| ApiError::new(404, "unknown alert"))?;
         pack["signature"] = s.signer.sign(&json!({"pack_hash": pack["pack_hash"], "alert_id": alert_id}));
         ok(pack)
-    }).await
+    })).await
 }
 
 /// STR draft built from the evidence pack (template, not a language model). For analyst review; never filed automatically.
 async fn v2_str(State(app): State<AppRef>, h: HeaderMap, Path(alert_id): Path<String>) -> ApiResult {
     require_reader(&h)?;
-    with_state(app, move |s| {
-        live::load_alert(s, &alert_id)?;
+    blocking(move || live::with_alert(&app, &alert_id.clone(), |s| {
         let pack = s.desk.evidence(&alert_id).ok_or_else(|| ApiError::new(404, "unknown alert"))?;
         let camps = rusetect::campaigns::build_recent(&s.desk.alerts);
         let camp = camps.iter().find(|c| c["alerts"].as_array().map(|a| a.iter().any(|x| x == alert_id.as_str())).unwrap_or(false));
         ok(rusetect::str_report::draft(&pack, camp, rusetect::str_report::DEFAULT_ENTITY))
-    }).await
+    })).await
 }
 
 /// Alerts linked into scam campaigns by shared payee, payee identifiers in messages, or near identical scripts.

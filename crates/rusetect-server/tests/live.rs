@@ -349,6 +349,27 @@ async fn redis_outage_fails_closed_and_recovers() {
     assert_eq!(get(&app, "/api/health").await["ready"], true);
 }
 
+/// An event_id another request is still processing: 409 with Retry-After of the claim's lifetime, and nothing written.
+#[tokio::test]
+async fn a_claimed_event_is_a_409_with_retry_after() {
+    let Some(r) = redis_server() else { return };
+    let (app, shared) = app();
+    shared.state.lock().unwrap().live = rusetect_server::live::Live::redis(&r.1, "ra:").unwrap();
+    let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
+    redis::cmd("SET").arg("ra:live:ev:evt-ra").arg("pending:77").query::<()>(&mut con).unwrap();
+    let e = event("evt-ra", "RA1");
+    let (raw, ts) = (e.to_string(), now());
+    let req = Request::builder().method("POST").uri("/api/v2/events/payment").header("content-type", "application/json")
+        .header("x-rusetect-timestamp", ts.to_string()).header("x-rusetect-signature", sign(ts, &raw, SECRET)).body(Body::from(raw)).unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let ra = rusetect_server::live::CLAIM_TTL_S.to_string();
+    assert_eq!(resp.headers().get("retry-after").and_then(|v| v.to_str().ok()), Some(ra.as_str()));
+    assert_eq!(llen(&mut con, "ra:live:ledger"), 0);
+    let claim: Option<String> = redis::cmd("GET").arg("ra:live:ev:evt-ra").query(&mut con).unwrap();
+    assert_eq!(claim.as_deref(), Some("pending:77"), "another request's claim is left alone");
+}
+
 fn llen(con: &mut redis::Connection, k: &str) -> i64 {
     redis::cmd("LLEN").arg(k).query(con).unwrap()
 }
@@ -500,7 +521,7 @@ async fn concurrent_outage_fails_closed() {
             assert_eq!(stored.as_deref().map(|v| serde_json::from_str::<Value>(v).unwrap()).as_ref(), Some(b), "a 200 has its stored record");
             continue;
         }
-        let applied = stored.as_deref().is_some_and(|v| v != "pending");
+        let applied = stored.as_deref().is_some_and(|v| !v.starts_with("pending"));
         // an unfinished claim from before the outage expires after CLAIM_TTL_S (60 s): until then the retry is a 409
         let mut tries = 0;
         let (s, body, replayed) = loop {

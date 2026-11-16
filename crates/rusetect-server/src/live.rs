@@ -13,15 +13,17 @@
 //! kept in this process's memory and /api/health says `"durable": false`.
 //!
 //! Idempotency: the event_id is claimed before scoring; a repeated event_id returns the stored result unchanged (header
-//! `Idempotent-Replayed: true`) and is not scored or written again.
+//! `Idempotent-Replayed: true`) and is not scored or written again. In Redis the claim is `pending:<seq>`, a token unique
+//! to this request; the commit is applied only while ev:{id} still holds that token, and a failed request deletes only
+//! its own claim, so a request that outlived its claim (CLAIM_TTL_S) cannot overwrite or delete a retry's claim or result.
 //!
 //! Concurrency (Redis mode): scoring and Redis I/O run outside the state mutex, on a small connection pool
-//! (RUSETECT_LIVE_POOL, default 2 x logical CPUs). One payer's payments are scored one at a time (a payer stripe held
-//! across the account-state read, write and pair window); the state mutex is held only for the in-process part (drift,
-//! PRAMAAN, desk alert and chain); a decision that is not `allow` holds `ledger_order` from before that lock through the
-//! commit, so live:ledger receives the desk's hash chain in order. Lock order: ledger_order, then state. Per event:
-//! four Redis round trips (claim and seq, account-state read, account-state write with pair window, commit).
-//! Memory mode stays one locked call.
+//! (RUSETECT_LIVE_POOL, default 2 x logical CPUs). Payments that share a payer or a payee are scored one at a time
+//! (account stripes for both, taken in ascending order, held across the account-state read, write and pair window); the
+//! state mutex is held only for the in-process part (drift, PRAMAAN, desk alert and chain); a decision that is not
+//! `allow` holds `ledger_order` from before that lock through the commit, so live:ledger receives the desk's hash chain in
+//! order. Lock order: ledger_order, then state; alert_io, then state. Per event: four Redis round trips (claim and seq,
+//! account-state read, account-state write with pair window, commit). Memory mode stays one locked call.
 use crate::inputs::AssessIn;
 use crate::scale::{redis_state::RedisState, worker::score_one};
 use crate::{assess, check_auth_request, header, parse_obj, payment_of, require_reader, AppRef, AppState, ApiError, PyJson};
@@ -41,7 +43,7 @@ use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
 /// Largest clock difference accepted between the sender's timestamp and the server (seconds).
@@ -52,14 +54,26 @@ const FEED: usize = 200;
 const MEM_EVENTS: usize = 100_000;
 /// How long Redis keeps an event's result for idempotency, and how long an unfinished claim blocks a retry.
 const EVENT_TTL_S: u64 = 7 * 86_400;
-const CLAIM_TTL_S: u64 = 60;
+pub const CLAIM_TTL_S: u64 = 60;
 /// Entries kept in `live:ledger` (oldest trimmed first).
 pub const LEDGER_MAX: usize = 100_000;
 pub const ACTIONS: [&str; 4] = ["allow", "verify", "hold", "block"];
 const STRIPES: usize = 64;
-/// Claim the event id and take its sequence number in one round trip; a known id returns what is stored (or "pending").
-const CLAIM_AND_SEQ: &str = "if redis.call('SET', KEYS[1], 'pending', 'NX', 'EX', ARGV[1]) then return {1, tostring(redis.call('INCR', KEYS[2]))} end \
-    return {0, redis.call('GET', KEYS[1])}";
+/// Claim the event id and take its sequence number in one round trip; the claim is `pending:<seq>`, unique to this
+/// request. A known id returns what is stored (a result, or another request's `pending:` claim).
+const CLAIM_AND_SEQ: &str = "local v = redis.call('GET', KEYS[1]) if v then return {0, v} end \
+    local n = tostring(redis.call('INCR', KEYS[2])) redis.call('SET', KEYS[1], 'pending:' .. n, 'EX', ARGV[1]) return {1, n}";
+/// Delete a claim only while it is still ours (a retry may hold the key by now).
+const RELEASE: &str = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0";
+/// Commit only while ev:{id} holds our claim: store the result, then the feed, ledger and alert (each attempted, as in a
+/// MULTI: the stored result stands when one of them fails). Not ours: return what ev:{id} holds (a result, another
+/// request's claim, or nil when the claim expired), having written nothing.
+/// KEYS ev feed ledger alerts; ARGV token record event_ttl feed_last ledger_entry ledger_first alert_id alert.
+const COMMIT: &str = "local v = redis.call('GET', KEYS[1]) if v ~= ARGV[1] then return {0, v} end \
+    redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3]) local bad = 0 \
+    local function try(...) local r = redis.pcall(...) if type(r) == 'table' and r.err then bad = bad + 1 end end \
+    try('LPUSH', KEYS[2], ARGV[2]) try('LTRIM', KEYS[2], 0, ARGV[4]) try('RPUSH', KEYS[3], ARGV[5]) try('LTRIM', KEYS[3], ARGV[6], -1) \
+    if ARGV[7] ~= '' then try('HSET', KEYS[4], ARGV[7], ARGV[8]) end return {1, tostring(bad)}";
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
@@ -91,24 +105,28 @@ pub struct Durable {
     /// idle connections; a connection goes back only after a command on it succeeded
     idle: Mutex<Vec<RedisState>>,
     /// webhook requests doing Redis work at once (RUSETECT_LIVE_POOL, default 2 x logical CPUs); also the pool's size
-    slots: tokio::sync::Semaphore,
+    slots: Arc<tokio::sync::Semaphore>,
     size: usize,
     /// result of the last command in this instance: 0 none yet, 1 reachable, 2 unreachable
     reachable: AtomicU8,
     /// stateless engine for the Redis scoring path (account state lives in Redis), built on first use as Scorer::new does
     eng: OnceLock<Arc<Engine>>,
-    /// one payer's payments are scored one at a time: read, write and pair window see each other's effects
-    payer_stripes: [Mutex<()>; STRIPES],
+    /// payments sharing a payer or a payee are scored one at a time: read, write and pair window see each other's effects
+    stripes: [Mutex<()>; STRIPES],
     /// held from before the state lock through the commit for decisions the desk chains, so live:ledger keeps chain order
     ledger_order: Mutex<()>,
+    /// live alerts: an analyst action (write) holds it from its HGET through its HSET, a read (read) from its HGET until
+    /// the copy is in the desk, so a read never puts a copy older than an action into the desk
+    alert_io: RwLock<()>,
 }
 
 impl Durable {
     fn new(client: redis::Client, px: &str) -> Self {
         let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2);
         let size = std::env::var("RUSETECT_LIVE_POOL").ok().and_then(|v| v.trim().parse().ok()).filter(|&n: &usize| n > 0).unwrap_or(2 * cores);
-        Durable { client, px: px.into(), idle: Mutex::new(vec![]), slots: tokio::sync::Semaphore::new(size), size, reachable: AtomicU8::new(0),
-                  eng: OnceLock::new(), payer_stripes: std::array::from_fn(|_| Mutex::new(())), ledger_order: Mutex::new(()) }
+        Durable { client, px: px.into(), idle: Mutex::new(vec![]), slots: Arc::new(tokio::sync::Semaphore::new(size)), size,
+                  reachable: AtomicU8::new(0), eng: OnceLock::new(), stripes: std::array::from_fn(|_| Mutex::new(())),
+                  ledger_order: Mutex::new(()), alert_io: RwLock::new(()) }
     }
 
     fn key(&self, k: &str) -> String {
@@ -166,15 +184,58 @@ impl Durable {
         r
     }
 
-    /// Delete an unfinished claim so the sender's retry is processed (account writes are deduped by seen:{eid}).
-    fn release(&self, key: &str) {
-        let _ = self.run(true, |st| redis::cmd("DEL").arg(key).query::<i64>(&mut st.con));
+    /// Delete our unfinished claim so the sender's retry is processed (account writes are deduped by seen:{eid}); a
+    /// claim that expired and was taken by a retry, or a result stored since, is left alone.
+    fn release(&self, key: &str, token: &str) {
+        let _ = self.run(true, |st| redis::cmd("EVAL").arg(RELEASE).arg(1).arg(key).arg(token).query::<i64>(&mut st.con));
     }
 
-    fn payer_stripe(&self, d: &rusetect::payment::Payment) -> MutexGuard<'_, ()> {
-        let mut h = DefaultHasher::new();
-        (&d.from_bank, &d.from_account).hash(&mut h);
-        lock(&self.payer_stripes[(h.finish() % STRIPES as u64) as usize])
+    /// Lock the payer's and the payee's stripes, in ascending order (once when they are the same stripe).
+    fn account_stripes(&self, d: &rusetect::payment::Payment) -> (MutexGuard<'_, ()>, Option<MutexGuard<'_, ()>>) {
+        let stripe = |bank: &String, acct: &String| {
+            let mut h = DefaultHasher::new();
+            (bank, acct).hash(&mut h);
+            (h.finish() % STRIPES as u64) as usize
+        };
+        let (a, b) = (stripe(&d.from_bank, &d.from_account), stripe(&d.to_bank, &d.to_account));
+        let first = lock(&self.stripes[a.min(b)]);
+        (first, (a != b).then(|| lock(&self.stripes[a.max(b)])))
+    }
+
+    /// Claim ev:{id} (`key`) and take a sequence number: Ok((seq, token)), or Err(what ev:{id} already holds).
+    fn claim(&self, key: &str) -> redis::RedisResult<Result<(u64, String), Option<String>>> {
+        let seq_key = self.key("seq");
+        let c = |st: &mut RedisState| redis::cmd("EVAL").arg(CLAIM_AND_SEQ).arg(2).arg(key).arg(&seq_key).arg(CLAIM_TTL_S).query(&mut st.con);
+        let (claimed, v): (i64, Option<String>) = self.run(true, c)?;
+        if claimed == 0 {
+            return Ok(Err(v));
+        }
+        let seq: u64 = v.and_then(|n| n.parse().ok()).unwrap_or(0);
+        Ok(Ok((seq, format!("pending:{seq}"))))
+    }
+
+    /// The COMMIT script: (1, failed side writes) when applied, else (0, what ev:{id} holds). No retry: a commit whose
+    /// reply was lost may have been applied.
+    fn commit(&self, key: &str, token: &str, rec: &Value, entry: &Value, alert: Option<&Value>) -> redis::RedisResult<(i64, Option<String>)> {
+        let (fk, ak, lk) = (self.key("feed"), self.key("alerts"), self.key("ledger"));
+        let (aid, abody) = alert.map(|a| (a["alert_id"].as_str().unwrap_or("").to_string(), a.to_string())).unwrap_or_default();
+        let mut c = redis::cmd("EVAL");
+        c.arg(COMMIT).arg(4).arg(key).arg(&fk).arg(&lk).arg(&ak).arg(token).arg(rec.to_string()).arg(EVENT_TTL_S).arg(FEED - 1)
+            .arg(entry.to_string()).arg(-(LEDGER_MAX as i64)).arg(&aid).arg(&abody);
+        self.run(false, |st| c.query(&mut st.con))
+    }
+
+    fn get_alert(&self, id: &str) -> Result<Option<Value>, ApiError> {
+        let k = self.key("alerts");
+        let v: Option<String> = self.run(true, |st| redis::cmd("HGET").arg(&k).arg(id).query(&mut st.con)).map_err(store_err)?;
+        Ok(v.and_then(|v| serde_json::from_str(&v).ok()))
+    }
+
+    /// Latest live decisions, newest first.
+    fn feed(&self, n: usize) -> Result<Vec<Value>, ApiError> {
+        let key = self.key("feed");
+        let rows: Vec<String> = self.run(true, |st| redis::cmd("LRANGE").arg(&key).arg(0).arg(n as i64 - 1).query(&mut st.con)).map_err(store_err)?;
+        Ok(rows.iter().filter_map(|r| serde_json::from_str(r).ok()).collect())
     }
 }
 
@@ -223,14 +284,6 @@ impl Live {
         json!({"kind": if self.configured() { "redis" } else { "memory" }, "configured": self.configured(),
                "reachable": self.redis.as_ref().and_then(|d| match d.reachable.load(Ordering::Relaxed) { 0 => None, r => Some(r == 1) }),
                "note": self.note})
-    }
-
-    /// Latest live decisions, newest first.
-    pub fn feed(&self, n: usize) -> Result<Vec<Value>, ApiError> {
-        let Some(d) = self.redis.as_ref() else { return Ok(self.feed.iter().take(n).cloned().collect()) };
-        let key = d.key("feed");
-        let rows: Vec<String> = d.run(true, |st| redis::cmd("LRANGE").arg(&key).arg(0).arg(n as i64 - 1).query(&mut st.con)).map_err(store_err)?;
-        Ok(rows.iter().filter_map(|r| serde_json::from_str(r).ok()).collect())
     }
 }
 
@@ -287,27 +340,22 @@ fn ingest_redis(app: &crate::Shared, du: &Durable, ev: &Event, ready: Result<(),
     let eng = du.engine().map_err(store_err)?;
     // 1. idempotency: a known event id returns what was stored; a new one is claimed (and numbered) before any work
     let key = du.key(&format!("ev:{}", ev.id));
-    let seq_key = du.key("seq");
-    let claim = |st: &mut RedisState| redis::cmd("EVAL").arg(CLAIM_AND_SEQ).arg(2).arg(&key).arg(&seq_key).arg(CLAIM_TTL_S).query(&mut st.con);
-    let (claimed, v): (i64, Option<String>) = du.run(true, claim).map_err(store_err)?;
-    if claimed == 0 {
-        return match v.as_deref().map(serde_json::from_str::<Value>) {
-            Some(Ok(r)) => Ok((r, true)),
-            _ => Err(ApiError::new(409, "this event_id is still being processed; retry in a minute")),
-        };
-    }
-    let seq: u64 = v.and_then(|n| n.parse().ok()).unwrap_or(0);
-    // P1, no state lock: 2. score on the bank-scale path, account state and pair window in Redis (one payer at a time)
+    let (seq, token) = match du.claim(&key).map_err(store_err)? {
+        Ok(x) => x,
+        Err(v) => return stored(v),
+    };
+    // P1, no state lock: 2. score on the bank-scale path, account state and pair window in Redis (one at a time per
+    // payer and per payee)
     let mut p = d.clone();
     p.eid = Some(eid_of(&ev.id));
     let scored = {
-        let _payer = du.payer_stripe(&d);
+        let _accounts = du.account_stripes(&d);
         du.run(true, |st| score_one(&eng, st, &p))
     };
     let r = match scored {
         Ok(r) => r,
         Err(e) => {
-            du.release(&key);
+            du.release(&key, &token);
             return Err(store_err(e));
         }
     };
@@ -318,34 +366,45 @@ fn ingest_redis(app: &crate::Shared, du: &Durable, ev: &Event, ready: Result<(),
     let (mut rec, alert, entry) = match res {
         Ok(x) => x,
         Err(e) => {
-            du.release(&key);
+            du.release(&key, &token);
             return Err(e);
         }
     };
     rec["latency_ms"] = jf(py_round(t0.elapsed().as_secs_f64() * 1000.0, 2));
-    // P3, no state lock: 5. commit
-    let (ek, fk, ak, lk) = (du.key(&format!("ev:{}", ev.id)), du.key("feed"), du.key("alerts"), du.key("ledger"));
-    let body = rec.to_string();
-    let mut pl = redis::pipe();
-    pl.atomic().cmd("SET").arg(&ek).arg(&body).arg("EX").arg(EVENT_TTL_S).ignore()
-        .cmd("LPUSH").arg(&fk).arg(&body).ignore()
-        .cmd("LTRIM").arg(&fk).arg(0).arg(FEED - 1).ignore()
-        .cmd("RPUSH").arg(&lk).arg(entry.to_string()).ignore()
-        .cmd("LTRIM").arg(&lk).arg(-(LEDGER_MAX as i64)).arg(-1).ignore();
-    if let Some(a) = &alert {
-        pl.cmd("HSET").arg(&ak).arg(a["alert_id"].as_str().unwrap_or("")).arg(a.to_string()).ignore();
-    }
-    // no retry: a transaction whose reply was lost may have been applied
-    if let Err(e) = du.run(false, |st| pl.query::<()>(&mut st.con)) {
-        // look before releasing the claim: a stored result means the commit was applied (a reply timeout)
-        match du.run(true, |st| redis::cmd("GET").arg(&ek).query::<Option<String>>(&mut st.con)) {
-            Ok(Some(v)) if v != "pending" => return Ok((serde_json::from_str(&v).unwrap_or(rec), false)),
-            Ok(_) => du.release(&ek),
-            Err(_) => {} // unknown: the claim expires after CLAIM_TTL_S, so a retry cannot commit twice
+    // P3, no state lock: 5. commit, only while ev:{id} still holds our claim
+    match du.commit(&key, &token, &rec, &entry, alert.as_ref()) {
+        Ok((1, bad)) => {
+            if bad.as_deref().is_some_and(|b| b != "0") {
+                eprintln!("live commit {}: result stored, {} feed/ledger/alert write(s) failed", ev.id, bad.unwrap_or_default());
+            }
+            Ok((rec, false))
         }
-        return Err(store_err(e));
+        // our claim expired while we worked: what ev:{id} holds now wins, and nothing of ours was written
+        Ok((_, v)) => stored(v),
+        Err(e) => {
+            // look before releasing the claim: our stored result means the commit was applied (a reply timeout)
+            match du.run(true, |st| redis::cmd("GET").arg(&key).query::<Option<String>>(&mut st.con)) {
+                Ok(Some(v)) if !v.starts_with("pending") => {
+                    let r: Value = serde_json::from_str(&v).unwrap_or(rec);
+                    let ours = r["seq"].as_u64() == Some(seq);
+                    return Ok((r, !ours));
+                }
+                Ok(_) => du.release(&key, &token),
+                Err(_) => {} // unknown: the claim expires after CLAIM_TTL_S, and a late commit needs the claim, so no double commit
+            }
+            Err(store_err(e))
+        }
     }
-    Ok((rec, false))
+}
+
+/// What ev:{id} holds when it is not ours: a stored result is replayed, another request's claim is a 409 (with
+/// Retry-After), and nothing at all (our claim expired, no retry took it) is a 503: nothing was committed.
+fn stored(v: Option<String>) -> Result<(Value, bool), ApiError> {
+    match v {
+        Some(v) if v.starts_with("pending") => Err(ApiError::new(409, "this event_id is still being processed; retry in a minute")),
+        Some(v) => serde_json::from_str(&v).map(|r| (r, true)).map_err(|_| ApiError::new(409, "this event_id is still being processed; retry in a minute")),
+        None => Err(ApiError::new(503, "durable store: the claim on this event_id expired before the commit; nothing was committed, retry")),
+    }
 }
 
 /// 2-4: score with the engine, apply PRAMAAN, open the alert, append the ledger entry. Returns (record, alert, entry).
@@ -419,47 +478,76 @@ fn decide(s: &mut AppState, ev: &Event, d: &rusetect::payment::Payment, seq: u64
     Ok((rec, alert, entry))
 }
 
-/// With Redis, `live:alerts` is the authority for live alerts: load the alert into this instance's desk before it is read
-/// or acted on (refreshing a copy already there, since another instance may have acted on it). No-op in memory mode.
-pub fn load_alert(s: &mut AppState, id: &str) -> Result<(), ApiError> {
+/// The Redis store, None in memory mode; with Redis the engine check every live path makes first. Called under the state
+/// lock, so the Redis I/O that follows can run without it.
+fn store_of(s: &mut AppState) -> Result<Option<Arc<Durable>>, ApiError> {
     if !s.live.configured() {
-        return Ok(());
+        return Ok(None);
     }
     s.need_engine()?;
-    let du = s.live.redis.clone().unwrap();
-    let k = du.key("alerts");
-    let v: Option<String> = du.run(true, |st| redis::cmd("HGET").arg(&k).arg(id).query(&mut st.con)).map_err(store_err)?;
-    if let Some(a) = v.and_then(|v| serde_json::from_str::<Value>(&v).ok()) {
-        s.desk.alerts.insert(id.to_string(), a);
-    }
-    Ok(())
+    Ok(s.live.redis.clone())
 }
 
-/// Write a live alert back to `live:alerts` after an analyst action (Redis mode; other alerts are left alone).
-pub fn save_alert(s: &mut AppState, id: &str) -> Result<(), ApiError> {
-    let Some(a) = s.desk.alerts.get(id).filter(|a| a.get("event_id").is_some()).map(|a| a.to_string()) else { return Ok(()) };
-    if !s.live.configured() {
-        return Ok(());
+fn read_io(d: &Durable) -> std::sync::RwLockReadGuard<'_, ()> {
+    d.alert_io.read().unwrap_or_else(|p| p.into_inner())
+}
+
+/// With Redis, `live:alerts` is the authority for live alerts: load the alert into this instance's desk before it is read
+/// (refreshing a copy already there, since another instance may have acted on it), then run `f` with the state locked.
+/// The HGET runs without the state lock. In memory mode just `f`.
+pub fn with_alert<T>(app: &crate::Shared, id: &str, f: impl FnOnce(&mut AppState) -> Result<T, ApiError>) -> Result<T, ApiError> {
+    let du = store_of(&mut lock(&app.state))?;
+    let _io = du.as_deref().map(read_io);
+    let a = match &du { Some(d) => d.get_alert(id)?, None => None };
+    let mut s = lock(&app.state);
+    if let Some(a) = a {
+        s.desk.alerts.insert(id.to_string(), a);
     }
-    s.need_engine()?;
-    let du = s.live.redis.clone().unwrap();
-    let k = du.key("alerts");
-    du.run(true, |st| redis::cmd("HSET").arg(&k).arg(id).arg(&a).query::<i64>(&mut st.con)).map_err(store_err)?;
-    Ok(())
+    f(&mut s)
+}
+
+/// An analyst action on a live alert: `pre` (the nonce check) under the state lock, then as `with_alert` with `act`, then
+/// (Redis mode) the acted alert is written back to `live:alerts` (other alerts are left alone). Redis I/O runs without
+/// the state lock; one instance's actions on live alerts are applied one at a time (alert_io).
+pub fn act_on_alert<T>(app: &crate::Shared, id: &str, pre: impl FnOnce(&mut AppState) -> Result<(), ApiError>,
+                       act: impl FnOnce(&mut AppState) -> Result<T, ApiError>) -> Result<T, ApiError> {
+    let d = {
+        let mut s = lock(&app.state);
+        pre(&mut s)?;
+        match store_of(&mut s)? {
+            Some(d) => d,
+            None => return act(&mut s),
+        }
+    };
+    let _io = d.alert_io.write().unwrap_or_else(|p| p.into_inner());
+    let a = d.get_alert(id)?;
+    let (out, save) = {
+        let mut s = lock(&app.state);
+        if let Some(a) = a {
+            s.desk.alerts.insert(id.to_string(), a);
+        }
+        let out = act(&mut s)?;
+        (out, s.desk.alerts.get(id).filter(|a| a.get("event_id").is_some()).map(|a| a.to_string()))
+    };
+    if let Some(a) = save {
+        let k = d.key("alerts");
+        d.run(true, |st| redis::cmd("HSET").arg(&k).arg(id).arg(&a).query::<i64>(&mut st.con)).map_err(store_err)?;
+    }
+    Ok(out)
 }
 
 /// The desk's alerts newest first, then (Redis mode) live alerts only in `live:alerts`, newest id first. A live alert
-/// in both is shown as stored in Redis.
-pub fn all_alerts(s: &mut AppState) -> Result<Vec<Value>, ApiError> {
+/// in both is shown as stored in Redis. The HGETALL runs without the state lock.
+pub fn all_alerts(app: &crate::Shared) -> Result<Vec<Value>, ApiError> {
+    let du = store_of(&mut lock(&app.state))?;
     let mut stored: IndexMap<String, Value> = IndexMap::new();
-    if s.live.configured() {
-        s.need_engine()?;
-        let du = s.live.redis.clone().unwrap();
+    if let Some(du) = du {
         let k = du.key("alerts");
         let m: Vec<(String, String)> = du.run(true, |st| redis::cmd("HGETALL").arg(&k).query(&mut st.con)).map_err(store_err)?;
         stored = m.into_iter().filter_map(|(id, v)| serde_json::from_str(&v).ok().map(|a| (id, a))).collect();
         stored.sort_by(|a, _, b, _| b.cmp(a));
     }
+    let s = lock(&app.state);
     let mut out: Vec<Value> = s.desk.alerts.iter().rev().map(|(id, a)| stored.shift_remove(id).unwrap_or_else(|| a.clone())).collect();
     out.extend(stored.into_values());
     Ok(out)
@@ -469,8 +557,20 @@ pub fn all_alerts(s: &mut AppState) -> Result<Vec<Value>, ApiError> {
 pub async fn v2_events_payment(State(app): State<AppRef>, h: HeaderMap, b: Bytes) -> Response {
     match events_payment(app, h, b).await {
         Ok(r) => r,
-        Err(e) => e.into_response(),
+        Err(e) => {
+            // a 409 here means another request holds the claim: it is done or expired within CLAIM_TTL_S
+            let conflict = e.status == 409;
+            let mut r = e.into_response();
+            if conflict {
+                r.headers_mut().insert("retry-after", HeaderValue::from(CLAIM_TTL_S));
+            }
+            r
+        }
     }
+}
+
+fn internal(e: impl std::fmt::Display) -> ApiError {
+    ApiError::new(500, format!("internal error: {e}"))
 }
 
 async fn events_payment(app: AppRef, h: HeaderMap, b: Bytes) -> Result<Response, ApiError> {
@@ -496,20 +596,27 @@ async fn events_payment(app: AppRef, h: HeaderMap, b: Bytes) -> Result<Response,
     if let Some(a) = &ev.auth {
         check_auth_request(a).map_err(|e| ApiError { detail: json!(format!("auth.{}", e.detail.as_str().unwrap_or(""))), ..e })?;
     }
-    // the store as configured now (tests swap it), read under a brief lock; Redis work waits for a pool slot
-    let (du, ready) = {
-        let mut st = lock(&app.state);
-        (st.live.redis.clone(), st.need_engine().map(|_| ()))
+    // the store as configured now (tests swap it), read under a brief lock on the blocking pool; memory mode is done
+    // there in the same locked call
+    let app2 = app.clone();
+    let first = tokio::task::spawn_blocking(move || {
+        let mut st = lock(&app2.state);
+        match st.live.redis.clone() {
+            Some(du) => Ok((du, st.need_engine().map(|_| ()), ev)),
+            None => Err(ingest(&mut st, &ev)),
+        }
+    }).await.map_err(internal)?;
+    let (rec, replayed) = match first {
+        Err(done) => done?,
+        Ok((du, ready, ev)) => {
+            // Redis work waits for a pool slot; the permit moves into the job, so a client disconnect cannot free it early
+            let slot = du.slots.clone().acquire_owned().await.map_err(internal)?;
+            tokio::task::spawn_blocking(move || {
+                let _slot = slot;
+                ingest_redis(&app, &du, &ev, ready)
+            }).await.map_err(internal)??
+        }
     };
-    let _slot = match &du {
-        Some(d) => Some(d.slots.acquire().await.map_err(|e| ApiError::new(500, format!("internal error: {e}")))?),
-        None => None,
-    };
-    let job = du.clone();
-    let (rec, replayed) = tokio::task::spawn_blocking(move || match job {
-        Some(du) => ingest_redis(&app, &du, &ev, ready),
-        None => ingest(&mut lock(&app.state), &ev),
-    }).await.map_err(|e| ApiError::new(500, format!("internal error: {e}")))??;
     let mut r = PyJson(StatusCode::OK, rec).into_response();
     if replayed {
         r.headers_mut().insert("idempotent-replayed", HeaderValue::from_static("true"));
@@ -517,13 +624,123 @@ async fn events_payment(app: AppRef, h: HeaderMap, b: Bytes) -> Result<Response,
     Ok(r)
 }
 
-/// GET /api/v2/live: the latest live decisions (newest first) for the console, which polls it.
+/// GET /api/v2/live: the latest live decisions (newest first) for the console, which polls it. The LRANGE runs without
+/// the state lock.
 pub async fn v2_live(State(app): State<AppRef>, h: HeaderMap) -> Result<PyJson, ApiError> {
     require_reader(&h)?;
     tokio::task::spawn_blocking(move || {
-        let mut st = lock(&app.state);
-        st.need_engine()?;
-        let events = st.live.feed(50)?;
+        let (du, mem) = {
+            let mut st = lock(&app.state);
+            st.need_engine()?;
+            (st.live.redis.clone(), st.live.feed.iter().take(50).cloned().collect::<Vec<_>>())
+        };
+        let events = match du {
+            Some(d) => d.feed(50)?,
+            None => mem,
+        };
+        let st = lock(&app.state);
         Ok(PyJson(StatusCode::OK, json!({"durable": st.live.durable(), "store": st.live.store_json(), "events": events})))
-    }).await.map_err(|e| ApiError::new(500, format!("internal error: {e}")))?
+    }).await.map_err(internal)?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::{Child, Command, Stdio};
+
+    struct Server(Child, String);
+    impl Drop for Server {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+        }
+    }
+
+    fn server() -> Option<Server> {
+        let port = std::net::TcpListener::bind("127.0.0.1:0").ok()?.local_addr().ok()?.port();
+        let child = Command::new("redis-server").args(["--port", &port.to_string(), "--save", "", "--appendonly", "no"])
+            .stdout(Stdio::null()).spawn().map_err(|_| eprintln!("redis-server not installed: skipping")).ok()?;
+        let url = format!("redis://127.0.0.1:{port}/0");
+        for _ in 0..100 {
+            if redis::Client::open(url.as_str()).ok().and_then(|c| c.get_connection().ok()).is_some() {
+                return Some(Server(child, url));
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        None
+    }
+
+    fn get(con: &mut redis::Connection, k: &str) -> Option<String> {
+        redis::cmd("GET").arg(k).query(con).unwrap()
+    }
+
+    /// A request whose claim expired and was taken by a retry neither commits over, nor deletes, the retry's claim or
+    /// result: it gets a 409 while the retry works and the retry's result afterwards.
+    #[test]
+    fn a_stale_claim_holder_cannot_overwrite_or_delete_a_newer_claim_or_result() {
+        let Some(r) = server() else { return };
+        let du = Durable::new(redis::Client::open(r.1.as_str()).unwrap(), "s:");
+        let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
+        let key = du.key("ev:e1");
+        let (seq_a, a) = du.claim(&key).unwrap().unwrap();
+        redis::cmd("DEL").arg(&key).query::<()>(&mut con).unwrap(); // A's claim expires (CLAIM_TTL_S)
+        let (seq_b, b) = du.claim(&key).unwrap().unwrap();
+        assert_ne!(a, b);
+        let rec = |seq| json!({"event_id": "e1", "seq": seq});
+        // A, still working, fails: its release leaves B's claim
+        du.release(&key, &a);
+        assert_eq!(get(&mut con, &key).as_deref(), Some(b.as_str()));
+        // A commits: refused, nothing written, and the sender is told B is still processing
+        let (applied, held) = du.commit(&key, &a, &rec(seq_a), &json!({"n": "a"}), None).unwrap();
+        assert_eq!((applied, held.as_deref()), (0, Some(b.as_str())));
+        assert_eq!(stored(held).unwrap_err().status, 409);
+        assert_eq!(redis::cmd("LLEN").arg(du.key("ledger")).query::<i64>(&mut con).unwrap(), 0);
+        // B commits; then A's late commit and release leave B's result alone, and A gets B's result as a replay
+        assert_eq!(du.commit(&key, &b, &rec(seq_b), &json!({"n": "b"}), Some(&json!({"alert_id": "L1"}))).unwrap().0, 1);
+        let (applied, held) = du.commit(&key, &a, &rec(seq_a), &json!({"n": "a"}), None).unwrap();
+        assert_eq!(applied, 0);
+        assert_eq!(stored(held).unwrap(), (rec(seq_b), true));
+        du.release(&key, &a);
+        assert_eq!(get(&mut con, &key).map(|v| serde_json::from_str::<Value>(&v).unwrap()), Some(rec(seq_b)));
+        assert_eq!(redis::cmd("LLEN").arg(du.key("ledger")).query::<i64>(&mut con).unwrap(), 1);
+        assert_eq!(redis::cmd("LLEN").arg(du.key("feed")).query::<i64>(&mut con).unwrap(), 1);
+        // a claim that expired with no retry: A's commit writes nothing (a 503: nothing committed)
+        let key2 = du.key("ev:e2");
+        let (_, c) = du.claim(&key2).unwrap().unwrap();
+        redis::cmd("DEL").arg(&key2).query::<()>(&mut con).unwrap();
+        let (applied, held) = du.commit(&key2, &c, &rec(9), &json!({}), None).unwrap();
+        assert_eq!((applied, &held), (0, &None));
+        assert_eq!(stored(held).unwrap_err().status, 503);
+        assert_eq!(get(&mut con, &key2), None);
+    }
+
+    /// K payers paying one payee at once: with the payee's stripe held too, each scoring reads the payee's state after
+    /// the previous one wrote it, so the payee's in-count features are 0..K, as in serial scoring.
+    #[test]
+    fn concurrent_payers_into_one_payee_see_each_others_writes() {
+        let Some(r) = server() else { return };
+        let du = Arc::new(Durable::new(redis::Client::open(r.1.as_str()).unwrap(), "p:"));
+        const K: usize = 24;
+        let barrier = Arc::new(std::sync::Barrier::new(K));
+        let threads: Vec<_> = (0..K).map(|i| {
+            let (du, barrier) = (du.clone(), barrier.clone());
+            std::thread::spawn(move || {
+                let p = rusetect::payment::Payment {
+                    from_bank: "070".into(), from_account: format!("KP{i}"), to_bank: "011".into(), to_account: "ONEPAYEE".into(),
+                    amount_paid: 100.0, payment_currency: "US Dollar".into(), receiving_currency: "US Dollar".into(),
+                    payment_format: "ACH".into(), tmin: 27_000_000, eid: Some(i as i64 + 1),
+                };
+                barrier.wait();
+                let _accounts = du.account_stripes(&p);
+                du.run(true, |st| {
+                    let (f, w) = st.features_read(&p)?;
+                    w.query::<i64>(&mut st.con)?;
+                    Ok((f.0[rusetect::engine::fx::D_IN_N], f.0[rusetect::engine::fx::D_FANIN_24H]))
+                }).unwrap()
+            })
+        }).collect();
+        let mut seen: Vec<(f64, f64)> = threads.into_iter().map(|t| t.join().unwrap()).collect();
+        seen.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let serial: Vec<(f64, f64)> = (0..K).map(|n| (n as f64, n as f64 + 1.0)).collect();
+        assert_eq!(seen, serial, "each payment sees the payees in_n and fan-in after the previous write");
+    }
 }
