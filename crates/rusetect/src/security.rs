@@ -92,7 +92,8 @@ pub fn lookup<'a>(keys: &'a IndexMap<String, Analyst>, key: Option<&str>) -> Opt
 pub const PUBLIC_API: [&str; 8] = ["", "/", "/health", "/v2/keys/public", "/v2/verify", "/v2/model-card", "/v2/demo/analysts", "/v2/events/payment"];
 
 /// POST routes that take a review decision or publish to the shared ledger: analyst or supervisor only.
-const REVIEW_ROUTES: [&str; 2] = ["/v2/alerts/*/review", "/v2/consortium/publish"];
+const REVIEW_ROUTES: [&str; 5] = ["/v2/alerts/*/review", "/v2/consortium/publish", "/v2/alerts/*/triage", "/v2/investigations",
+                                  "/v2/investigations/*/actions"];
 
 /// `path` against a pattern whose `*` segments stand for one path parameter (an alert id).
 fn route_is(path: &str, pattern: &str) -> bool {
@@ -295,6 +296,18 @@ mod tests {
         assert!(gate(&keys, "POST", "/v2/payment", Some("k-analyst")).is_ok());
         assert!(gate(&keys, "POST", "/v2/consortium/publish", Some("k-supervisor")).is_ok());
         assert!(gate(&keys, "POST", "/v2/verify", None).is_ok(), "signature checks stay public");
+        // the website's read endpoints name accounts: a key of any role; case work is for analysts and supervisors
+        for path in ["/v2/dashboard", "/v2/transactions", "/v2/transactions/evt-1", "/v2/graph", "/v2/investigations", "/v2/investigations/INV-00001"] {
+            assert_eq!(gate(&keys, "GET", path, None).unwrap_err().0, 401, "{path}");
+            assert!(gate(&keys, "GET", path, Some("k-viewer")).is_ok(), "{path}");
+        }
+        for path in ["/v2/alerts/A1/triage", "/v2/investigations", "/v2/investigations/INV-00001/actions"] {
+            assert_eq!(gate(&keys, "POST", path, None).unwrap_err().0, 401, "{path}");
+            for k in ["k-viewer", "k-channel"] {
+                assert_eq!(gate(&keys, "POST", path, Some(k)).unwrap_err().0, 403, "{path} {k}");
+            }
+            assert!(gate(&keys, "POST", path, Some("k-analyst")).is_ok() && gate(&keys, "POST", path, Some("k-supervisor")).is_ok(), "{path}");
+        }
         assert_eq!(gate(&keys, "POST", "/v2/demo/reset", Some("k-analyst")).unwrap_err().0, 403, "only a supervisor wipes state");
         assert!(gate(&keys, "POST", "/v2/demo/reset", Some("k-supervisor")).is_ok());
         assert!(gate(&Keys { keys: IndexMap::new(), demo_mode: true }, "POST", "/v2/demo/reset", None).is_ok(), "the public demo stays open");

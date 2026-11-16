@@ -553,6 +553,97 @@ pub fn all_alerts(app: &crate::Shared) -> Result<Vec<Value>, ApiError> {
     Ok(out)
 }
 
+/// The newest stored live decisions, newest first, for the website's read endpoints (intel.rs): up to `n` of the
+/// events kept in memory, or of the feed (FEED) with Redis, where older results exist only under their own ev:{id}
+/// key. Returns (records, events ingested so far, how many the store can list). Redis I/O runs without the state lock.
+pub(crate) fn recent(app: &crate::Shared, n: usize) -> Result<(Vec<Value>, u64, usize), ApiError> {
+    let du = {
+        let mut s = lock(&app.state);
+        match store_of(&mut s)? {
+            Some(d) => d,
+            None => return Ok((s.live.events.values().rev().take(n).cloned().collect(), s.live.seq, MEM_EVENTS)),
+        }
+    };
+    let k = du.key("seq");
+    let seq: Option<u64> = du.run(true, |st| redis::cmd("GET").arg(&k).query(&mut st.con)).map_err(store_err)?;
+    Ok((du.feed(n.min(FEED))?, seq.unwrap_or(0), FEED))
+}
+
+/// One stored live decision by event id (with Redis for EVENT_TTL_S after it was ingested); None when unknown or
+/// still being processed.
+pub(crate) fn stored_event(app: &crate::Shared, id: &str) -> Result<Option<Value>, ApiError> {
+    let du = {
+        let mut s = lock(&app.state);
+        match store_of(&mut s)? {
+            Some(d) => d,
+            None => return Ok(s.live.events.get(id).cloned()),
+        }
+    };
+    let k = du.key(&format!("ev:{id}"));
+    let v: Option<String> = du.run(true, |st| redis::cmd("GET").arg(&k).query(&mut st.con)).map_err(store_err)?;
+    Ok(v.filter(|v| !v.starts_with("pending")).and_then(|v| serde_json::from_str(&v).ok()))
+}
+
+/// Investigations (workflow.rs) follow the alerts: with Redis the hash `live:cases` is the authority, so the case is
+/// loaded into this instance before `act` runs with the state locked, and written back after it when `save`. One
+/// instance's case and alert writes are applied one at a time (alert_io), so `act` must not call act_on_alert.
+pub(crate) fn act_on_case<T>(app: &crate::Shared, id: &str, save: bool, act: impl FnOnce(&mut AppState) -> Result<T, ApiError>) -> Result<T, ApiError> {
+    let d = {
+        let mut s = lock(&app.state);
+        match store_of(&mut s)? {
+            Some(d) => d,
+            None => return act(&mut s),
+        }
+    };
+    let _io = d.alert_io.write().unwrap_or_else(|p| p.into_inner());
+    let k = d.key("cases");
+    let c: Option<String> = d.run(true, |st| redis::cmd("HGET").arg(&k).arg(id).query(&mut st.con)).map_err(store_err)?;
+    let (out, stored) = {
+        let mut s = lock(&app.state);
+        if let Some(c) = c.and_then(|c| serde_json::from_str(&c).ok()) {
+            s.cases.insert(id.to_string(), c);
+        }
+        let out = act(&mut s)?;
+        (out, s.cases.get(id).filter(|_| save).map(|c| c.to_string()))
+    };
+    if let Some(c) = stored {
+        d.run(true, |st| redis::cmd("HSET").arg(&k).arg(id).arg(&c).query::<i64>(&mut st.con)).map_err(store_err)?;
+    }
+    Ok(out)
+}
+
+/// Every investigation, newest first (with Redis: as stored in `live:cases`).
+pub(crate) fn all_cases(app: &crate::Shared) -> Result<Vec<Value>, ApiError> {
+    let du = {
+        let mut s = lock(&app.state);
+        match store_of(&mut s)? {
+            Some(d) => d,
+            None => return Ok(s.cases.values().rev().cloned().collect()),
+        }
+    };
+    let k = du.key("cases");
+    let m: Vec<(String, String)> = du.run(true, |st| redis::cmd("HGETALL").arg(&k).query(&mut st.con)).map_err(store_err)?;
+    let mut out: Vec<(String, Value)> = m.into_iter().filter_map(|(id, v)| serde_json::from_str(&v).ok().map(|c| (id, c))).collect();
+    out.sort_by(|a, b| b.0.cmp(&a.0));
+    Ok(out.into_iter().map(|x| x.1).collect())
+}
+
+/// The next investigation number: a store-wide counter with Redis (ids from several instances do not collide).
+pub(crate) fn next_case_seq(app: &crate::Shared) -> Result<u64, ApiError> {
+    let du = {
+        let mut s = lock(&app.state);
+        match store_of(&mut s)? {
+            Some(d) => d,
+            None => {
+                s.case_seq += 1;
+                return Ok(s.case_seq);
+            }
+        }
+    };
+    let k = du.key("case_seq");
+    du.run(false, |st| redis::cmd("INCR").arg(&k).query(&mut st.con)).map_err(store_err)
+}
+
 /// POST /api/v2/events/payment
 pub async fn v2_events_payment(State(app): State<AppRef>, h: HeaderMap, b: Bytes) -> Response {
     match events_payment(app, h, b).await {

@@ -10,6 +10,8 @@
 //!   /api/v2/events/payment  signed ingest webhook: score, decide, alert, ledger and commit one payment event (live.rs)
 //!   /api/v2/live         latest live decisions for the console
 //!   /api/v2/drift        drift monitor: score, input and band-rate drift of recent payments against validation
+//!   /api/v2/dashboard, /api/v2/transactions, /api/v2/graph   read endpoints for the website (intel.rs)
+//!   /api/v2/alerts/{id}/triage, /api/v2/investigations       alert triage and investigations (workflow.rs)
 //!   /api/v2/onboard      L0 onboarding gate for a new account application (Feedzai BAF schema)
 //!   /docs                OpenAPI docs (Swagger UI), /openapi.json
 //!
@@ -20,10 +22,12 @@
 #![allow(clippy::neg_cmp_op_on_partial_ord, clippy::if_same_then_else, clippy::manual_clamp, clippy::type_complexity)]
 #![allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
 pub mod inputs;
+pub mod intel;
 pub mod live;
 pub mod openapi;
 pub mod scale;
 pub mod validate;
+pub mod workflow;
 
 use axum::body::{Body, Bytes};
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State};
@@ -95,6 +99,9 @@ pub struct AppState {
     pub live: live::Live,
     /// drift monitor over the last payments this instance scored (rusetect::drift); None if its reference is absent
     pub drift: Option<rusetect::drift::DriftMonitor>,
+    /// investigations opened from alerts (workflow.rs); with Redis `live:cases` is the authority and this is a copy
+    pub cases: IndexMap<String, Value>,
+    pub case_seq: u64,
 }
 
 pub struct Shared {
@@ -170,6 +177,8 @@ impl AppState {
             demo: Demo { truth: truth0(), ..Default::default() },
             live: live::Live::from_env(),
             drift: rusetect::drift::DriftMonitor::load(&models.join("drift_reference.json")),
+            cases: IndexMap::new(),
+            case_seq: 0,
         }
     }
 
@@ -200,7 +209,7 @@ impl IntoResponse for PyJson {
     }
 }
 
-fn ok(v: Value) -> Result<PyJson, ApiError> {
+pub(crate) fn ok(v: Value) -> Result<PyJson, ApiError> {
     Ok(PyJson(StatusCode::OK, v))
 }
 
@@ -234,7 +243,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-type ApiResult = Result<PyJson, ApiError>;
+pub(crate) type ApiResult = Result<PyJson, ApiError>;
 
 /// Parse a JSON body; FastAPI's errors for invalid JSON.
 fn body_json(b: &Bytes) -> Result<Value, ApiError> {
@@ -275,7 +284,7 @@ where
 }
 
 /// Run a handler body on the blocking pool (it takes the state lock itself, e.g. around Redis I/O done without it).
-async fn blocking<F>(f: F) -> ApiResult
+pub(crate) async fn blocking<F>(f: F) -> ApiResult
 where
     F: FnOnce() -> ApiResult + Send + 'static,
 {
@@ -308,6 +317,14 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/v2/alerts/{alert_id}/str", get(v2_str))
         .route("/v2/alerts/{alert_id}/customer", post(v2_customer))
         .route("/v2/alerts/{alert_id}/reverify", post(v2_reverify))
+        .route("/v2/alerts/{alert_id}/triage", post(workflow::v2_triage))
+        .route("/v2/investigations", get(workflow::v2_investigations).post(workflow::v2_investigation_open))
+        .route("/v2/investigations/{case_id}", get(workflow::v2_investigation))
+        .route("/v2/investigations/{case_id}/actions", post(workflow::v2_investigation_action))
+        .route("/v2/dashboard", get(intel::v2_dashboard))
+        .route("/v2/transactions", get(intel::v2_transactions))
+        .route("/v2/transactions/{txn_id}", get(intel::v2_transaction))
+        .route("/v2/graph", get(intel::v2_graph))
         .route("/v2/campaigns", get(v2_campaigns))
         .route("/v2/identity/check", post(v2_identity))
         .route("/v2/authenticate", post(v2_authenticate))
@@ -673,7 +690,7 @@ fn header(h: &HeaderMap, k: &str) -> Option<String> {
     h.get(k).and_then(|v| v.to_str().ok()).map(String::from)
 }
 
-fn review_err(e: ReviewError) -> ApiError {
+pub(crate) fn review_err(e: ReviewError) -> ApiError {
     match e {
         ReviewError::NotFound => ApiError::new(404, "unknown alert"),
         ReviewError::Invalid(m) => ApiError::new(400, m),
@@ -1139,7 +1156,7 @@ struct LimitQ {
     limit: Option<String>,
 }
 
-fn int_query(v: &Option<String>, name: &str, default: i64) -> Result<i64, ApiError> {
+pub(crate) fn int_query(v: &Option<String>, name: &str, default: i64) -> Result<i64, ApiError> {
     match v {
         None => Ok(default),
         Some(s) => s.trim().parse::<i64>().map_err(|_| ApiError {
@@ -1256,6 +1273,8 @@ async fn demo_reset(State(app): State<AppRef>, Query(q): Query<WarmQ>) -> ApiRes
         }
         s.lures.reset();
         s.desk.reset();
+        s.cases.clear();
+        s.case_seq = 0;
         s.coord.reset();
         s.duress.reset();
         s.consortium.reset();
