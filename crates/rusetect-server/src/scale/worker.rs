@@ -31,7 +31,7 @@ impl Scorer {
 pub fn score_one(eng: &Engine, state: &mut RedisState, p: &Payment) -> redis::RedisResult<Value> {
     let m = eng.models.as_ref().unwrap();
     let cfg = &eng.cfg;
-    let f = state.features(p)?;
+    let (f, write) = state.features_read(p)?;
     let sf = state.last_sender_fan_in;
     let x = eng.vec(&f);
     let s1 = m.l1.predict(&x) as f64;
@@ -39,7 +39,13 @@ pub fn score_one(eng: &Engine, state: &mut RedisState, p: &Payment) -> redis::Re
     let mut risk = if esc { m.l2(&x) } else { s1 };
     let payer_window = m.hardening.as_ref().is_some_and(|h| h.payer_window);
     let payee = if payer_window { String::new() } else { format!("{}|{}", p.to_bank, p.to_account) };
-    let (n, pair) = state.pair_window(p, &payee, risk)?;
+    // one round trip: the account-state write script, then the pair window (different keys, so the order is free)
+    let mut pl = redis::pipe();
+    pl.add_command(write);
+    state.pair_window_cmds(&mut pl, p, &payee, risk);
+    let (_, members): (i64, Vec<String>) = pl.query(&mut state.con)?;
+    let (n, pair) = RedisState::pair_window_of(&members);
+
     let raised = if n > 1 { pair.max(risk) } else { risk };
     if let Some(h) = m.hardening.as_ref() {
         risk = h.risk(&x, raised).0;

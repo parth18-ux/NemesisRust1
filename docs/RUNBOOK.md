@@ -26,11 +26,12 @@ copy what an incident needs into its post-mortem while it is still there.
 Signals: the webhook answers `503` with `detail` starting `durable store unavailable:` and a `Retry-After` header;
 `/api/health` shows `"ready": false, "durable": false, "store": {"reachable": false}`; `/api/v2/live` answers `503`.
 
-Behaviour (`crates/rusetect-server/src/live.rs`, `ingest`): the webhook fails closed. An event whose claim, scoring or
+Behaviour (`crates/rusetect-server/src/live.rs`, `ingest_redis`): the webhook fails closed. An event whose claim, scoring or
 commit fails is not reported as committed; its claim is released (or expires after `CLAIM_TTL_S` when the commit's
 outcome is unknown), so the sender's retry is scored and committed once Redis is back. Nothing falls back to memory
 while Redis is configured. Each request tries to reconnect, so recovery needs no restart. Test:
-`redis_outage_fails_closed_and_recovers` (`crates/rusetect-server/tests/live.rs`).
+`redis_outage_fails_closed_and_recovers` and, with concurrent senders, `concurrent_outage_fails_closed`
+(`crates/rusetect-server/tests/live.rs`).
 
 Steps:
 1. Confirm: `curl -sS https://<project>.vercel.app/api/health` and `redis-cli -u "$KV_URL" PING`.
@@ -149,3 +150,19 @@ Steps:
    (`results/drift_validation.json` gives the rate on validation itself). Act on a status that persists.
 5. Record the episode (start, reasons, action) in the incident log. A lasting shift needs a model trained on that
    population (`docs/RETRAINING.md`) and a fresh check under a rule written first.
+
+## 8. A high-volume sender gets `429`
+
+Signals: the webhook answers `429` to one sender while `/api/health` is `ready`.
+
+The per-client rate limit (`RUSETECT_RATE_LIMIT`, requests per 10 s per client, default in `lib.rs`) applies to the
+webhook like every other route, and the default is far below what one node's webhook can take
+(`results/e2e_bench_s1.json`, `docs/SCALING.md` section 3c). The webhook is deliberately not exempt.
+
+Steps:
+1. Confirm the `429` comes from one known sender (its source address or the right-most `X-Forwarded-For` entry behind
+   a trusted proxy, `docs/THREAT_MODEL.md`).
+2. Set `RUSETECT_RATE_LIMIT` above that sender's peak requests per second times 10, with headroom, and redeploy. On
+   Vercel each instance counts separately, so the limit is per instance.
+3. Under a self-hosted deploy, `RUSETECT_LIVE_POOL` sets how many webhook requests do Redis work at once (default
+   2 x logical CPUs). Leave the tokio worker count alone.
