@@ -10,6 +10,8 @@
 //!   /api/v2/events/payment  signed ingest webhook: score, decide, alert, ledger and commit one payment event (live.rs)
 //!   /api/v2/live         latest live decisions for the console
 //!   /api/v2/drift        drift monitor: score, input and band-rate drift of recent payments against validation
+//!   /api/v2/dashboard, /api/v2/transactions, /api/v2/graph   read endpoints for the website (intel.rs)
+//!   /api/v2/alerts/{id}/triage, /api/v2/investigations       alert triage and investigations (workflow.rs)
 //!   /api/v2/onboard      L0 onboarding gate for a new account application (Feedzai BAF schema)
 //!   /docs                OpenAPI docs (Swagger UI), /openapi.json
 //!
@@ -20,10 +22,12 @@
 #![allow(clippy::neg_cmp_op_on_partial_ord, clippy::if_same_then_else, clippy::manual_clamp, clippy::type_complexity)]
 #![allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
 pub mod inputs;
+pub mod intel;
 pub mod live;
 pub mod openapi;
 pub mod scale;
 pub mod validate;
+pub mod workflow;
 
 use axum::body::{Body, Bytes};
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State};
@@ -95,6 +99,12 @@ pub struct AppState {
     pub live: live::Live,
     /// drift monitor over the last payments this instance scored (rusetect::drift); None if its reference is absent
     pub drift: Option<rusetect::drift::DriftMonitor>,
+    /// investigations opened from alerts (workflow.rs); with Redis `live:cases` is the authority and this is a copy
+    pub cases: IndexMap<String, Value>,
+    pub case_seq: u64,
+    /// the last MSG_LOG_MAX scored messages, redacted (GET /api/v2/messages); memory of this instance only
+    pub msg_log: std::collections::VecDeque<Value>,
+    pub msg_seq: u64,
 }
 
 pub struct Shared {
@@ -170,6 +180,10 @@ impl AppState {
             demo: Demo { truth: truth0(), ..Default::default() },
             live: live::Live::from_env(),
             drift: rusetect::drift::DriftMonitor::load(&models.join("drift_reference.json")),
+            cases: IndexMap::new(),
+            case_seq: 0,
+            msg_log: Default::default(),
+            msg_seq: 0,
         }
     }
 
@@ -200,7 +214,7 @@ impl IntoResponse for PyJson {
     }
 }
 
-fn ok(v: Value) -> Result<PyJson, ApiError> {
+pub(crate) fn ok(v: Value) -> Result<PyJson, ApiError> {
     Ok(PyJson(StatusCode::OK, v))
 }
 
@@ -234,7 +248,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-type ApiResult = Result<PyJson, ApiError>;
+pub(crate) type ApiResult = Result<PyJson, ApiError>;
 
 /// Parse a JSON body; FastAPI's errors for invalid JSON.
 fn body_json(b: &Bytes) -> Result<Value, ApiError> {
@@ -275,7 +289,7 @@ where
 }
 
 /// Run a handler body on the blocking pool (it takes the state lock itself, e.g. around Redis I/O done without it).
-async fn blocking<F>(f: F) -> ApiResult
+pub(crate) async fn blocking<F>(f: F) -> ApiResult
 where
     F: FnOnce() -> ApiResult + Send + 'static,
 {
@@ -308,6 +322,15 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/v2/alerts/{alert_id}/str", get(v2_str))
         .route("/v2/alerts/{alert_id}/customer", post(v2_customer))
         .route("/v2/alerts/{alert_id}/reverify", post(v2_reverify))
+        .route("/v2/alerts/{alert_id}/triage", post(workflow::v2_triage))
+        .route("/v2/investigations", get(workflow::v2_investigations).post(workflow::v2_investigation_open))
+        .route("/v2/investigations/{case_id}", get(workflow::v2_investigation))
+        .route("/v2/investigations/{case_id}/actions", post(workflow::v2_investigation_action))
+        .route("/v2/investigations/{case_id}/narrative", get(workflow::v2_investigation_narrative))
+        .route("/v2/dashboard", get(intel::v2_dashboard))
+        .route("/v2/transactions", get(intel::v2_transactions))
+        .route("/v2/transactions/{txn_id}", get(intel::v2_transaction))
+        .route("/v2/graph", get(intel::v2_graph))
         .route("/v2/campaigns", get(v2_campaigns))
         .route("/v2/identity/check", post(v2_identity))
         .route("/v2/authenticate", post(v2_authenticate))
@@ -322,9 +345,11 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/v2/keys/public", get(v2_public_key))
         .route("/v2/verify", post(v2_verify))
         .route("/v2/demo/analysts", get(v2_demo_analysts))
+        .route("/v2/whoami", get(v2_whoami))
         .route("/v2/fixtures/mule", get(v2_fixture_mule))
         .route("/v2/audit", get(v2_audit))
         .route("/v2/message", post(v2_message))
+        .route("/v2/messages", get(v2_messages))
         .route("/v2/sanctions/screen", post(v2_sanctions))
         .route("/v2/payee/check", post(v2_payee_check))
         .route("/v2/message-model", get(v2_message_model))
@@ -340,6 +365,8 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/console", get(|s| page(s, "console.html")))
         .route("/investigate", get(|s| page(s, "investigate.html")))
         .route("/report", get(|s| page(s, "report.html")))
+        .route("/app", get(app_page))
+        .route("/assets/{*path}", get(asset))
         .route("/favicon.svg", get(favicon))
         .route("/openapi.json", get(|| async { PyJson(StatusCode::OK, openapi::spec()) }))
         .route("/docs", get(|| async { axum::response::Html(openapi::DOCS_HTML) }))
@@ -369,6 +396,12 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/models/sanctions_sdn.csv", "research/out/sanctions_eval.json", "research/out/sanctions_eval_v2.json",
     "research/out/payee_check_eval.json", "research/out/payee_check_eval_v2.json",
     "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html",
+    "service/static/app.html", "service/static/assets/app.css", "service/static/assets/js/theme.js", "service/static/assets/js/app.js",
+    "service/static/assets/js/api.js", "service/static/assets/js/util.js", "service/static/assets/js/dashboard.js", "service/static/assets/js/alerts.js",
+    "service/static/assets/js/network.js", "service/static/assets/js/transactions.js", "service/static/assets/js/investigations.js",
+    "service/static/assets/js/assistant.js", "service/static/assets/js/reports.js",
+    "service/static/assets/js/scam.js", "service/static/assets/js/behaviour.js",
+    "service/static/assets/js/evidence.js", "service/static/assets/vendor/cytoscape.esm.min.js", "service/static/assets/vendor/cytoscape.LICENSE.txt",
     "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
 ];
 
@@ -499,6 +532,38 @@ async fn page(State(app): State<AppRef>, name: &'static str) -> Response {
     let root = app.root.clone();
     match tokio::fs::read_to_string(root.join("service/static").join(name)).await {
         Ok(html) => axum::response::Html(html).into_response(),
+        Err(_) => ApiError::new(404, "Not Found").into_response(),
+    }
+}
+
+/// Policy for the app shell (`/app`). Its scripts and styles are files under `/assets`, so nothing inline is allowed;
+/// the three font families come from Google Fonts, as on the other pages. The older pages keep inline code and are
+/// served without this header.
+pub const APP_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; \
+font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; \
+frame-ancestors 'none'; form-action 'self'";
+
+async fn app_page(s: State<AppRef>) -> Response {
+    let mut r = page(s, "app.html").await;
+    r.headers_mut().insert("content-security-policy", HeaderValue::from_static(APP_CSP));
+    r
+}
+
+/// The app's embedded files under `service/static/assets/`, as (path below `/assets/`, content type).
+pub fn app_assets() -> impl Iterator<Item = (&'static str, &'static str)> {
+    ASSETS.iter().filter_map(|(p, _)| p.strip_prefix("service/static/assets/")).map(|p| {
+        (p, if p.ends_with(".css") { "text/css; charset=utf-8" } else if p.ends_with(".js") { "text/javascript; charset=utf-8" }
+            else if p.ends_with(".txt") { "text/plain; charset=utf-8" } else { "application/octet-stream" })
+    })
+}
+
+/// `/assets/{path}`: only a file in the embedded list is served, so a request cannot name any other file on disk.
+async fn asset(State(app): State<AppRef>, Path(path): Path<String>) -> Response {
+    let Some((name, ctype)) = app_assets().find(|(p, _)| *p == path) else {
+        return ApiError::new(404, "Not Found").into_response();
+    };
+    match tokio::fs::read(app.root.join("service/static/assets").join(name)).await {
+        Ok(b) => ([("content-type", ctype), ("cache-control", "no-cache")], b).into_response(),
         Err(_) => ApiError::new(404, "Not Found").into_response(),
     }
 }
@@ -645,18 +710,132 @@ fn assess(s: &mut AppState, a: &AssessIn, d: &Payment) -> ApiResult {
 
 // ---------------------------------------------------------------- review desk
 
-#[derive(serde::Deserialize)]
-struct StatusQ {
-    status: Option<String>,
+/// Query keys that switch GET /v2/alerts to its searched, sorted and paged form. Without them (or with `status` only)
+/// the route answers as before: a plain array, newest first.
+const ALERT_PAGE_KEYS: [&str; 10] = ["q", "band", "state", "priority", "assigned_to", "demo", "sort", "order", "limit", "offset"];
+const ALERT_SORTS: [&str; 10] = ["time", "score", "id", "priority", "assignee", "status", "source", "typology", "entity", "txn"];
+
+/// True when an alert came from /api/v2/assess on a demo-mode instance (demo keys, public replay and fixtures); alerts
+/// from the signed webhook are a bank's events and never demo.
+fn alert_is_demo(a: &Value) -> bool {
+    KEYS.demo_mode && a["event_id"].is_null()
 }
 
-/// Alerts awaiting or after human review, newest first.
-async fn v2_alerts(State(app): State<AppRef>, h: HeaderMap, Query(q): Query<StatusQ>) -> ApiResult {
+/// The band of a shown decision, as the website names it (allow, verify, hold, block).
+fn alert_band(a: &Value) -> String {
+    if let Some(b) = a["assessed"]["risk_score"]["band"].as_str() {
+        return b.to_string();
+    }
+    let d = a["shown_decision"].as_str().unwrap_or("").to_lowercase();
+    if d.starts_with("block") { "block" } else if d.starts_with("hold") { "hold" } else if d.starts_with("step") || d.starts_with("verify") { "verify" } else { "allow" }.into()
+}
+
+fn alert_typology(a: &Value) -> String {
+    let mut m: Vec<String> = Vec::new();
+    for r in a["assessed"]["payment"]["reasons"].as_array().into_iter().flatten() {
+        for x in r["motifs"].as_array().into_iter().flatten().filter_map(|x| x.as_str()) {
+            let w = x.replace('_', " ");
+            if !m.contains(&w) {
+                m.push(w);
+            }
+        }
+    }
+    m.join(", ")
+}
+
+/// Sort key of one alert: numbers sort as numbers, everything else as text.
+fn alert_key(a: &Value, sort: &str) -> (f64, String) {
+    let p = &a["payment"];
+    let s = |v: &Value| v.as_str().unwrap_or("").to_string();
+    match sort {
+        "score" => (a["assessed"]["risk_score"]["score"].as_f64().unwrap_or(f64::NEG_INFINITY), String::new()),
+        "priority" => (["low", "medium", "high", "critical"].iter().position(|x| a["workflow"]["priority"] == *x).map(|i| i as f64 + 1.0).unwrap_or(0.0), String::new()),
+        "id" => (0.0, s(&a["alert_id"])),
+        "assignee" => (0.0, s(&a["workflow"]["assignee"])),
+        "status" => (0.0, s(&a["status"])),
+        "source" => (0.0, if a["event_id"].is_null() { "assess" } else { "live" }.into()),
+        "typology" => (0.0, alert_typology(a)),
+        "entity" => (0.0, format!("{}:{}", s(&p["to_bank"]), s(&p["to_account"]))),
+        "txn" => (0.0, a["event_id"].as_str().or(a["alert_id"].as_str()).unwrap_or("").into()),
+        _ => (0.0, s(&p["timestamp"])),
+    }
+}
+
+/// Alerts awaiting or after human review, newest first. Each carries `demo`. With any of ALERT_PAGE_KEYS the answer
+/// is `{alerts, total, all, offset, limit, sort, order, assignees, demo}`: `q` searches the alert id, accounts, event
+/// id, typology, assignee, case id and decision; `band`, `state`, `priority` (or `none`), `assigned_to` (or
+/// `unassigned`), `demo` (true / false) filter; `sort` is one of ALERT_SORTS, `order` asc or desc; `limit` 1 to 200
+/// (default 50) and `offset` page.
+async fn v2_alerts(State(app): State<AppRef>, h: HeaderMap, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     require_reader(&h)?;
+    let paged = ALERT_PAGE_KEYS.iter().any(|k| q.contains_key(*k));
+    let limit = int_query(&q.get("limit").cloned(), "limit", 50)?.clamp(1, 200) as usize;
+    let offset = int_query(&q.get("offset").cloned(), "offset", 0)?.max(0) as usize;
+    let sort = q.get("sort").map(String::as_str).unwrap_or("time").to_string();
+    let order = q.get("order").map(String::as_str).unwrap_or(if matches!(sort.as_str(), "time" | "score" | "priority") { "desc" } else { "asc" }).to_string();
+    if !ALERT_SORTS.contains(&sort.as_str()) {
+        return Err(ApiError::new(422, format!("sort must be one of {}", ALERT_SORTS.join(", "))));
+    }
+    if order != "asc" && order != "desc" {
+        return Err(ApiError::new(422, "order must be asc or desc"));
+    }
+    let demo_f = match q.get("demo").map(String::as_str) {
+        None | Some("") => None,
+        Some("true") => Some(true),
+        Some("false") => Some(false),
+        Some(_) => return Err(ApiError::new(422, "demo must be true or false")),
+    };
+    let text = q.get("q").map(|x| x.trim().to_lowercase()).unwrap_or_default();
+    if text.chars().count() > 200 {
+        return Err(ApiError::new(422, "q: at most 200 characters"));
+    }
     blocking(move || {
-        let al: Vec<Value> = live::all_alerts(&app)?.into_iter().filter(|a| q.status.as_deref().map(|st| a["status"] == st).unwrap_or(true)).collect();
-        ok(Value::Array(al))
+        let st = q.get("status");
+        let mut al: Vec<Value> = live::all_alerts(&app)?.into_iter().filter(|a| st.map(|st| a["status"] == st.as_str()).unwrap_or(true)).collect();
+        for a in &mut al {
+            a["demo"] = json!(alert_is_demo(a));
+        }
+        if !paged {
+            return ok(Value::Array(al));
+        }
+        let all = al.len();
+        let mut assignees: Vec<&str> = al.iter().filter_map(|a| a["workflow"]["assignee"].as_str()).collect();
+        assignees.sort();
+        assignees.dedup();
+        let assignees = json!(assignees);
+        let f = |k: &str| q.get(k).filter(|x| !x.is_empty()).map(String::as_str);
+        let wf = |a: &Value, k: &str| a["workflow"][k].as_str().unwrap_or("").to_string();
+        let mut hits: Vec<Value> = al.into_iter().filter(|a| {
+            let p = &a["payment"];
+            let hay = [a["alert_id"].as_str().unwrap_or("").into(), format!("{}:{}", p["from_bank"].as_str().unwrap_or(""), p["from_account"].as_str().unwrap_or("")),
+                       format!("{}:{}", p["to_bank"].as_str().unwrap_or(""), p["to_account"].as_str().unwrap_or("")), a["event_id"].as_str().unwrap_or("").into(),
+                       alert_typology(a), wf(a, "assignee"), a["case_id"].as_str().unwrap_or("").into(), a["shown_decision"].as_str().unwrap_or("").into()].join(" ").to_lowercase();
+            (text.is_empty() || hay.contains(&text))
+                && f("band").is_none_or(|b| alert_band(a) == b)
+                && f("state").is_none_or(|x| wf(a, "state") == x || (x == "new" && wf(a, "state").is_empty()))
+                && f("priority").is_none_or(|x| if x == "none" { wf(a, "priority").is_empty() } else { wf(a, "priority") == x })
+                && f("assigned_to").is_none_or(|x| if x == "unassigned" { wf(a, "assignee").is_empty() } else { wf(a, "assignee") == x })
+                && demo_f.is_none_or(|d| a["demo"] == d)
+        }).collect();
+        // stable sort; ties keep the newest-first order of the desk
+        hits.sort_by(|x, y| {
+            let (a, b) = (alert_key(x, &sort), alert_key(y, &sort));
+            let o = a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.1.cmp(&b.1));
+            if order == "desc" { o.reverse() } else { o }
+        });
+        let total = hits.len();
+        let demo_n = hits.iter().filter(|a| a["demo"] == true).count();
+        let page: Vec<Value> = hits.into_iter().skip(offset).take(limit).collect();
+        ok(json!({"alerts": page, "total": total, "all": all, "offset": offset, "limit": limit, "sort": sort, "order": order,
+                  "assignees": assignees, "demo": demo_n}))
     }).await
+}
+
+/// Who the presented X-Analyst-Key belongs to (analyst id and role), so the website can disable what the role or the
+/// four-eyes rule would refuse. 401 without a known key. The key itself is never returned.
+async fn v2_whoami(h: HeaderMap) -> ApiResult {
+    let who = analyst_for(header(&h, "x-analyst-key").as_deref()).ok_or_else(|| ApiError::new(401, "missing or unknown X-Analyst-Key"))?;
+    ok(json!({"analyst": who.analyst, "role": who.role, "demo_mode": KEYS.demo_mode}))
 }
 
 /// Alerts, evidence packs, STR drafts, cases and the audit log name accounts and suspicions (sharing an STR is tipping
@@ -673,7 +852,7 @@ fn header(h: &HeaderMap, k: &str) -> Option<String> {
     h.get(k).and_then(|v| v.to_str().ok()).map(String::from)
 }
 
-fn review_err(e: ReviewError) -> ApiError {
+pub(crate) fn review_err(e: ReviewError) -> ApiError {
     match e {
         ReviewError::NotFound => ApiError::new(404, "unknown alert"),
         ReviewError::Invalid(m) => ApiError::new(400, m),
@@ -1023,7 +1202,53 @@ async fn v2_message(State(app): State<AppRef>, b: Bytes) -> ApiResult {
         let acct = account.filter(|a| !a.is_empty()).map(|a| format!("{}:{}", bank.as_deref().unwrap_or("None"), a));
         res["alert"] = s.lures.record_message(acct.as_deref(), tmin, &res);
         res["channel"] = json!(channel);
+        res["message_id"] = json!(log_message(s, &text, &res));
         ok(res)
+    }).await
+}
+
+/// Scored messages kept for the message history, newest last. Bounded and in memory: with Redis each instance keeps
+/// its own log and a restart empties it (a shared log would need a Redis list, like the live feed).
+pub const MSG_LOG_MAX: usize = 200;
+
+/// Store a redacted copy of a scored message: identifiers become [PHONE], [UPI] and the like (context_rules::redact),
+/// entities are kept as counts only.
+fn log_message(s: &mut AppState, text: &str, res: &Value) -> String {
+    s.msg_seq += 1;
+    let id = format!("M{:06}", s.msg_seq);
+    let labels = |k: &str| res[k].as_array().into_iter().flatten().map(|x| x["label"].clone()).collect::<Vec<_>>();
+    let phrases: Vec<String> = res["key_phrases"].as_array().into_iter().flatten().filter_map(|p| p.as_str()).map(|p| ctx::redact(p).0).collect();
+    let ents: Map<String, Value> = res["entities"].as_object().into_iter().flatten().map(|(k, v)| (k.clone(), json!(v.as_array().map_or(0, |a| a.len())))).collect();
+    if s.msg_log.len() >= MSG_LOG_MAX {
+        s.msg_log.pop_front();
+    }
+    s.msg_log.push_back(json!({"message_id": id, "at": rusetect::pyfmt::utc_now_z(), "channel": res["channel"], "text": ctx::redact(text).0,
+        "band": res["band"], "risk": res["risk"], "model_risk": res["model_risk"], "workflow": res["workflow"]["label"],
+        "tactics": labels("tactics"), "hard_signals": labels("hard_signals"), "key_phrases": phrases, "entity_counts": ents,
+        "notified": res["alert"]["notify"], "alert_reason": res["alert"]["reason"]}));
+    id
+}
+
+/// GET /api/v2/messages?q=&band=&limit=: the message history, newest first, with the model that scored it.
+async fn v2_messages(State(app): State<AppRef>, h: HeaderMap, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    require_reader(&h)?;
+    let limit = int_query(&q.get("limit").cloned(), "limit", 50)?.clamp(1, MSG_LOG_MAX as i64) as usize;
+    let band = q.get("band").filter(|b| !b.is_empty()).cloned();
+    if let Some(b) = &band {
+        if !["safe", "caution", "high"].contains(&b.as_str()) {
+            return Err(ApiError::new(422, "band: one of safe, caution, high"));
+        }
+    }
+    let needle = q.get("q").map(|x| x.trim().to_lowercase()).filter(|x| !x.is_empty());
+    with_state(app, move |s| {
+        let hits: Vec<&Value> = s.msg_log.iter().rev()
+            .filter(|m| band.as_ref().is_none_or(|b| m["band"] == b.as_str()))
+            .filter(|m| needle.as_ref().is_none_or(|n| m["text"].as_str().unwrap_or("").to_lowercase().contains(n.as_str())))
+            .collect();
+        let model = s.messages.as_ref().map(|m| json!({"meta": m.meta, "thresholds": {"caution": m.thr_caution, "high": m.thr_high}}));
+        ok(json!({"total": hits.len(), "stored": s.msg_log.len(), "capacity": MSG_LOG_MAX, "model": model,
+                  "scope": if s.live.configured() { "this instance's memory only (Redis mode: not shared, emptied on restart)" } else { "this server's memory (emptied on restart)" },
+                  "messages": hits.into_iter().take(limit).collect::<Vec<_>>()}))
     }).await
 }
 
@@ -1139,7 +1364,7 @@ struct LimitQ {
     limit: Option<String>,
 }
 
-fn int_query(v: &Option<String>, name: &str, default: i64) -> Result<i64, ApiError> {
+pub(crate) fn int_query(v: &Option<String>, name: &str, default: i64) -> Result<i64, ApiError> {
     match v {
         None => Ok(default),
         Some(s) => s.trim().parse::<i64>().map_err(|_| ApiError {
@@ -1255,7 +1480,10 @@ async fn demo_reset(State(app): State<AppRef>, Query(q): Query<WarmQ>) -> ApiRes
             d.reset();
         }
         s.lures.reset();
+        s.msg_log.clear();
         s.desk.reset();
+        s.cases.clear();
+        s.case_seq = 0;
         s.coord.reset();
         s.duress.reset();
         s.consortium.reset();

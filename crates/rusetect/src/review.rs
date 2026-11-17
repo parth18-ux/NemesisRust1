@@ -150,6 +150,28 @@ impl ReviewDesk {
         Ok(out)
     }
 
+    /// Case-work fields of an alert (assignee, priority, state, sla_due) and analyst comments. They live under
+    /// `workflow` and never touch `status`: the decision on the payment stays with [`act`](Self::act) and its four-eyes
+    /// rule. The change is recorded in the alert's actions and in the ledger (a comment by its hash only).
+    pub fn triage(&mut self, alert_id: &str, analyst: &str, changes: Map<String, Value>, comment: &str) -> Result<Value, ReviewError> {
+        let a = self.alerts.get_mut(alert_id).ok_or(ReviewError::NotFound)?;
+        if !a["workflow"].is_object() {
+            a["workflow"] = json!({});
+        }
+        for (k, v) in &changes {
+            a["workflow"][k.as_str()] = v.clone();
+        }
+        a["actions"].as_array_mut().unwrap().push(json!({"analyst": analyst, "action": if changes.is_empty() { "comment" } else { "triage" },
+                                                         "note": comment, "changes": changes, "at": utc_now_z()}));
+        let out = a.clone();
+        let mut e = json!({"type": "alert_triage", "alert_id": alert_id, "analyst": analyst, "changes": changes});
+        if !comment.is_empty() {
+            e["comment_hash"] = json!(hash_obj(&json!(comment)));
+        }
+        self.append(e);
+        Ok(out)
+    }
+
     pub fn set_field(&mut self, alert_id: &str, k: &str, v: Value) {
         if let Some(a) = self.alerts.get_mut(alert_id) {
             a[k] = v;

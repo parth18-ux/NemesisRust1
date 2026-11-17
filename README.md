@@ -145,6 +145,44 @@ The Redis scale tests start their own Redis, so they need the `redis-server` pro
 For the console to use full account history, point `RUSETECT_HISTORY_GLOB` at the IBM HI-Small CSV files; otherwise it
 uses a bundled sample of 100,000 payments.
 
+## Website
+
+The analyst workspace is at `/app` (one page, hash routes, no build step; `service/static/app.html`, `assets/app.css`,
+`assets/js/`). It has nine sections: executive dashboard, transactions, scam messages, behavioural signals, network,
+alerts, investigations, the AI-assisted narrative draft and reports. Every number on it comes from an API response
+(`docs/API.md`); demonstration data is labelled per row. Nothing on it blocks a payment: a block needs two analysts.
+
+Run it locally in demo mode (demo analyst keys are offered in the top bar):
+
+```bash
+cargo build --release -p rusetect-server
+RUSETECT_DEMO=1 ./target/release/rusetect-server --port 8001
+# open http://localhost:8001/app ; in Alert management, "Load demonstration alerts" replays the fictional mule fixture
+```
+
+With `RUSETECT_ANALYST_KEYS` set instead, paste an analyst key in the top bar; the page asks `/api/v2/whoami` who it
+belongs to, so buttons the role or the four-eyes rule would refuse are disabled.
+
+| Dashboard (desktop) | Alert drawer with review and triage (desktop) |
+| --- | --- |
+| ![Executive dashboard](docs/screenshots/w3-dashboard-desktop.png) | ![Alert drawer](docs/screenshots/w3-alert-drawer-desktop.png) |
+| **Network (tablet)** | **Investigation workspace (phone)** |
+| ![Network view at tablet width](docs/screenshots/w4-network-tablet.png) | ![Case workspace at phone width](docs/screenshots/w5-case-phone.png) |
+
+Every view at desktop, tablet and phone width is in `docs/screenshots/`.
+
+Browser tests (Playwright and Chromium, `tests/e2e/smoke.js`) run against a demo server at three widths:
+
+```bash
+RUSETECT_DEMO=1 RUSETECT_RATE_LIMIT=100000 ./target/release/rusetect-server --port 8011 &
+cd tests/e2e && npm ci && npx playwright install chromium
+for v in desktop tablet phone; do BASE=http://localhost:8011 VIEWPORT=$v node smoke.js; done   # restart the server between widths for a clean desk
+SHOTS=1 BASE=http://localhost:8011 node smoke.js   # also rewrites the screenshots
+```
+
+CI runs the same suite (`.github/workflows/ci.yml`, job `website`). Results and what each check covers:
+`docs/FINAL_TEST_REPORT.md`.
+
 ## Reproducing the results
 
 The datasets are not stored in this repository. Download them, then point `RUSETECT_DATA` at the folder that holds them.

@@ -257,6 +257,48 @@ async fn block_and_release_are_final() {
 }
 
 #[tokio::test]
+async fn alert_queue_searches_sorts_and_pages_on_the_server() {
+    let t = T::new();
+    t.post("/api/v2/demo/reset?warm=false", json!({})).await;
+    let mut ids = vec![];
+    for (i, acct) in ["QS1", "QS2", "QS3"].iter().enumerate() {
+        let r = t.post("/api/v2/assess", json!({"timestamp": format!("2022-09-09 10:0{i}"), "from_bank": "070", "from_account": acct, "to_bank": "011",
+                                               "to_account": format!("QM{i}"), "amount_paid": 9300, "payment_format": "ACH", "message": S09, "consent": true})).await;
+        ids.push(r["alert_id"].as_str().unwrap().to_string());
+    }
+    // no parameter: today's plain array, newest first, each alert flagged demo (an /assess alert on a demo instance)
+    let plain = t.get("/api/v2/alerts").await;
+    let arr = plain.as_array().unwrap();
+    assert_eq!(arr.iter().map(|a| a["alert_id"].as_str().unwrap()).collect::<Vec<_>>(), ids.iter().rev().map(String::as_str).collect::<Vec<_>>());
+    assert!(arr.iter().all(|a| a["demo"] == true));
+    assert_eq!(t.get("/api/v2/alerts?status=released").await, json!([]));
+    // search, paging and sort
+    let p = t.get("/api/v2/alerts?q=qs2").await;
+    assert_eq!((p["total"].as_u64(), p["all"].as_u64(), p["alerts"][0]["alert_id"].as_str()), (Some(1), Some(3), Some(ids[1].as_str())), "{p}");
+    let p = t.get("/api/v2/alerts?limit=2&offset=2&sort=id&order=asc").await;
+    assert_eq!((p["total"].as_u64(), p["alerts"].as_array().unwrap().len(), p["alerts"][0]["alert_id"].as_str()), (Some(3), 1, Some(ids[2].as_str())));
+    let p = t.get("/api/v2/alerts?sort=time").await;
+    assert_eq!(p["alerts"][0]["alert_id"], ids[2].as_str(), "newest payment first");
+    assert_eq!(t.get("/api/v2/alerts?demo=false").await["total"], 0);
+    // triage fields filter; a bad parameter is a clear 422
+    let (s, _, _) = t.req("POST", &format!("/api/v2/alerts/{}/triage", ids[0]), Some(json!({"assignee": "analyst.asha", "priority": "high"})),
+                          &[("X-Analyst-Key", "demo-analyst-1"), ("X-Nonce", &nonce())]).await;
+    assert_eq!(s, StatusCode::OK);
+    let p = t.get("/api/v2/alerts?assigned_to=analyst.asha&priority=high").await;
+    assert_eq!((p["total"].as_u64(), p["assignees"].clone()), (Some(1), json!(["analyst.asha"])));
+    assert_eq!(t.get("/api/v2/alerts?priority=none").await["total"], 2);
+    assert_eq!(t.get("/api/v2/alerts?sort=priority").await["alerts"][0]["alert_id"], ids[0].as_str());
+    for bad in ["sort=nope", "order=up", "limit=x", "demo=maybe"] {
+        assert_eq!(t.req("GET", &format!("/api/v2/alerts?{bad}"), None, &[]).await.0, StatusCode::UNPROCESSABLE_ENTITY, "{bad}");
+    }
+    // whoami names the key's analyst and role, never the key
+    let (s, w, raw) = t.req("GET", "/api/v2/whoami", None, &[("X-Analyst-Key", "demo-analyst-2")]).await;
+    assert_eq!((s, w["analyst"].as_str(), w["role"].as_str()), (StatusCode::OK, Some("analyst.ravi"), Some("analyst")));
+    assert!(!raw.contains("demo-analyst-2"));
+    assert_eq!(t.req("GET", "/api/v2/whoami", None, &[]).await.0, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
 async fn block_stands_when_consortium_ledger_is_full() {
     let shared = rusetect_server::new_shared();
     let t = T { app: rusetect_server::build_app(shared.clone()) };
@@ -769,4 +811,32 @@ async fn gets_are_rate_limited_too() {
         assert_eq!(t.req("GET", "/api/v2/consortium", None, &[]).await.0, StatusCode::OK);
     }
     assert_eq!(t.req("GET", "/api/v2/consortium", None, &[]).await.0, StatusCode::TOO_MANY_REQUESTS);
+}
+
+/// The message history (W1g): redacted text, newest first, filters, bounded, and a reader key when keys are set.
+#[tokio::test]
+async fn message_history_is_redacted_filtered_and_bounded() {
+    let t = T::new();
+    let a = t.post("/api/v2/message", json!({"text": SCAM})).await;
+    let b = t.post("/api/v2/message", json!({"text": "See you at dinner tonight, bring the cake"})).await;
+    assert_eq!(a["band"], "high");
+    let log = t.get("/api/v2/messages").await;
+    let m = log["messages"].as_array().unwrap();
+    assert_eq!((m.len(), log["stored"].as_u64()), (2, Some(2)));
+    assert_eq!(m[0]["message_id"], b["message_id"], "newest first");
+    let scam = &m[1];
+    assert!(!scam["text"].as_str().unwrap().contains("rbi.verify@paytm") && scam["text"].as_str().unwrap().contains("[UPI]"), "{scam}");
+    assert_eq!(scam["entity_counts"]["upi_ids"], 1);
+    assert_eq!(scam["key_phrases"], a["key_phrases"]);
+    assert!(log["model"]["thresholds"]["high"].is_f64());
+    let high = t.get("/api/v2/messages?band=high").await;
+    assert_eq!(high["total"], 1);
+    assert_eq!(t.get("/api/v2/messages?q=dinner").await["total"], 1);
+    assert_eq!(t.req("GET", "/api/v2/messages?band=red", None, &[]).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    for i in 0..rusetect_server::MSG_LOG_MAX {
+        t.post("/api/v2/message", json!({"text": format!("note {i}")})).await;
+    }
+    let full = t.get("/api/v2/messages?limit=500").await;
+    assert_eq!(full["stored"].as_u64(), Some(rusetect_server::MSG_LOG_MAX as u64));
+    assert_eq!(full["messages"].as_array().unwrap().len(), rusetect_server::MSG_LOG_MAX);
 }
