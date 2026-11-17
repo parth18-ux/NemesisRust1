@@ -4,16 +4,14 @@ import {$, $$, html, toast} from "./util.js";
 
 const SECTIONS = [
   {k: "A", id: "dashboard", name: "Executive dashboard", load: () => import("./dashboard.js")},
-  {k: "B", id: "transactions", name: "Transactions", stage: "W4", what: "searching stored payments, with each payment's risk, reasons, related accounts and beneficiary history",
-   links: [["/console", "Live console"]]},
+  {k: "B", id: "transactions", name: "Transaction intelligence", load: () => import("./transactions.js")},
   {k: "C", id: "scams", name: "Scam intelligence", stage: "W7", what: "message checks, scam workflows and tactics, and the lure model card",
    links: [["/investigate", "Investigator"]]},
   {k: "D", id: "behaviour", name: "Behavioural", stage: "W7", what: "typing, session and identity signals, PRAMAAN and duress outcomes, each marked consent-based",
    links: [["/investigate", "Investigator"]]},
   {k: "E", id: "network", name: "Network intelligence", load: () => import("./network.js")},
   {k: "F", id: "alerts", name: "Alert management", load: () => import("./alerts.js")},
-  {k: "G", id: "cases", name: "Cases", stage: "W5", what: "the investigation list and the one-screen case view; investigations can already be opened from Alert management",
-   links: []},
+  {k: "G", id: "investigations", name: "Investigations", load: () => import("./investigations.js")},
   {k: "H", id: "assistant", name: "AI-assisted investigation", stage: "W6", what: "a narrative draft in which every statement links to its source and is marked for analyst review",
    links: []},
   {k: "I", id: "reports", name: "Reports and evidence", stage: "W6", what: "the printable case report, STR draft, evidence packs and signature checks",
@@ -47,7 +45,8 @@ function soonView(s) {
 let renderSeq = 0;
 async function route() {
   const [path, query = ""] = location.hash.replace(/^#\/?/, "").split("?");
-  const [id = "dashboard", ...rest] = path.split("/").map(decodeURIComponent);
+  let [id = "dashboard", ...rest] = path.split("/").map(decodeURIComponent);
+  if (id === "cases") id = "investigations";
   const s = SECTIONS.find((x) => x.id === id) || SECTIONS[0];
   drawNav(s.id);
   $("#title").textContent = s.name;

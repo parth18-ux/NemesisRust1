@@ -4,6 +4,7 @@
 // Drawn with Cytoscape.js (MIT), vendored under /assets/vendor/.
 import cytoscape from "../vendor/cytoscape.esm.min.js";
 import {api, isDemo, replayMule} from "./api.js";
+import {save} from "./evidence.js";
 import {$, html, num, money, words, bandPill, demoPill, toast} from "./util.js";
 
 const st = {account: "", bank: "", depth: 1, from: "", to: "", min: 0, dir: "all", nodes: new Map(), edges: new Map(), meta: null, demo: false};
@@ -108,6 +109,19 @@ function style() {
   ];
 }
 
+/** One label per account pair: parallel payments would print their labels on top of each other, so the first edge of
+ *  a pair carries "n payments" and their total, and the others none (each stays selectable, with its own evidence). */
+function pairLabels(pays) {
+  const groups = new Map();
+  for (const e of pays) { const k = e.from + ">" + e.to; groups.set(k, [...(groups.get(k) || []), e]); }
+  const out = new Map();
+  for (const g of groups.values()) {
+    g.forEach((e, i) => out.set(e.id, g.length === 1 ? `${money(e.amount)}\n${(e.timestamp || "").slice(5)}`
+      : i === 0 ? `${g.length} payments\n${money(g.reduce((a, x) => a + (x.amount || 0), 0))}` : ""));
+  }
+  return out;
+}
+
 function elements() {
   const v = visible();
   const banks = new Set(v.accts.map((n) => "bank:" + n.bank));
@@ -119,8 +133,9 @@ function elements() {
   }
   for (const b of banks) els.push({group: "nodes", data: {id: b, label: "bank " + b.slice(5)}, classes: "bank"});
   for (const n of v.accts) els.push({group: "edges", data: {id: "held:" + n.id, source: n.id, target: "bank:" + n.bank}, classes: "held"});
+  const labels = pairLabels(v.pays);
   for (const e of v.pays) {
-    els.push({group: "edges", data: {id: e.id, source: e.from, target: e.to, label: `${money(e.amount)}\n${(e.timestamp || "").slice(5)}`},
+    els.push({group: "edges", data: {id: e.id, source: e.from, target: e.to, label: labels.get(e.id)},
       classes: ["pay", `b-${e.band}`, e.typologies?.length && "motif"].filter(Boolean).join(" ")});
   }
   return {els, v, banks: banks.size};
@@ -177,7 +192,7 @@ function panel(body) {
   p.innerHTML = body;
 }
 
-const txnLink = (id) => html`<a class="mono" href="/api/v2/transactions/${encodeURIComponent(id)}" target="_blank" rel="noopener">${id}</a>`;
+const txnLink = (id) => html`<a class="mono" href="#/transactions/${encodeURIComponent(id)}">${id}</a>`;
 const centreHref = (n) => "#/network?" + new URLSearchParams({account: n.account, bank: n.bank, depth: String(st.depth)});
 
 function showNode(id) {
@@ -206,7 +221,7 @@ function showNode(id) {
     <section class="sect"><h4>Indicators from the backend</h4>${n.indicators.length ? html`<ul>${n.indicators.map((i) => html`<li>
       <span class="pill p-bad plain">${words(i.kind)}</span> <b>${words(i.name)}</b>${i.payments ? html` · ${i.payments} payment${i.payments > 1 ? "s" : ""}` : ""}
       ${i.evidence?.length ? html`<div class="small">Evidence: ${i.evidence.map((x, k) => html`${k ? ", " : ""}${txnLink(x)}`)}</div>` : ""}
-      ${i.kind === "ring_case" ? html`<div class="small"><a href="/api/v2/cases" target="_blank" rel="noopener">Ring cases (JSON)</a></div>` : ""}
+      ${i.kind === "ring_case" ? html`<div class="small"><button class="link-btn" type="button" data-ring>Download ring cases (JSON)</button></div>` : ""}
       <div class="small muted">${i.source}</div></li>`)}</ul><p class="small muted">Leads for analyst review, not findings.</p>`
       : html`<p class="small muted">No motif or ring indicator on this account.</p>`}</section>
     <section class="sect"><h4>Counterparties (${cps.length})</h4>${cps.length ? html`<ul class="cps">${cps.slice(0, 30).map(([o, c]) => html`<li>
@@ -216,7 +231,7 @@ function showNode(id) {
     <section class="sect"><h4>Alerts and transactions</h4>
       ${n.alerts.length ? html`<p class="small">${n.alerts.map((a, k) => html`${k ? ", " : ""}<a class="mono" href="#/alerts/${encodeURIComponent(a)}">${a}</a>`)}</p>`
         : html`<p class="small muted">No alert names this account in the loaded payments.</p>`}
-      <p class="small"><a href="/api/v2/transactions?${q}" target="_blank" rel="noopener">Stored payments of this account (JSON)</a></p></section>`);
+      <p class="small"><a href="#/transactions?${q}">Stored payments of this account</a></p></section>`);
 }
 
 function showEdge(id) {
@@ -248,6 +263,51 @@ function selectEdge(id) {
   cy.elements().unselect();
   cy.getElementById(id).select();
   showEdge(id);
+}
+
+/** Cytoscape adds a <style> element unless one with this id exists; the CSP blocks inline styles, so app.css carries
+ *  the rule (.__________cytoscape_container) and this marker stops the injection. */
+function noInjectedStyle() {
+  if (document.getElementById("__________cytoscape_stylesheet")) return;
+  const m = document.createElement("meta");
+  m.id = "__________cytoscape_stylesheet";
+  document.head.append(m);
+}
+
+// ---- embedded excerpt (the case workspace): the accounts one payment away from each seed account, one aggregated
+// edge per account pair. Tapping an account opens it in this view.
+
+const BAND_RANK = ["allow", "verify", "hold", "block"];
+export async function miniNetwork(box, seeds) {
+  const nodes = new Map(), pays = new Map();
+  const got = await Promise.allSettled(seeds.slice(0, 12).map((x) => api("/v2/graph?" + new URLSearchParams({account: x.account, bank: x.bank ?? "", depth: "1"}))));
+  for (const r of got) {
+    if (r.status !== "fulfilled") continue;
+    for (const n of r.value.nodes) if (n.type === "account" && !nodes.has(n.id)) nodes.set(n.id, n);
+    for (const e of r.value.edges) if (isPay(e)) pays.set(e.id, e);
+  }
+  const seedIds = new Set(seeds.map((x) => `account:${x.bank}:${x.account}`));
+  const pairs = new Map();
+  for (const e of pays.values()) {
+    const k = e.from + ">" + e.to, p = pairs.get(k) || {from: e.from, to: e.to, n: 0, amt: 0, band: "allow", motif: false};
+    p.n++;
+    p.amt += e.amount || 0;
+    if (BAND_RANK.indexOf(e.band) > BAND_RANK.indexOf(p.band)) p.band = e.band;
+    p.motif ||= !!e.typologies?.length;
+    pairs.set(k, p);
+  }
+  const els = [...nodes.values()].map((n) => ({group: "nodes", data: {id: n.id, label: n.account, account: n.account, bank: n.bank},
+    classes: ["account", seedIds.has(n.id) && "seed", n.flagged_payments && "flagged", n.indicators?.length && "indicator"].filter(Boolean).join(" ")}));
+  for (const [k, p] of pairs) {
+    els.push({group: "edges", data: {id: "pair:" + k, source: p.from, target: p.to, label: p.n > 1 ? `${p.n}× ${money(p.amt)}` : money(p.amt)},
+      classes: ["pay", `b-${p.band}`, p.motif && "motif"].filter(Boolean).join(" ")});
+  }
+  noInjectedStyle();
+  const c = cytoscape({container: box, style: style(), elements: els, minZoom: 0.2, maxZoom: 3, boxSelectionEnabled: false});
+  c.layout({name: "cose", animate: false, padding: 24, nodeRepulsion: () => 3e6}).run();
+  if (c.zoom() > 1.3) { c.zoom(1.3); c.center(); }
+  c.on("tap", "node", (e) => { location.hash = "#/network?" + new URLSearchParams({account: e.target.data("account"), bank: e.target.data("bank")}); });
+  return {accounts: nodes.size, payments: pays.size, failed: got.filter((r) => r.status !== "fulfilled").length};
 }
 
 // ---- loading
@@ -286,7 +346,11 @@ async function load() {
   $("#nw-search", mainEl).value = st.account;
   cy.elements().remove();
   draw();
-  focusNode([...st.nodes.values()].find((n) => n.seed)?.id, false);
+  const seedId = [...st.nodes.values()].find((n) => n.seed)?.id;
+  focusNode(seedId, false);
+  // on a narrow screen the fitted graph is too small to read: keep the fit's layout, then zoom in on the seed
+  const sn = seedId && cy.getElementById(seedId);
+  if (sn?.length && cy.width() < 600 && cy.zoom() < 1) { cy.zoom(1); cy.center(sn); }
 }
 
 async function expand(id) {
@@ -350,6 +414,7 @@ function wire() {
   m.addEventListener("click", (e) => {
     const n = e.target.closest("[data-node]"), x = e.target.closest("[data-edge]"), ex = e.target.closest("[data-expand]");
     if (n) { if (!focusNode(n.dataset.node)) showNode(n.dataset.node); } else if (x) selectEdge(x.dataset.edge); else if (ex) expand(ex.dataset.expand);
+    if (e.target.closest("[data-ring]")) api("/v2/cases").then((d) => save("ring-cases.json", d), (err) => toast(err.explain || err.message));
   });
   $("#nw-seed", m)?.addEventListener("click", seed);
   cy.on("tap", "node", (e) => showNode(e.target.id()));
@@ -414,13 +479,7 @@ export async function render(main, ctx) {
         (MIT, <a href="/assets/vendor/cytoscape.LICENSE.txt">licence</a>).</p>
     </section>`;
   if (!st.account) { $("#nw-seed", main)?.addEventListener("click", seed); return; }
-  // Cytoscape adds a <style> element unless one with this id exists; the CSP blocks inline styles, so app.css carries
-  // the rule (.__________cytoscape_container) and this marker stops the injection.
-  if (!document.getElementById("__________cytoscape_stylesheet")) {
-    const m = document.createElement("meta");
-    m.id = "__________cytoscape_stylesheet";
-    document.head.append(m);
-  }
+  noInjectedStyle();
   cy?.destroy();
   cy = cytoscape({container: $("#nw-graph", main), style: style(), minZoom: 0.2, maxZoom: 4, boxSelectionEnabled: false});
   wire();

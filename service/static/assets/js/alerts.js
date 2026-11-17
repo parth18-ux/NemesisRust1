@@ -2,6 +2,9 @@
 // in the browser; a detail drawer; triage through POST /api/v2/alerts/{id}/triage; investigations from a selection.
 import {api, isDemo, demoKeys, currentAnalyst, getKey, replayMule} from "./api.js";
 import {$, $$, html, num, money, words, bandOf, bandPill, prioPill, demoPill, toast} from "./util.js";
+import {evidenceRow, wireEvidence} from "./evidence.js";
+
+const txnLink = (id) => html`<a class="mono" href="#/transactions/${encodeURIComponent(id)}">${id}</a>`;
 
 const PAGE = 25;
 const PRIOS = ["critical", "high", "medium", "low"];
@@ -62,7 +65,7 @@ function drawTable() {
       <td class="r"><span class="num">${r.score ?? "n/a"}</span> ${bandPill(r.band)}</td>
       <td>${r.source}</td>
       <td>${r.typology || html`<span class="muted">none</span>`}</td>
-      <td class="mono">${r.entity} ${netLink(r.a.payment?.to_bank, r.a.payment?.to_account, true)}</td><td class="mono">${r.txn}</td><td class="mono">${r.time}</td>
+      <td class="mono">${r.entity} ${netLink(r.a.payment?.to_bank, r.a.payment?.to_account, true)}</td><td>${txnLink(r.txn)}</td><td class="mono">${r.time}</td>
       <td>${r.assignee || html`<span class="muted">unassigned</span>`}</td><td>${statusCell(r)}</td><td>${prioPill(r.prio)}</td></tr>`)
     : html`<tr><td colspan="${COLS.length + 1}" class="empty">${st.rows.length ? "No alert matches these filters." : "The review desk holds no alert yet."}</td></tr>`}</tbody>
   </table>`;
@@ -140,7 +143,9 @@ async function openDrawer(id, from) {
         <dt>Amount</dt><dd class="num">${money(p.amount_paid, p.payment_currency)} · ${p.payment_format ?? ""}</dd>
         <dt>Payment time</dt><dd class="mono">${p.timestamp} UTC</dd>
         <dt>Source</dt><dd>${r.source}${a.event_id ? html` · event <span class="mono">${a.event_id}</span>` : ""}</dd>
-        <dt>Investigation</dt><dd>${r.case ? html`<a class="mono" href="/api/v2/investigations/${encodeURIComponent(r.case)}" target="_blank" rel="noopener">${r.case}</a>` : html`<span class="muted">none</span>`}</dd>
+        <dt>Transaction</dt><dd>${txnLink(r.txn)} <span class="small muted">risk, reasons, related accounts, history</span></dd>
+        <dt>Investigation</dt><dd>${r.case ? html`<a class="mono" href="#/investigations/${encodeURIComponent(r.case)}">${r.case}</a>`
+          : html`<button class="btn" type="button" id="al-open-inv">Open investigation</button>`}</dd>
         <dt>SLA due</dt><dd class="mono">${wf.sla_due ?? "not set"}</dd>
       </dl>
       <section class="sect"><h3>Model reasons</h3>${reasons.length ? html`<ul>${reasons.map((x) => html`<li>${x.display ?? x.feature}${x.feature && x.display ? html` <span class="small muted">(${x.feature}, impact ${x.impact})</span>` : ""}</li>`)}</ul>`
@@ -148,10 +153,8 @@ async function openDrawer(id, from) {
       <section class="sect"><h3>Context reasons</h3>${ctxReasons.length ? html`<ul>${ctxReasons.map((x) => html`<li>${x}</li>`)}</ul>` : html`<p class="small muted">None.</p>`}</section>
       ${as.intervention ? html`<section class="sect"><h3>Customer intervention</h3><p class="small">${as.intervention.screen?.en?.title ?? as.intervention.show}: ${as.intervention.screen?.en?.question ?? ""}</p>
         <p class="small muted">Funds: ${as.intervention.funds ?? "n/a"}${as.intervention.step_up?.length ? ` · step-up: ${as.intervention.step_up.join(", ")}` : ""}</p></section>` : ""}
-      <section class="sect"><h3>Evidence</h3><p class="small">
-        <a href="/api/v2/alerts/${encodeURIComponent(a.alert_id)}/evidence" target="_blank" rel="noopener">Evidence pack (JSON)</a> ·
-        <a href="/api/v2/alerts/${encodeURIComponent(a.alert_id)}/str" target="_blank" rel="noopener">STR draft</a>
-        ${as.signature ? html` · signed ${as.signature.alg}, key <span class="mono">${as.signature.key_id}</span>` : ""}</p></section>
+      <section class="sect"><h3>Evidence</h3><ul class="ev-list">${evidenceRow(a.alert_id)}</ul>
+        ${as.signature ? html`<p class="small muted">Assessment signed ${as.signature.alg}, key <span class="mono">${as.signature.key_id}</span>.</p>` : ""}</section>
       <section class="sect" aria-labelledby="al-th"><h3 id="al-th">Triage</h3>
         <form id="al-triage" class="form" novalidate>
           <label class="field">Assignee
@@ -174,6 +177,8 @@ async function openDrawer(id, from) {
   $("#scrim").addEventListener("click", closeDrawer, {once: true});
   $("#al-close", d).addEventListener("click", closeDrawer);
   $("#al-triage", d).addEventListener("submit", (e) => { e.preventDefault(); triage(r, e.target); });
+  $("#al-open-inv", d)?.addEventListener("click", () => { closeDrawer(); st.sel = new Set([r.id]); openCaseDialog(); });
+  wireEvidence(d);
   d.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeDrawer();
     if (e.key === "Tab") {
@@ -243,7 +248,7 @@ function openCaseDialog() {
       dlg.close();
       st.sel.clear();
       toast(`Investigation ${inv.case_id} opened with ${inv.alert_ids.length} alert(s)`);
-      await load(true);
+      location.hash = "#/investigations/" + encodeURIComponent(inv.case_id);
     } catch (err) {
       $("#al-cmsg", dlg).innerHTML = html`<p class="msg err" role="alert">${err.explain || err.message}</p>`;
     }
