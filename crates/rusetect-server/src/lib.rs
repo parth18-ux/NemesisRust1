@@ -390,6 +390,7 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html",
     "service/static/app.html", "service/static/assets/app.css", "service/static/assets/js/theme.js", "service/static/assets/js/app.js",
     "service/static/assets/js/api.js", "service/static/assets/js/util.js", "service/static/assets/js/dashboard.js", "service/static/assets/js/alerts.js",
+    "service/static/assets/js/network.js", "service/static/assets/vendor/cytoscape.esm.min.js", "service/static/assets/vendor/cytoscape.LICENSE.txt",
     "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
 ];
 
@@ -540,7 +541,8 @@ async fn app_page(s: State<AppRef>) -> Response {
 /// The app's embedded files under `service/static/assets/`, as (path below `/assets/`, content type).
 pub fn app_assets() -> impl Iterator<Item = (&'static str, &'static str)> {
     ASSETS.iter().filter_map(|(p, _)| p.strip_prefix("service/static/assets/")).map(|p| {
-        (p, if p.ends_with(".css") { "text/css; charset=utf-8" } else if p.ends_with(".js") { "text/javascript; charset=utf-8" } else { "application/octet-stream" })
+        (p, if p.ends_with(".css") { "text/css; charset=utf-8" } else if p.ends_with(".js") { "text/javascript; charset=utf-8" }
+            else if p.ends_with(".txt") { "text/plain; charset=utf-8" } else { "application/octet-stream" })
     })
 }
 

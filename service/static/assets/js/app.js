@@ -10,8 +10,7 @@ const SECTIONS = [
    links: [["/investigate", "Investigator"]]},
   {k: "D", id: "behaviour", name: "Behavioural", stage: "W7", what: "typing, session and identity signals, PRAMAAN and duress outcomes, each marked consent-based",
    links: [["/investigate", "Investigator"]]},
-  {k: "E", id: "network", name: "Network intelligence", stage: "W4", what: "the account graph with typed, evidenced edges",
-   links: [["/investigate", "Investigator (alert graph)"]]},
+  {k: "E", id: "network", name: "Network intelligence", load: () => import("./network.js")},
   {k: "F", id: "alerts", name: "Alert management", load: () => import("./alerts.js")},
   {k: "G", id: "cases", name: "Cases", stage: "W5", what: "the investigation list and the one-screen case view; investigations can already be opened from Alert management",
    links: []},
@@ -47,7 +46,8 @@ function soonView(s) {
 
 let renderSeq = 0;
 async function route() {
-  const [id = "dashboard", ...rest] = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
+  const [path, query = ""] = location.hash.replace(/^#\/?/, "").split("?");
+  const [id = "dashboard", ...rest] = path.split("/").map(decodeURIComponent);
   const s = SECTIONS.find((x) => x.id === id) || SECTIONS[0];
   drawNav(s.id);
   $("#title").textContent = s.name;
@@ -59,7 +59,7 @@ async function route() {
   main.innerHTML = html`<p class="muted" role="status">Loading ${s.name.toLowerCase()}…</p>`;
   try {
     const mod = await s.load();
-    if (seq === renderSeq) await mod.render(main, {params: rest, isCurrent: () => seq === renderSeq});
+    if (seq === renderSeq) await mod.render(main, {params: rest, query: new URLSearchParams(query), isCurrent: () => seq === renderSeq});
   } catch (e) {
     if (seq === renderSeq) main.innerHTML = html`<div class="banner err" role="alert">This view failed to load: ${e.explain || e.message}</div>`;
   }

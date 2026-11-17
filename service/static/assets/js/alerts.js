@@ -1,6 +1,6 @@
 // F. Alert management: every alert the review desk holds (GET /api/v2/alerts), searched, filtered, sorted and paged
 // in the browser; a detail drawer; triage through POST /api/v2/alerts/{id}/triage; investigations from a selection.
-import {api, isDemo, demoKeys, currentAnalyst, getKey} from "./api.js";
+import {api, isDemo, demoKeys, currentAnalyst, getKey, replayMule} from "./api.js";
 import {$, $$, html, num, money, words, bandOf, bandPill, prioPill, demoPill, toast} from "./util.js";
 
 const PAGE = 25;
@@ -36,6 +36,10 @@ function view() {
   return rows;
 }
 
+/** "View in network" link for one account (the Network intelligence view, section E). */
+const netLink = (bank, account, short) => (account ? html`<a class="small" href="#/network?${new URLSearchParams({account, bank: bank ?? ""})}"
+  title="View ${bank ?? ""}:${account} in the network">${short ? "network" : "View in network"}</a>` : "");
+
 function statusCell(r) {
   const cls = r.status === "blocked" ? "p-bad" : r.status === "released" ? "p-ok" : "p-info";
   return html`<span class="pill ${cls}">${r.status}</span> <span class="small muted">${words(r.state)}</span>`;
@@ -58,7 +62,7 @@ function drawTable() {
       <td class="r"><span class="num">${r.score ?? "n/a"}</span> ${bandPill(r.band)}</td>
       <td>${r.source}</td>
       <td>${r.typology || html`<span class="muted">none</span>`}</td>
-      <td class="mono">${r.entity}</td><td class="mono">${r.txn}</td><td class="mono">${r.time}</td>
+      <td class="mono">${r.entity} ${netLink(r.a.payment?.to_bank, r.a.payment?.to_account, true)}</td><td class="mono">${r.txn}</td><td class="mono">${r.time}</td>
       <td>${r.assignee || html`<span class="muted">unassigned</span>`}</td><td>${statusCell(r)}</td><td>${prioPill(r.prio)}</td></tr>`)
     : html`<tr><td colspan="${COLS.length + 1}" class="empty">${st.rows.length ? "No alert matches these filters." : "The review desk holds no alert yet."}</td></tr>`}</tbody>
   </table>`;
@@ -131,8 +135,8 @@ async function openDrawer(id, from) {
         <dt>Engine decision</dt><dd>${as.payment_decision ?? as.payment?.decision ?? "n/a"} <span class="small muted">model risk ${as.payment?.risk ?? "n/a"}, exit ${as.payment?.layer_exit ?? "n/a"}</span></dd>
         <dt>Context band</dt><dd>${as.context_band ?? "n/a"} ${as.raised_by_context ? html`<span class="small muted">(raised by context)</span>` : ""}</dd>
         <dt>Status</dt><dd>${statusCell(r)}</dd>
-        <dt>Payer</dt><dd class="mono">${r.payer}</dd>
-        <dt>Payee</dt><dd class="mono">${r.entity}</dd>
+        <dt>Payer</dt><dd><span class="mono">${r.payer}</span> ${netLink(p.from_bank, p.from_account)}</dd>
+        <dt>Payee</dt><dd><span class="mono">${r.entity}</span> ${netLink(p.to_bank, p.to_account)}</dd>
         <dt>Amount</dt><dd class="num">${money(p.amount_paid, p.payment_currency)} · ${p.payment_format ?? ""}</dd>
         <dt>Payment time</dt><dd class="mono">${p.timestamp} UTC</dd>
         <dt>Source</dt><dd>${r.source}${a.event_id ? html` · event <span class="mono">${a.event_id}</span>` : ""}</dd>
@@ -253,17 +257,7 @@ async function seedDemo(e) {
   const btn = e.currentTarget;
   btn.disabled = true;
   try {
-    const F = await api("/v2/fixtures/mule");
-    const t0 = Date.parse(F.start.replace(" ", "T") + ":00Z");
-    const ts = (m) => new Date(t0 + m * 60000).toISOString().slice(0, 16).replace("T", " ");
-    for (const [i, amt] of F.deposits_inr.entries()) {
-      const v = "V" + String(i + 1).padStart(2, "0"), t = i * F.gap_minutes;
-      btn.textContent = `Replaying ${2 * i + 1} of ${2 * F.deposits_inr.length}…`;
-      await api("/v2/assess", {method: "POST", body: {timestamp: ts(t), from_bank: "01" + String(i + 1).padStart(2, "0"), from_account: v, to_bank: F.mule.bank,
-        to_account: F.mule.account, amount_paid: amt, payment_currency: "Rupee", payment_format: "ACH", message: i === 0 ? F.victim_message_for_V01 : null, consent: i === 0}});
-      await api("/v2/assess", {method: "POST", body: {timestamp: ts(t + 1), from_bank: F.mule.bank, from_account: F.mule.account, to_bank: F.collector.bank,
-        to_account: F.collector.account, amount_paid: Math.round(amt * F.forward_share * 100) / 100, payment_currency: "Rupee", payment_format: "ACH"}});
-    }
+    await replayMule((i, n) => { btn.textContent = `Replaying ${i} of ${n}…`; });
     await load(true);
   } catch (err) {
     toast(err.explain || err.message);

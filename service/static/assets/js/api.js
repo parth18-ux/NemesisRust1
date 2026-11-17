@@ -68,3 +68,21 @@ export async function currentAnalyst() {
   const k = getKey();
   return (await demoKeys()).find((a) => a.key === k) || null;
 }
+
+/** Demo mode only: replays the fictional mule fixture (victims pay one mule, who forwards to a collector) through
+ *  POST /api/v2/assess, so the alert and network views have demonstration data. `progress(done, total)` is optional. */
+export async function replayMule(progress = () => {}) {
+  const F = await api("/v2/fixtures/mule");
+  const t0 = Date.parse(F.start.replace(" ", "T") + ":00Z");
+  const ts = (m) => new Date(t0 + m * 60000).toISOString().slice(0, 16).replace("T", " ");
+  const n = F.deposits_inr.length;
+  for (const [i, amt] of F.deposits_inr.entries()) {
+    const v = "V" + String(i + 1).padStart(2, "0"), t = i * F.gap_minutes;
+    progress(2 * i + 1, 2 * n);
+    await api("/v2/assess", {method: "POST", body: {timestamp: ts(t), from_bank: "01" + String(i + 1).padStart(2, "0"), from_account: v, to_bank: F.mule.bank,
+      to_account: F.mule.account, amount_paid: amt, payment_currency: "Rupee", payment_format: "ACH", message: i === 0 ? F.victim_message_for_V01 : null, consent: i === 0}});
+    await api("/v2/assess", {method: "POST", body: {timestamp: ts(t + 1), from_bank: F.mule.bank, from_account: F.mule.account, to_bank: F.collector.bank,
+      to_account: F.collector.account, amount_paid: Math.round(amt * F.forward_share * 100) / 100, payment_currency: "Rupee", payment_format: "ACH"}});
+  }
+  return F;
+}

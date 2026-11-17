@@ -1,4 +1,4 @@
-// Browser smoke test of the app shell (W2) and the dashboard and alert views (W3), against a running rusetect-server
+// Browser smoke test of the app shell (W2), the dashboard and alert views (W3) and the network view (W4), against a running rusetect-server
 // in demo mode:  RUSETECT_DEMO=1 rusetect-server --port 8011 ; BASE=http://localhost:8011 node tests/e2e/smoke.js
 // Uses the preinstalled Playwright (Apache-2.0) and Chromium. SHOTS=1 also writes screenshots to docs/screenshots/.
 const {chromium} = require("playwright");
@@ -41,7 +41,7 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
       await page.click(`#nav a[href="${href}"]`);
       await page.waitForFunction((h) => location.hash === h && document.querySelector('#nav a[aria-current="page"]')?.getAttribute("href") === h, href);
       await page.waitForSelector("#main > *:not([role=status])", {timeout: 10000});
-      const built = href === "#/dashboard" || href === "#/alerts";
+      const built = ["#/dashboard", "#/alerts", "#/network"].includes(href);
       if (!built) assert(await page.locator("#main >> text=coming in a later stage").count() === 1, `${href} has no later-stage note`);
     }
     for (const href of ["/", "/console", "/investigate", "/report", "/docs"]) {
@@ -49,6 +49,93 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
       assert(r.status() === 200, `${href} returned ${r.status()}`);
     }
     assert(errors.length === 0, "console errors: " + errors.join(" | "));
+  });
+
+  // ---- network intelligence (W4). The Cytoscape instance is read from its container (_cyreg) to find where an
+  // edge is drawn, so the test clicks the real canvas.
+  const cyEval = (fn, arg) => page.evaluate(([f, a]) => new Function("cy", "a", "return (" + f + ")(cy, a)")(document.querySelector("#nw-graph")._cyreg.cy, a), [fn.toString(), arg]);
+  const counts = () => page.textContent("#nw-counts");
+
+  await check("network: empty state is labelled and loads the demonstration network", async () => {
+    await page.goto(BASE + "/app#/network");
+    await page.waitForSelector("#main section.card");
+    assert(await page.locator("text=A connection is not evidence of wrongdoing.").count() === 1, "disclaimer caption");
+    if (await page.locator("#nw-seed").count()) {
+      assert(await page.locator("text=No stored payment yet").count() === 1, "empty state text");
+      await page.click("#nw-seed");
+    }
+    await page.waitForFunction(() => document.querySelector("#nw-graph")?._cyreg?.cy?.edges(".pay").length > 0, null, {timeout: 60000});
+    const [nodes, pays] = await cyEval((cy) => [cy.nodes(".account").length, cy.edges(".pay").length]);
+    assert(nodes >= 2 && pays >= 9, `${nodes} accounts, ${pays} payments`);
+    assert(/account=MULE01/.test(page.url()), "deep link written: " + page.url());
+    const na = await page.textContent(".na");
+    assert(/Not available in this data/.test(na) && /devices/.test(na) && /customers and merchants/.test(na), na);
+    assert(await page.locator(".banner.demo").count() === 1, "demo banner");
+  });
+
+  await check("network: search focuses a node and opens its details", async () => {
+    await page.fill("#nw-search", "COLL01");
+    await page.press("#nw-search", "Enter");
+    await page.waitForFunction(() => document.querySelector("#nw-panel h3")?.textContent.includes("COLL01"));
+    const sel = await cyEval((cy) => cy.$("node:selected").map((n) => n.id()));
+    assert(sel.length === 1 && sel[0] === "account:0300:COLL01", "selected: " + sel);
+    const p = await page.textContent("#nw-panel");
+    assert(/Money in/.test(p) && /MULE01/.test(p) && /pass through/.test(p), "panel: " + p.slice(0, 200));
+    assert(await page.locator('#nw-panel a[href^="#/alerts/"]').count() > 0, "alert links");
+  });
+
+  await check("network: clicking an edge shows its evidence, linked to the transaction", async () => {
+    await page.locator("#nw-graph").scrollIntoViewIfNeeded();
+    const box = await page.locator("#nw-graph").boundingBox();
+    const pt = await cyEval((cy) => { const e = cy.edges(".pay").filter((x) => x.source().id() !== x.target().id())[0]; cy.fit(e.connectedNodes(), 60); return e.renderedMidpoint(); });
+    await page.mouse.click(box.x + pt.x, box.y + pt.y);
+    await page.waitForSelector("#nw-ev-txn a", {timeout: 5000});
+    const href = await page.getAttribute("#nw-ev-txn a", "href");
+    assert(/^\/api\/v2\/transactions\/./.test(href), href);
+    const r = await page.request.get(BASE + href);
+    assert(r.status() === 200, `${href} returned ${r.status()}`);
+    const t = await r.json();
+    assert(href.endsWith(encodeURIComponent(t.transaction.id)), "transaction id " + t.transaction.id);
+  });
+
+  await check("network: minimum amount and direction filters change the counts", async () => {
+    const before = await counts();
+    await page.fill("#nw-min", "15000");
+    await page.dispatchEvent("#nw-min", "change");
+    const after = await counts();
+    assert(after !== before, `${before} -> ${after}`);
+    const pays = await cyEval((cy) => cy.edges(".pay").map((e) => e.id()));
+    assert(pays.length > 0 && pays.length < 9, `${pays.length} payments at 15000 or more`);
+    await page.fill("#nw-min", "0");
+    await page.dispatchEvent("#nw-min", "change");
+    assert(await counts() === before, "reset");
+    await page.selectOption("#nw-dir", "out");
+    assert(await counts() !== before, "direction did not change the counts");
+    await page.selectOption("#nw-dir", "all");
+  });
+
+  await check("network: expand, depth and deep link", async () => {
+    await page.goto(BASE + "/app#/network?account=COLL01&bank=0300");
+    await page.waitForFunction(() => document.querySelector("#nw-graph")?._cyreg?.cy?.nodes(".account").length > 0);
+    const n1 = await cyEval((cy) => cy.nodes(".account").length);
+    await page.click('#nw-panel button[data-node="account:0200:MULE01"]');
+    await page.click('#nw-panel [data-expand="account:0200:MULE01"]');
+    await page.waitForFunction((n) => document.querySelector("#nw-graph")._cyreg.cy.nodes(".account").length > n, n1, {timeout: 10000});
+    await page.selectOption("#nw-depth", "2");
+    await page.waitForFunction(() => /depth=2/.test(location.hash));
+  });
+
+  await check("network: View in network from the alert drawer", async () => {
+    await page.goto(BASE + "/app#/alerts");
+    await page.waitForSelector("#al-table tbody [data-open]");
+    await page.locator("#al-table [data-open]").first().click();
+    await page.click("#al-drawer >> text=View in network >> nth=1");
+    await page.waitForFunction(() => location.hash.startsWith("#/network?account=") && document.querySelector("#nw-graph")?._cyreg?.cy?.nodes().length > 0);
+    assert(await page.locator("#al-drawer").count() === 0, "drawer closed");
+  });
+
+  await check("no console error in the network view", async () => {
+    assert(errors.length === 0, errors.join(" | "));
   });
 
   await check("alerts: demonstration alerts load in demo mode", async () => {
@@ -172,6 +259,10 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
       await p.locator("#al-table [data-open]").first().click();
       await p.waitForSelector("#al-drawer");
       await p.screenshot({path: path.join(OUT, `w3-alert-drawer-${tag}.png`)});
+      await p.goto(BASE + "/app#/network?account=MULE01&bank=0200&depth=2");
+      await p.waitForFunction(() => document.querySelector("#nw-graph")?._cyreg?.cy?.edges().length > 0);
+      await p.waitForTimeout(400);
+      await p.screenshot({path: path.join(OUT, `w4-network-${tag}.png`), fullPage: true});
       await c.close();
     }
   }
