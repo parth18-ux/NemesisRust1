@@ -38,6 +38,34 @@ repository follows the same rules (see the [model card](MODEL_CARD.md)), so a pi
 6. **Decide.** Adopt, retrain on the bank's data under the same rule, or stop. The decision and its evidence are kept
    with the signed audit log.
 
+## Compare rankings on a historical replay
+
+Run the existing [pilot sender](PILOT_ONBOARDING.md) with `--log replay.jsonl` against the intended scoring configuration.
+Send the warm-up and holdout payments in chronological order. Record the build, model version and store mode with the
+result so the comparison can be repeated. Use a fresh evaluation store for each build.
+
+The evaluator joins the replay to two exports by `event_id`.
+
+| Export | Columns |
+|---|---|
+| Incumbent | `event_id,score`. Export the score available at decision time, with higher scores ranked first. Supply a score for every holdout payment. |
+| Outcomes | `event_id,case_id,confirmed_at`. Use a shared case ID for payments attached to the same confirmed case. The timestamp is when the payment was confirmed as linked to that case. |
+
+```bash
+python3 -I tools/pilot_evaluate.py replay.jsonl incumbent.csv outcomes.csv \
+    --start 2026-08-01 --end 2026-09-01 --as-of 2026-10-01T00:00:00Z \
+    --reviews-per-day 50 > pilot-comparison.json
+```
+
+Freeze the UTC holdout dates, label snapshot and daily budget before reading results. For each full day, both methods
+rank the same payments and receive up to the same number of reviews. RuseTect ranks by action severity first, then
+descending risk, with missing risk after scored payments in the same action band. Both methods break ties by payment
+time and then event ID. The report counts confirmed cases once even when several of their payments are reviewed. Yield
+and recall are measured against outcomes confirmed by the snapshot. Unconfirmed payments do not count as hits.
+
+This is a retrospective ranking comparison. It uses the full day's scores to choose that day's reviews. Measure
+time to alert, queueing, and threshold behaviour separately in the live shadow run.
+
 ## What the pilot will not show
 
 - Performance at another bank, or on another rail, without measuring there.
