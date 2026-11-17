@@ -1,5 +1,5 @@
 // Browser smoke test of the app shell (W2), the dashboard and alert views (W3), the network view (W4) and the transaction and
-// investigation views (W5), the assistant and report views (W6), against a running rusetect-server
+// investigation views (W5), the assistant and report views (W6), the scam and behavioural views (W7), against a running rusetect-server
 // in demo mode:  RUSETECT_DEMO=1 RUSETECT_RATE_LIMIT=100000 rusetect-server --port 8011 ; BASE=http://localhost:8011 node tests/e2e/smoke.js
 // (the report and screenshot steps send more than the default 240 requests per 10 s from one client, so raise the limit)
 // Uses the preinstalled Playwright (Apache-2.0) and Chromium. SHOTS=1 also writes screenshots to docs/screenshots/.
@@ -43,7 +43,7 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
       await page.click(`#nav a[href="${href}"]`);
       await page.waitForFunction((h) => location.hash === h && document.querySelector('#nav a[aria-current="page"]')?.getAttribute("href") === h, href);
       await page.waitForSelector("#main > *:not([role=status])", {timeout: 10000});
-      const built = ["#/dashboard", "#/transactions", "#/network", "#/alerts", "#/investigations", "#/assistant", "#/reports"].includes(href);
+      const built = ["#/dashboard", "#/transactions", "#/scam", "#/behaviour", "#/network", "#/alerts", "#/investigations", "#/assistant", "#/reports"].includes(href);
       if (!built) assert(await page.locator("#main >> text=coming in a later stage").count() === 1, `${href} has no later-stage note`);
     }
     for (const href of ["/", "/console", "/investigate", "/report", "/docs"]) {
@@ -569,6 +569,114 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
     assert(real.length === 0, real.join(" | "));
   });
 
+
+  // ---- W7: scam intelligence (C) and behavioural intelligence (D)
+  const scamCheck = async (text, extra = {}) => {
+    await page.fill("#sc-input", text);
+    for (const [k, v] of Object.entries(extra)) await page.fill(`#sc-form [name=${k}]`, v);
+    const [resp] = await Promise.all([page.waitForResponse((r) => r.url().endsWith("/api/v2/message")), page.click("#sc-go")]);
+    await page.waitForSelector(".sc-res");
+    return resp.json();
+  };
+  let scamModel;
+  await check("scam: a scam message scores high and the highlighted phrases are the model's own", async () => {
+    await page.goto(BASE + "/app#/scam");
+    await page.waitForSelector("#sc-form");
+    scamModel = (await (await page.request.get(BASE + "/api/v2/messages?limit=1")).json()).model;
+    await page.click('[data-sample="scam"]');
+    const r = await scamCheck(await page.inputValue("#sc-input"), {bank: "0101", account: "W7V01"});
+    assert(r.band === "high" && r.risk >= scamModel.thresholds.high, `band ${r.band} risk ${r.risk}`);
+    assert(await page.getAttribute(".sc-res", "data-result") === "high" && (await page.textContent("#sc-risk")) === r.risk.toFixed(4), "shown band or risk differs");
+    const marks = (await page.locator("#sc-text mark.kp").allTextContents()).map((m) => m.toLowerCase().replace(/\s+/g, " "));
+    const kps = r.key_phrases.map((k) => k.toLowerCase());
+    assert(marks.length >= 1 && marks.every((m) => kps.includes(m)), `marks ${marks} not in ${kps}`);
+    assert((await page.locator("[data-kp]").count()) === r.key_phrases.length, "phrase chips");
+    const t = await page.textContent(".sc-res");
+    for (const x of [r.workflow.label, ...r.tactics.map((y) => y.label), ...r.hard_signals.map((y) => y.label), scamModel.meta.trained_on, "no version string", "0101:W7V01"]) assert(t.includes(x), "missing: " + x);
+  });
+  await check("scam: a benign message scores low with nothing highlighted", async () => {
+    await page.click('[data-sample="benign"]');
+    await page.fill("#sc-form [name=account]", "");
+    const r = await scamCheck(await page.inputValue("#sc-input"));
+    assert(r.band === "safe" && r.risk < scamModel.thresholds.caution, `band ${r.band} risk ${r.risk}`);
+    assert(await page.locator("#sc-text mark").count() === 0 && await page.getAttribute(".sc-res", "data-result") === "safe", "benign highlighted");
+  });
+  await check("scam: empty, oversized, half-linked and malformed input give a clear error", async () => {
+    await page.fill("#sc-input", "   ");
+    await page.click("#sc-go");
+    assert((await page.textContent("#sc-out .msg.err")).includes("the text is empty"), "empty");
+    await page.evaluate(() => { document.querySelector("#sc-input").value = "x".repeat(5001); });
+    await page.click("#sc-go");
+    await page.waitForSelector("#sc-out .msg.err >> text=input was refused");
+    assert((await page.textContent("#sc-out .msg.err")).includes("at most 5000"), await page.textContent("#sc-out"));
+    await page.fill("#sc-input", "hello");
+    await page.fill("#sc-form [name=account]", "X1");
+    await page.fill("#sc-form [name=bank]", "");
+    await page.click("#sc-go");
+    assert((await page.textContent("#sc-out .msg.err")).includes("payer's bank"), "account without bank");
+    await page.fill("#sc-form [name=account]", "");
+    const bad = await page.request.post(BASE + "/api/v2/message", {headers: {"content-type": "application/json"}, data: Buffer.from("{bad")});
+    assert(bad.status() === 422 && (await bad.json()).detail[0].type === "json_invalid", "malformed JSON");
+  });
+  await check("scam: the history lists the messages redacted and filters by band", async () => {
+    await page.goto(BASE + "/app#/scam");
+    await page.waitForSelector("#sc-htable");
+    const t = await page.textContent("#sc-htable");
+    assert(t.includes("[UPI]") && !t.includes("kyc.help@okaxis"), "not redacted");
+    await page.selectOption("#sc-hf [name=band]", "high");
+    await page.click("#sc-hf button");
+    await page.waitForFunction(() => [...document.querySelectorAll("#sc-htable [data-band]")].every((b) => b.dataset.band === "high"));
+    assert(await page.locator("#sc-htable tbody tr").count() >= 1, "no high row");
+  });
+  await check("behaviour: typed keystroke capture and the synthetic demo return the server's real result", async () => {
+    await page.goto(BASE + "/app#/behaviour");
+    await page.waitForSelector("#bh-type");
+    assert(await page.locator("text=consent-based demonstration").count() >= 5, "consent labels");
+    const phrase = "the quick brown fox jumps over the lazy dog then reads the paper";
+    for (let i = 0; i < 3; i++) {
+      await page.locator("#bh-type").pressSequentially(phrase, {delay: 25});
+      await Promise.all([page.waitForResponse((r) => r.url().endsWith("/behaviour/enrol")), page.click("#bh-enrol")]);
+    }
+    assert((await page.textContent("#bh-tstat")).includes("3 enrolment session(s)"), await page.textContent("#bh-tstat"));
+    await page.locator("#bh-type").pressSequentially(phrase, {delay: 25});
+    const [resp] = await Promise.all([page.waitForResponse((r) => r.url().endsWith("/behaviour/check")), page.click("#bh-check")]);
+    const r = await resp.json();
+    await page.waitForSelector("[data-typing]");
+    assert(r.ready === true && typeof r.score === "number", JSON.stringify(r));
+    assert((await page.textContent("#bh-tout")).includes(r.score.toFixed(3)), "shown score differs");
+    await page.click("#bh-synth");
+    await page.waitForFunction(() => document.querySelectorAll("[data-typing]").length === 2, null, {timeout: 15000});
+    const kinds = await page.locator("[data-typing]").evaluateAll((l) => l.map((x) => x.dataset.typing));
+    assert(kinds[0] === "match" && kinds[1] === "anomaly", "synthetic owner/impostor: " + kinds);
+  });
+  await check("behaviour: PRAMAAN, identity and duress show the endpoints' outcomes", async () => {
+    await page.click('[data-preset="swap"]');
+    const [resp] = await Promise.all([page.waitForResponse((x) => x.url().endsWith("/v2/authenticate")), page.click("#bh-pf button[type=submit]")]);
+    const r = await resp.json();
+    await page.waitForSelector("[data-pramaan]");
+    assert(r.decision !== "allow" && r.challenge_type !== "sms_otp" && await page.getAttribute("[data-pramaan]", "data-pramaan") === r.decision, JSON.stringify(r).slice(0, 200));
+    assert((await page.textContent("#bh-pout")).includes(r.model_version), "model version");
+    if (r.decision === "challenge") {
+      await page.click('[data-ch][data-pass="0"]');
+      await page.waitForSelector('[data-pramaan="block"]');
+    }
+    await page.click("#bh-if button");
+    await page.waitForSelector('[data-identity="deny_otp_reverify"]');
+    await page.click("#bh-dreg");
+    await page.waitForSelector("#bh-dout .msg.ok");
+    await page.click("#bh-df button[type=submit]");
+    await page.waitForSelector('[data-duress="duress"]');
+    assert((await page.textContent("#bh-dout")).includes("Payment successful"), "duress outcome");
+  });
+  await check("behaviour: unavailable signals are labelled and no console error", async () => {
+    const mouse = await page.textContent('#bh-na [data-na="mouse"]');
+    assert(/not available/.test(mouse) && /module exists, not served/.test(mouse) && /balabit_eval\.json/.test(mouse), mouse);
+    assert(await page.locator("#bh-na li").count() === 3, "unavailable list");
+    await page.waitForSelector("#bh-sess table, #bh-sess .empty");
+    const real = errors.filter((e) => !/status of (401|403|400|422|503)/.test(e));
+    assert(real.length === 0, real.join(" | "));
+  });
+
   if (SHOTS) {
     await page.selectOption("#who-key", "");
     for (const [w, h, tag] of [[1440, 900, "desktop"], [390, 844, "phone"]]) {
@@ -617,6 +725,20 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
       await p.emulateMedia({media: "print"});
       await p.screenshot({path: path.join(OUT, `w6-report-print-${tag}.png`), fullPage: true});
       await p.emulateMedia({media: "screen"});
+      await p.goto(BASE + "/app#/scam");
+      await p.waitForSelector("#sc-htable");
+      await p.click('[data-sample="scam"]');
+      await p.click("#sc-go");
+      await p.waitForSelector(".sc-res");
+      await p.screenshot({path: path.join(OUT, `w7-scam-${tag}.png`), fullPage: true});
+      await p.goto(BASE + "/app#/behaviour");
+      await p.waitForSelector("#bh-sess table, #bh-sess .empty");
+      await p.click("#bh-synth");
+      await p.waitForFunction(() => document.querySelectorAll("[data-typing]").length === 2);
+      await p.click('[data-preset="swap"]');
+      await p.click("#bh-pf button[type=submit]");
+      await p.waitForSelector("[data-pramaan]");
+      await p.screenshot({path: path.join(OUT, `w7-behaviour-${tag}.png`), fullPage: true});
       await c.close();
     }
   }
@@ -633,8 +755,8 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
     await page.waitForSelector(".risk-box");
     assert(await page.locator(".bars .bar-row").count() > 0, "SHAP rows");
     assert(await page.locator(".banner.demo").count() === 1, "demo banner");
-    // 503 only from the report check's simulated audit outage
-    const real = errors.filter((e) => !/status of (401|403|400|503)/.test(e));
+    // 503 only from the report check's simulated audit outage, 422 from the scam view's refused oversized message
+    const real = errors.filter((e) => !/status of (401|403|400|422|503)/.test(e));
     assert(real.length === 0, real.join(" | "));
   });
 

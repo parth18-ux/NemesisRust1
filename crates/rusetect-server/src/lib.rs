@@ -102,6 +102,9 @@ pub struct AppState {
     /// investigations opened from alerts (workflow.rs); with Redis `live:cases` is the authority and this is a copy
     pub cases: IndexMap<String, Value>,
     pub case_seq: u64,
+    /// the last MSG_LOG_MAX scored messages, redacted (GET /api/v2/messages); memory of this instance only
+    pub msg_log: std::collections::VecDeque<Value>,
+    pub msg_seq: u64,
 }
 
 pub struct Shared {
@@ -179,6 +182,8 @@ impl AppState {
             drift: rusetect::drift::DriftMonitor::load(&models.join("drift_reference.json")),
             cases: IndexMap::new(),
             case_seq: 0,
+            msg_log: Default::default(),
+            msg_seq: 0,
         }
     }
 
@@ -343,6 +348,7 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/v2/fixtures/mule", get(v2_fixture_mule))
         .route("/v2/audit", get(v2_audit))
         .route("/v2/message", post(v2_message))
+        .route("/v2/messages", get(v2_messages))
         .route("/v2/sanctions/screen", post(v2_sanctions))
         .route("/v2/payee/check", post(v2_payee_check))
         .route("/v2/message-model", get(v2_message_model))
@@ -393,6 +399,7 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/static/assets/js/api.js", "service/static/assets/js/util.js", "service/static/assets/js/dashboard.js", "service/static/assets/js/alerts.js",
     "service/static/assets/js/network.js", "service/static/assets/js/transactions.js", "service/static/assets/js/investigations.js",
     "service/static/assets/js/assistant.js", "service/static/assets/js/reports.js",
+    "service/static/assets/js/scam.js", "service/static/assets/js/behaviour.js",
     "service/static/assets/js/evidence.js", "service/static/assets/vendor/cytoscape.esm.min.js", "service/static/assets/vendor/cytoscape.LICENSE.txt",
     "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
 ];
@@ -1080,7 +1087,53 @@ async fn v2_message(State(app): State<AppRef>, b: Bytes) -> ApiResult {
         let acct = account.filter(|a| !a.is_empty()).map(|a| format!("{}:{}", bank.as_deref().unwrap_or("None"), a));
         res["alert"] = s.lures.record_message(acct.as_deref(), tmin, &res);
         res["channel"] = json!(channel);
+        res["message_id"] = json!(log_message(s, &text, &res));
         ok(res)
+    }).await
+}
+
+/// Scored messages kept for the message history, newest last. Bounded and in memory: with Redis each instance keeps
+/// its own log and a restart empties it (a shared log would need a Redis list, like the live feed).
+pub const MSG_LOG_MAX: usize = 200;
+
+/// Store a redacted copy of a scored message: identifiers become [PHONE], [UPI] and the like (context_rules::redact),
+/// entities are kept as counts only.
+fn log_message(s: &mut AppState, text: &str, res: &Value) -> String {
+    s.msg_seq += 1;
+    let id = format!("M{:06}", s.msg_seq);
+    let labels = |k: &str| res[k].as_array().into_iter().flatten().map(|x| x["label"].clone()).collect::<Vec<_>>();
+    let phrases: Vec<String> = res["key_phrases"].as_array().into_iter().flatten().filter_map(|p| p.as_str()).map(|p| ctx::redact(p).0).collect();
+    let ents: Map<String, Value> = res["entities"].as_object().into_iter().flatten().map(|(k, v)| (k.clone(), json!(v.as_array().map_or(0, |a| a.len())))).collect();
+    if s.msg_log.len() >= MSG_LOG_MAX {
+        s.msg_log.pop_front();
+    }
+    s.msg_log.push_back(json!({"message_id": id, "at": rusetect::pyfmt::utc_now_z(), "channel": res["channel"], "text": ctx::redact(text).0,
+        "band": res["band"], "risk": res["risk"], "model_risk": res["model_risk"], "workflow": res["workflow"]["label"],
+        "tactics": labels("tactics"), "hard_signals": labels("hard_signals"), "key_phrases": phrases, "entity_counts": ents,
+        "notified": res["alert"]["notify"], "alert_reason": res["alert"]["reason"]}));
+    id
+}
+
+/// GET /api/v2/messages?q=&band=&limit=: the message history, newest first, with the model that scored it.
+async fn v2_messages(State(app): State<AppRef>, h: HeaderMap, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    require_reader(&h)?;
+    let limit = int_query(&q.get("limit").cloned(), "limit", 50)?.clamp(1, MSG_LOG_MAX as i64) as usize;
+    let band = q.get("band").filter(|b| !b.is_empty()).cloned();
+    if let Some(b) = &band {
+        if !["safe", "caution", "high"].contains(&b.as_str()) {
+            return Err(ApiError::new(422, "band: one of safe, caution, high"));
+        }
+    }
+    let needle = q.get("q").map(|x| x.trim().to_lowercase()).filter(|x| !x.is_empty());
+    with_state(app, move |s| {
+        let hits: Vec<&Value> = s.msg_log.iter().rev()
+            .filter(|m| band.as_ref().is_none_or(|b| m["band"] == b.as_str()))
+            .filter(|m| needle.as_ref().is_none_or(|n| m["text"].as_str().unwrap_or("").to_lowercase().contains(n.as_str())))
+            .collect();
+        let model = s.messages.as_ref().map(|m| json!({"meta": m.meta, "thresholds": {"caution": m.thr_caution, "high": m.thr_high}}));
+        ok(json!({"total": hits.len(), "stored": s.msg_log.len(), "capacity": MSG_LOG_MAX, "model": model,
+                  "scope": if s.live.configured() { "this instance's memory only (Redis mode: not shared, emptied on restart)" } else { "this server's memory (emptied on restart)" },
+                  "messages": hits.into_iter().take(limit).collect::<Vec<_>>()}))
     }).await
 }
 
@@ -1312,6 +1365,7 @@ async fn demo_reset(State(app): State<AppRef>, Query(q): Query<WarmQ>) -> ApiRes
             d.reset();
         }
         s.lures.reset();
+        s.msg_log.clear();
         s.desk.reset();
         s.cases.clear();
         s.case_seq = 0;

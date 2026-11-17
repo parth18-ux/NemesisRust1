@@ -770,3 +770,31 @@ async fn gets_are_rate_limited_too() {
     }
     assert_eq!(t.req("GET", "/api/v2/consortium", None, &[]).await.0, StatusCode::TOO_MANY_REQUESTS);
 }
+
+/// The message history (W1g): redacted text, newest first, filters, bounded, and a reader key when keys are set.
+#[tokio::test]
+async fn message_history_is_redacted_filtered_and_bounded() {
+    let t = T::new();
+    let a = t.post("/api/v2/message", json!({"text": SCAM})).await;
+    let b = t.post("/api/v2/message", json!({"text": "See you at dinner tonight, bring the cake"})).await;
+    assert_eq!(a["band"], "high");
+    let log = t.get("/api/v2/messages").await;
+    let m = log["messages"].as_array().unwrap();
+    assert_eq!((m.len(), log["stored"].as_u64()), (2, Some(2)));
+    assert_eq!(m[0]["message_id"], b["message_id"], "newest first");
+    let scam = &m[1];
+    assert!(!scam["text"].as_str().unwrap().contains("rbi.verify@paytm") && scam["text"].as_str().unwrap().contains("[UPI]"), "{scam}");
+    assert_eq!(scam["entity_counts"]["upi_ids"], 1);
+    assert_eq!(scam["key_phrases"], a["key_phrases"]);
+    assert!(log["model"]["thresholds"]["high"].is_f64());
+    let high = t.get("/api/v2/messages?band=high").await;
+    assert_eq!(high["total"], 1);
+    assert_eq!(t.get("/api/v2/messages?q=dinner").await["total"], 1);
+    assert_eq!(t.req("GET", "/api/v2/messages?band=red", None, &[]).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    for i in 0..rusetect_server::MSG_LOG_MAX {
+        t.post("/api/v2/message", json!({"text": format!("note {i}")})).await;
+    }
+    let full = t.get("/api/v2/messages?limit=500").await;
+    assert_eq!(full["stored"].as_u64(), Some(rusetect_server::MSG_LOG_MAX as u64));
+    assert_eq!(full["messages"].as_array().unwrap().len(), rusetect_server::MSG_LOG_MAX);
+}

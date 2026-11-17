@@ -12,7 +12,7 @@ review desk already hold, and each response says where it came from.
 
 | Routes | Demo mode | With `RUSETECT_ANALYST_KEYS` |
 | --- | --- | --- |
-| `GET /api/v2/dashboard`, `/transactions`, `/transactions/{id}`, `/graph`, `/investigations`, `/investigations/{id}`, `/investigations/{id}/narrative` | open | `X-Analyst-Key` of any role (viewer, channel, analyst, supervisor); else `401` |
+| `GET /api/v2/dashboard`, `/transactions`, `/transactions/{id}`, `/graph`, `/investigations`, `/investigations/{id}`, `/investigations/{id}/narrative`, `/messages` | open | `X-Analyst-Key` of any role (viewer, channel, analyst, supervisor); else `401` |
 | `POST /api/v2/alerts/{id}/triage`, `/investigations`, `/investigations/{id}/actions` | a demo analyst or supervisor key | analyst or supervisor key; viewer and channel get `403`, no key `401` |
 
 Writes also need a fresh `X-Nonce` (8 to 128 characters, not seen in the last 10 minutes; `409` otherwise), as a review
@@ -187,6 +187,43 @@ with the reason. The signature covers `{pack_hash, alert_id}` as signed by this 
 pack hash is not recomputed independently (there is no `/api/v2/evidence/verify` yet). "Download JSON" saves the data
 the report shows; each alert links its STR draft (`/alerts/{id}/str`).
 
+## Scam intelligence (website `#/scam`)
+
+The page scores a message with `POST /api/v2/message` (body `text` of 1 to 5,000 characters, `channel`, and optionally
+`bank` with `account` to link it to that payer for lure fusion; an empty or oversized text is `422`). The response is the
+model's own: `band` (`safe`, `caution`, `high`), `risk` and `model_risk`, `workflow`, `tactics`, `hard_signals`,
+`key_phrases` (the n-grams with the largest positive contribution; the page marks them where they occur literally and
+keeps no phrase list of its own), `entities`, the lure `alert` outcome, and `message_id`.
+
+### GET /api/v2/messages
+
+The message history: the last 200 scored messages (`MSG_LOG_MAX`), newest first. Query: `q` (substring of the redacted
+text), `band` (`safe`, `caution`, `high`; else `422`), `limit` (default 50, at most 200). Each row: `message_id`, `at`,
+`channel`, `text` redacted with the context layer's `redact` (links, e-mails, UPI ids, phones, accounts and codes become
+`[LINK]`, `[UPI]`, `[PHONE]` and the like), `band`, `risk`, `model_risk`, `workflow` label, `tactics`, `hard_signals`,
+`key_phrases` (redacted), `entity_counts` (counts only), `notified`, `alert_reason`. The response also gives `total`,
+`stored`, `capacity`, `scope` and `model` (the served model's `meta` and thresholds; the backend publishes no version
+string for it). Kept in the process's memory: a restart or `POST /api/v2/demo/reset` empties it, and with Redis each
+instance keeps its own log (a shared log would need a Redis list like the live feed).
+
+Linked payments are read from `GET /api/v2/alerts`: an alert is linked only when the lure memory raised its payment
+(reasons "Payer received a scam-like message" or "Payee named in a scam message"). Campaigns come from
+`GET /api/v2/campaigns`. A history row is not joined to an alert.
+
+## Behavioural intelligence (website `#/behaviour`)
+
+Every form is a consent-based demonstration started by the visitor; values go only to this server. Endpoints used:
+`POST /api/v2/behaviour/enrol` and `/check` (the browser sends mean key-down to key-down times per letter pair, from
+what the visitor typed or from a labelled synthetic generator; three enrolments make a profile), `POST
+/api/v2/authenticate` and `/challenge/verify` (PRAMAAN; `model_version` from the response), `POST
+/api/v2/identity/check`, `POST /api/v2/duress/register` and `/payments/confirm`. Session signals are read from stored
+`/api/v2/assess` alerts (`assessed.context.session_detail`: points, cues, coercion index, identity, forced verify).
+
+Not served: mouse dynamics (`crates/rusetect/src/mouse_dynamics.rs` needs a per-customer model fitted against an
+impostor population the server does not ship, and `results/balabit_eval.json` is desktop mouse data, not phone touch),
+behaviour summary counts, and PRAMAAN or typing history. Typing profiles, PRAMAAN account state and duress PINs are in
+memory only.
+
 ## Ledger
 
 Every triage and every investigation action appends an entry to the hash-chained ledger (`GET /api/v2/audit`,
@@ -202,7 +239,7 @@ investigation's `history` rows carry the `ledger_seq` and `ledger_hash` of their
 | Reason codes on live rows | SHAP and motifs | none (the bank-scale path returns none); the detail says so |
 | Live alerts and their triage | this process | `live:alerts`, shared by every instance |
 | Investigations | this process | `live:cases` and the `live:case_seq` counter, shared |
-| `/assess` alerts, demo feed, ring cases, engine counters, drift | this process | this instance |
+| `/assess` alerts, demo feed, ring cases, engine counters, drift, message history | this process | this instance |
 | Ledger entries of triage and case work | this process | this instance (as analyst reviews are); `live:ledger` holds live decisions only |
 
 Known gaps: in Redis mode an approved live event older than the feed is not in search or the graph; two instances

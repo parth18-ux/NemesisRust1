@@ -5,10 +5,8 @@ import {$, $$, html, toast} from "./util.js";
 const SECTIONS = [
   {k: "A", id: "dashboard", name: "Executive dashboard", load: () => import("./dashboard.js")},
   {k: "B", id: "transactions", name: "Transaction intelligence", load: () => import("./transactions.js")},
-  {k: "C", id: "scams", name: "Scam intelligence", stage: "W7", what: "message checks, scam workflows and tactics, and the lure model card",
-   links: [["/investigate", "Investigator"]]},
-  {k: "D", id: "behaviour", name: "Behavioural", stage: "W7", what: "typing, session and identity signals, PRAMAAN and duress outcomes, each marked consent-based",
-   links: [["/investigate", "Investigator"]]},
+  {k: "C", id: "scam", name: "Scam intelligence", load: () => import("./scam.js")},
+  {k: "D", id: "behaviour", name: "Behavioural intelligence", load: () => import("./behaviour.js")},
   {k: "E", id: "network", name: "Network intelligence", load: () => import("./network.js")},
   {k: "F", id: "alerts", name: "Alert management", load: () => import("./alerts.js")},
   {k: "G", id: "investigations", name: "Investigations", load: () => import("./investigations.js")},
@@ -45,6 +43,7 @@ async function route() {
   const [path, query = ""] = location.hash.replace(/^#\/?/, "").split("?");
   let [id = "dashboard", ...rest] = path.split("/").map(decodeURIComponent);
   if (id === "cases") id = "investigations";
+  if (id === "scams") id = "scam";
   const s = SECTIONS.find((x) => x.id === id) || SECTIONS[0];
   drawNav(s.id);
   $("#title").textContent = s.name;
