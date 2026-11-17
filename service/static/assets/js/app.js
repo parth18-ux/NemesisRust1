@@ -12,10 +12,8 @@ const SECTIONS = [
   {k: "E", id: "network", name: "Network intelligence", load: () => import("./network.js")},
   {k: "F", id: "alerts", name: "Alert management", load: () => import("./alerts.js")},
   {k: "G", id: "investigations", name: "Investigations", load: () => import("./investigations.js")},
-  {k: "H", id: "assistant", name: "AI-assisted investigation", stage: "W6", what: "a narrative draft in which every statement links to its source and is marked for analyst review",
-   links: []},
-  {k: "I", id: "reports", name: "Reports and evidence", stage: "W6", what: "the printable case report, STR draft, evidence packs and signature checks",
-   links: [["/report", "Benchmark report"], ["/docs", "API docs"]]},
+  {k: "H", id: "assistant", name: "AI-assisted investigation", load: () => import("./assistant.js")},
+  {k: "I", id: "reports", name: "Reports and evidence", load: () => import("./reports.js")},
 ];
 const OTHER = [["/console", "Live console"], ["/investigate", "Investigator"], ["/report", "Benchmark report"], ["/docs", "API docs"]];
 

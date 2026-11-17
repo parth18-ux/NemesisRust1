@@ -6,6 +6,7 @@
 //!   GET  /api/v2/investigations/{id}          one investigation with its alerts and its ledger entries
 //!   POST /api/v2/investigations/{id}/actions  assign, priority, status, sla, comment, add_alert, request_close,
 //!                                             approve_close, reject_close, reopen
+//!   GET  /api/v2/investigations/{id}/narrative  deterministic, sourced narrative draft (rusetect::narrative)
 //!
 //! * Writes need an analyst or supervisor key (X-Analyst-Key) and a fresh X-Nonce, as a review does. An analyst can take
 //!   work themselves; giving it to someone else, and reopening a closed investigation, need a supervisor.
@@ -377,5 +378,22 @@ pub async fn v2_investigation(State(app): State<AppRef>, h: HeaderMap, Path(case
         let audit: Vec<&Value> = s.desk.log.iter().filter(|e| e["case_id"] == case_id.as_str()).collect();
         ok(json!({"investigation": view(c), "alerts": alerts, "audit_entries": audit,
                   "audit_source": "this instance's hash-chained ledger (GET /api/v2/audit verifies the chain)"}))
+    }).await
+}
+
+/// GET /api/v2/investigations/{case_id}/narrative: a deterministic draft of the case (rusetect::narrative, "template v1")
+/// read from the stored investigation, the evidence pack of each alert, its live record and the desk's campaigns. Every
+/// statement names its sources; the draft requires analyst review and never blocks or changes a decision.
+pub async fn v2_investigation_narrative(State(app): State<AppRef>, h: HeaderMap, Path(case_id): Path<String>) -> ApiResult {
+    require_reader(&h)?;
+    blocking(move || {
+        let c = live::act_on_case(&app, &case_id, false, |s| s.cases.get(&case_id).cloned().ok_or_else(|| ApiError::new(404, "unknown investigation")))?;
+        let alerts: Vec<Value> = c["alert_ids"].as_array().into_iter().flatten().filter_map(|a| a.as_str()).filter_map(|id| {
+            let pack = live::with_alert(&app, id, |s| Ok(s.desk.evidence(id))).ok().flatten()?;
+            let record = pack["alert"]["event_id"].as_str().and_then(|e| live::stored_event(&app, e).ok().flatten()).unwrap_or(Value::Null);
+            Some(json!({"pack": pack, "record": record}))
+        }).collect();
+        let camps = rusetect::campaigns::build_recent(&lock(&app.state).desk.alerts);
+        ok(rusetect::narrative::build(&c, &alerts, &camps))
     }).await
 }

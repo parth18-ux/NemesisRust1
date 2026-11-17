@@ -15,6 +15,7 @@
 //!   behaviour       typing rhythm profile and verifier                                 [service/behaviour.py]
 //!   mouse_dynamics  mouse action features and per-customer model                       [service/mouse_dynamics.py]
 //!   campaigns, coordination, str_report, risk_score, branding                          [same names]
+//!   narrative       deterministic, sourced investigation narrative draft (templates, no language model)
 //!   drift           rolling-window PSI and band-rate drift monitor against the validation profile
 //!   sanctions       watchlist name screening (Jaro-Winkler token alignment, Soundex tie-break)
 //!   pyfmt, pyre     Python-compatible numerics, formatting, JSON and regex semantics
@@ -36,6 +37,7 @@ pub mod intervention;
 pub mod lure_fusion;
 pub mod models;
 pub mod mouse_dynamics;
+pub mod narrative;
 pub mod paths;
 pub mod payee;
 pub mod payment;

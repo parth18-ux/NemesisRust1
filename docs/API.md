@@ -2,8 +2,8 @@
 
 The endpoints the website's dashboard, transaction, network, alert and case pages read and write. The scoring,
 review, evidence and model routes are listed in `/docs` (Swagger UI, `/openapi.json`); the signed webhook is in
-[live.md](live.md). Code: `crates/rusetect-server/src/intel.rs` (reads) and `workflow.rs` (case work). Tests:
-`crates/rusetect-server/tests/intel.rs` and `intel_auth.rs`.
+[live.md](live.md). Code: `crates/rusetect-server/src/intel.rs` (reads), `workflow.rs` (case work) and
+`crates/rusetect/src/narrative.rs` (the narrative draft). Tests: `crates/rusetect-server/tests/intel.rs` and `intel_auth.rs`.
 
 Nothing here scores a payment or runs a second model. Every value is read from what the engine, the live store and the
 review desk already hold, and each response says where it came from.
@@ -12,7 +12,7 @@ review desk already hold, and each response says where it came from.
 
 | Routes | Demo mode | With `RUSETECT_ANALYST_KEYS` |
 | --- | --- | --- |
-| `GET /api/v2/dashboard`, `/transactions`, `/transactions/{id}`, `/graph`, `/investigations`, `/investigations/{id}` | open | `X-Analyst-Key` of any role (viewer, channel, analyst, supervisor); else `401` |
+| `GET /api/v2/dashboard`, `/transactions`, `/transactions/{id}`, `/graph`, `/investigations`, `/investigations/{id}`, `/investigations/{id}/narrative` | open | `X-Analyst-Key` of any role (viewer, channel, analyst, supervisor); else `401` |
 | `POST /api/v2/alerts/{id}/triage`, `/investigations`, `/investigations/{id}/actions` | a demo analyst or supervisor key | analyst or supervisor key; viewer and channel get `403`, no key `401` |
 
 Writes also need a fresh `X-Nonce` (8 to 128 characters, not seen in the last 10 minutes; `409` otherwise), as a review
@@ -142,6 +142,50 @@ evidence link) and its ledger entries.
 
 Maker-checker is supported for the closure, on the same footing as the block approval: two authenticated people. A
 closed investigation accepts only `comment` and `reopen`. Closing one decides no payment: its alerts keep their status.
+
+## GET /api/v2/investigations/{id}/narrative
+
+A draft narrative of the investigation, built from fixed templates (`generated_by: "template v1"`), not a language model.
+It reads only stored data: the investigation (history, comments, closure), the evidence pack of each alert the desk still
+holds, the live record of a webhook event (PRAMAAN result) and the desk's campaigns. Same roles as the other case reads;
+`404` for an unknown investigation. It never blocks, releases or changes anything, and the same stored data gives the
+same draft (`digest`, SHA-256 of the statements, checks and questions).
+
+- `requires_human_review: true`, `status: "DRAFT - requires analyst review"`, `notice`, `decides_nothing`.
+- `sections`: `summary`, `timeline`, `signals` (signals explained), `related_evidence`, `analyst_conclusions`.
+- `statements`: `{id, section, type, template_id, text, sources}`. `type` is one of:
+
+| `type` | What |
+| --- | --- |
+| `observed_fact` | copied from a stored payment, alert or ledger entry |
+| `model_output` | the cascade's risk and decision, tree-SHAP reasons, temporal motif features, message model, PRAMAAN |
+| `rule_finding` | a context rule that fired (with its ruleset), the context layer raising a decision, the consortium registry, a campaign link |
+| `interpretation` | a fixed, conservative phrasing ("consistent with ...", never "is fraud") of signals that fired, sourced to them |
+| `analyst_conclusion` | only case comments, the closure reason, and analysts' review decisions and notes on the alerts |
+
+- `sources`: at least one per statement (a statement without one is dropped), each `{kind, ...}`: `alert` (`id`),
+  `transaction` (`id`, the id `/transactions/{id}` takes), `ledger` (`seq` in `GET /api/v2/audit`), `evidence_pack`
+  (`alert_id`, `pack_hash` as returned by `/alerts/{id}/evidence` at generation time), `comment` (`case_id`, `index`).
+- `suggested_checks` and `open_questions`: `{id, template_id, text, sources}`, chosen by which signals fired (KYC of a
+  pass-through account, next-hop tracing, payer contact, message review, device history, campaign alerts, sanctions and
+  payee-name screening, which stored payments cannot run since they carry no names, and signature verification).
+- `inputs`: the alerts, transactions and pack hashes read, and the case's ledger seqs.
+- `llm_rephrase: {enabled: false}`: an optional, operator-configured rephrasing hook is documented only. Nothing calls
+  an external API.
+
+The website shows the draft in the case workspace and on `#/assistant`. Accepting it saves the analyst's edited text
+with `POST /api/v2/investigations/{id}/actions` (`action: "comment"`, a fresh `X-Nonce`), so it is in the ledger like
+any comment; a viewer or channel key gets `403`.
+
+## Investigation report (website)
+
+`#/reports/{id}` builds a printable report in the browser (print CSS, browser print to PDF; no new dependency) from
+`/investigations/{id}`, `/transactions/{id}`, `/alerts/{id}/evidence`, the narrative and `/audit`. Its verification
+section calls `POST /api/v2/verify` for each pack and `GET /api/v2/audit` when the report is rendered and shows
+"Verified" or "Chain valid" only when those calls return `valid: true` / `chain_valid: true`; otherwise "Not verified"
+with the reason. The signature covers `{pack_hash, alert_id}` as signed by this instance when the pack is read; the
+pack hash is not recomputed independently (there is no `/api/v2/evidence/verify` yet). "Download JSON" saves the data
+the report shows; each alert links its STR draft (`/alerts/{id}/str`).
 
 ## Ledger
 

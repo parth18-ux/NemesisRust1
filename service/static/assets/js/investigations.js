@@ -7,6 +7,7 @@ import {api, demoKeys, currentAnalyst, getKey} from "./api.js";
 import {$, html, num, money, fixed, words, bandPill, prioPill, toast, applyWidths} from "./util.js";
 import {evidenceRow, wireEvidence} from "./evidence.js";
 import {miniNetwork} from "./network.js";
+import {narrativePanel, wireNarrative, focusEl} from "./assistant.js";
 
 const enc = encodeURIComponent;
 const PRIOS = ["critical", "high", "medium", "low"];
@@ -151,12 +152,16 @@ async function renderCase(main, ctx, id) {
   const seeds = new Map();
   for (const a of alerts) if (a.payment) for (const s of ["from", "to"]) seeds.set(`${a.payment[s + "_bank"]}:${a.payment[s + "_account"]}`, {bank: a.payment[s + "_bank"], account: a.payment[s + "_account"]});
   const s = slaOf(inv), ev = timeline(inv, alerts, txns);
+  // the ledger entries of the case and of its alerts (the chain check needs GET /api/v2/audit; without it, the case's own)
+  const mine = new Set(alerts.map((a) => a.alert_id));
+  const ledger = audit ? audit.entries.filter((e) => e.case_id === inv.case_id || mine.has(e.alert_id)) : d.audit_entries || [];
 
   // listeners go on this wrapper, which the next render replaces (#main itself outlives every view)
   main.innerHTML = html`<div class="ws">
     <p class="small"><a href="#/investigations">&larr; All investigations</a></p>
     <section class="card ws-head" aria-labelledby="ws-h">
-      <div class="card-h"><h2 id="ws-h"><span class="mono">${inv.case_id}</span> · ${inv.title}</h2>${statusPill(inv.status)} ${prioPill(inv.priority)}</div>
+      <div class="card-h"><h2 id="ws-h"><span class="mono">${inv.case_id}</span> · ${inv.title}</h2>${statusPill(inv.status)} ${prioPill(inv.priority)}
+        <a class="btn" href="#/reports/${enc(inv.case_id)}">Investigation report</a></div>
       <dl class="kv ws-kv">
         <dt>Assignee</dt><dd>${inv.assignee || html`<span class="muted">unassigned</span>`}</dd>
         <dt>SLA</dt><dd id="ws-sla">${slaPill(inv)} <span class="small muted mono">${inv.status === "closed" ? "" : `due ${shortTime(inv.sla_due)}`}</span></dd>
@@ -167,6 +172,8 @@ async function renderCase(main, ctx, id) {
       </dl>
       ${s.state === "overdue" ? html`<p class="msg err">The SLA is past due.</p>` : ""}
     </section>
+    <section class="card" aria-labelledby="ws-ai"><div class="card-h"><h2 id="ws-ai">AI-assisted investigation</h2>
+        <a class="btn" href="#/assistant/${enc(inv.case_id)}">Open on its own page</a></div>${narrativePanel(inv.case_id)}</section>
     <div class="ws-grid">
       <div class="ws-col">
         <section class="card" aria-labelledby="ws-a"><div class="card-h"><h2 id="ws-a">Alerts and their payments</h2></div>
@@ -192,14 +199,15 @@ async function renderCase(main, ctx, id) {
             ${audit ? html`<span class="pill ${audit.chain_valid ? "p-ok" : "p-bad"}">ledger chain ${audit.chain_valid ? "valid" : "NOT valid"}</span>` : ""}</div>
           <div class="table-wrap"><table><thead><tr><th scope="col" class="r">Seq</th><th scope="col">Time (UTC)</th><th scope="col">Analyst</th><th scope="col">Action</th>
             <th scope="col">Status</th><th scope="col">Hash</th></tr></thead>
-            <tbody>${(d.audit_entries || []).map((e) => html`<tr><td class="r num">${e.seq}</td><td class="mono small">${shortTime(e.at)}</td><td>${e.analyst}</td><td>${words(e.action)}</td>
-              <td>${words(e.status)}</td><td class="mono small" title="${e.hash}">${String(e.hash).slice(0, 16)}…</td></tr>`)}</tbody></table></div>
-          <p class="src">${d.audit_source ?? ""}${audit ? "; chain check from GET /api/v2/audit" : ""}. Comment and reason texts enter the ledger as SHA-256 hashes.</p></section>
+            <tbody>${ledger.map((e) => html`<tr data-focus="ledger-${e.seq}"><td class="r num">${e.seq}</td><td class="mono small">${shortTime(e.at)}</td><td>${e.analyst ?? html`<span class="muted">system</span>`}</td>
+              <td>${words(e.action || e.type)}${e.case_id ? "" : html` <span class="small muted mono">${e.alert_id}</span>`}</td>
+              <td>${words(e.status ?? e.decision ?? "")}</td><td class="mono small" title="${e.hash}">${String(e.hash).slice(0, 16)}…</td></tr>`)}</tbody></table></div>
+          <p class="src">${d.audit_source ?? ""}${audit ? "; the case's entries and its alerts' entries, chain check from GET /api/v2/audit" : ""}. Comment and reason texts enter the ledger as SHA-256 hashes.</p></section>
       </div>
       <div class="ws-col">
         <section class="card" aria-labelledby="ws-x"><div class="card-h"><h2 id="ws-x">Actions</h2></div>${actionsPanel(inv, me, people, free)}</section>
         <section class="card" aria-labelledby="ws-c"><div class="card-h"><h2 id="ws-c">Analyst comments</h2><span class="small muted">${(inv.comments || []).length}</span></div>
-          <ul class="log" id="ws-comments">${(inv.comments || []).length ? [...inv.comments].reverse().map((c) => html`<li><b>${c.analyst}</b> · <span class="mono small">${shortTime(c.at)}</span><div>${c.text}</div></li>`)
+          <ul class="log" id="ws-comments">${(inv.comments || []).length ? [...inv.comments].map((c, i) => [c, i]).reverse().map(([c, i]) => html`<li data-focus="comment-${i}"><b>${c.analyst}</b> · <span class="mono small">${shortTime(c.at)}</span><div>${c.text}</div></li>`)
             : html`<li class="muted">No comment yet.</li>`}</ul>
           <form class="act col" data-act="comment"><label class="field">New comment<textarea name="text" rows="3" maxlength="1000" required></textarea></label>
             <button class="btn primary" type="submit">Add comment</button></form></section>
@@ -212,6 +220,10 @@ async function renderCase(main, ctx, id) {
   applyWidths(root);
   wireEvidence(root);
   wireActions(root, main, ctx, inv.case_id);
+  wireNarrative(root, (saved) => { location.hash = `#/investigations/${enc(id)}?focus=ledger-${(saved.history || []).at(-1)?.ledger_seq}`; });
+  const focus = ctx.query.get("focus");
+  const target = focus && root.querySelector(`[data-focus="${CSS.escape(focus)}"]`);
+  if (target) focusEl(target);
   try {
     const g = await miniNetwork($("#ws-graph", main), [...seeds.values()]);
     if (g.failed) $("#ws-gmsg", main).append(` ${g.failed} account(s) could not be loaded.`);

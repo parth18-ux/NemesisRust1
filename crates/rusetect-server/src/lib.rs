@@ -321,6 +321,7 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/v2/investigations", get(workflow::v2_investigations).post(workflow::v2_investigation_open))
         .route("/v2/investigations/{case_id}", get(workflow::v2_investigation))
         .route("/v2/investigations/{case_id}/actions", post(workflow::v2_investigation_action))
+        .route("/v2/investigations/{case_id}/narrative", get(workflow::v2_investigation_narrative))
         .route("/v2/dashboard", get(intel::v2_dashboard))
         .route("/v2/transactions", get(intel::v2_transactions))
         .route("/v2/transactions/{txn_id}", get(intel::v2_transaction))
@@ -391,6 +392,7 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/static/app.html", "service/static/assets/app.css", "service/static/assets/js/theme.js", "service/static/assets/js/app.js",
     "service/static/assets/js/api.js", "service/static/assets/js/util.js", "service/static/assets/js/dashboard.js", "service/static/assets/js/alerts.js",
     "service/static/assets/js/network.js", "service/static/assets/js/transactions.js", "service/static/assets/js/investigations.js",
+    "service/static/assets/js/assistant.js", "service/static/assets/js/reports.js",
     "service/static/assets/js/evidence.js", "service/static/assets/vendor/cytoscape.esm.min.js", "service/static/assets/vendor/cytoscape.LICENSE.txt",
     "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
 ];

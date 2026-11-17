@@ -76,4 +76,14 @@ async fn configured_keys_gate_reads_and_case_work_by_role() {
     assert_eq!(step("second-key-0123456789", "approve_close").await, StatusCode::OK);
     assert_eq!(step("second-key-0123456789", "reopen").await, StatusCode::FORBIDDEN);
     assert_eq!(step("supervisor-key-0123456789", "reopen").await, StatusCode::OK);
+
+    // the narrative draft is a case read: no key or an unknown key 401, every role reads it, an unknown case 404;
+    // accepting it into a comment is case work, refused to a viewer
+    let narrative = format!("/api/v2/investigations/{}/narrative", c["case_id"].as_str().unwrap());
+    assert_eq!(call(&app, "GET", &narrative, None, None).await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(call(&app, "GET", &narrative, Some("wrong-key-0123456789"), None).await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(call(&app, "GET", "/api/v2/investigations/INV-99999/narrative", Some("viewer-key-0123456789"), None).await.0, StatusCode::NOT_FOUND);
+    let (s, n) = call(&app, "GET", &narrative, Some("viewer-key-0123456789"), None).await;
+    assert_eq!((s, n["requires_human_review"].as_bool()), (StatusCode::OK, Some(true)), "{n}");
+    assert_eq!(call(&app, "POST", &actions, Some("viewer-key-0123456789"), Some(json!({"action": "comment", "text": "accepted draft"}))).await.0, StatusCode::FORBIDDEN);
 }

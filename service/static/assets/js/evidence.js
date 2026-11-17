@@ -8,7 +8,7 @@ import {$, html} from "./util.js";
 
 const enc = encodeURIComponent;
 
-export const evidenceRow = (alertId) => html`<li class="ev-row" data-ev="${alertId}">
+export const evidenceRow = (alertId) => html`<li class="ev-row" data-ev="${alertId}" data-focus="pack-${alertId}">
   <span class="mono">${alertId}</span>
   <span class="ev-btns"><button class="btn" type="button" data-ev-view>View pack</button>
     <button class="btn" type="button" data-ev-verify>Verify signature</button>

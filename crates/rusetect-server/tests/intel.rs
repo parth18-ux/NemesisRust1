@@ -439,6 +439,68 @@ async fn triage_and_investigations_enforce_roles_four_eyes_and_the_ledger() {
     assert_eq!(dash["alerts"]["unassigned"]["value"].as_u64().unwrap(), dash["alerts"]["total"]["value"].as_u64().unwrap() - 1);
 }
 
+#[tokio::test]
+async fn the_narrative_draft_is_typed_sourced_deterministic_and_decides_nothing() {
+    let (app, _) = app();
+    let sent = mule_network(&app).await;
+    let alerts: Vec<String> = sent.iter().filter_map(|r| r["alert_id"].as_str().map(String::from)).take(6).collect();
+    assert!(alerts.len() >= 3, "the mule fixture opens alerts");
+    let (s, c) = act(&app, "/api/v2/investigations", Some(ASHA), json!({"title": "MULE01 pass-through", "alert_ids": alerts})).await;
+    assert_eq!(s, StatusCode::OK, "{c}");
+    let case = c["case_id"].as_str().unwrap().to_string();
+    let path = format!("/api/v2/investigations/{case}/narrative");
+    let n = ok(&app, &path).await;
+    let st = n["statements"].as_array().unwrap();
+    assert_eq!((n["requires_human_review"].as_bool(), n["generated_by"].as_str(), n["llm_rephrase"]["enabled"].as_bool()), (Some(true), Some("template v1"), Some(false)));
+    // no analyst wrote anything yet: no analyst conclusion, and an open question says so
+    assert!(st.iter().all(|s| s["type"] != "analyst_conclusion"));
+    assert!(n["open_questions"].as_array().unwrap().iter().any(|q| q["template_id"] == "question.no_conclusion"));
+    act(&app, &format!("/api/v2/investigations/{case}/actions"), Some(ASHA), json!({"action": "comment", "text": "MULE01 forwards each deposit within a minute"})).await;
+    let (audit_before, alerts_before) = (ok(&app, "/api/v2/audit").await, ok(&app, "/api/v2/alerts").await);
+    let n = ok(&app, &path).await;
+    assert_eq!(n, ok(&app, &path).await, "the same stored data gives the same draft");
+    assert_eq!((ok(&app, "/api/v2/audit").await, ok(&app, "/api/v2/alerts").await), (audit_before.clone(), alerts_before.clone()), "reading the draft changes nothing");
+    let st = n["statements"].as_array().unwrap();
+    let types = ["observed_fact", "model_output", "rule_finding", "interpretation", "analyst_conclusion"];
+    let has = |t: &str, tid: &str, text: &str| st.iter().any(|s| s["type"] == t && s["template_id"] == tid && s["text"].as_str().unwrap().contains(text));
+    // the mule fixture: motif model output, the pass-through rule, a conservative interpretation, the analyst's comment
+    assert!(has("model_output", "model.motif", "pass-through"), "{st:?}");
+    assert!(has("rule_finding", "rule.context", "account graph: rapid_pass_through"), "{st:?}");
+    assert!(has("interpretation", "interp.pass_through", "consistent with"), "{st:?}");
+    assert!(has("observed_fact", "fact.payment", "from 0200/MULE01 to 0300/COLL01"), "{st:?}");
+    let concl: Vec<&Value> = st.iter().filter(|s| s["type"] == "analyst_conclusion").collect();
+    assert_eq!(concl.len(), 1, "only what the analyst wrote");
+    assert!(concl[0]["text"].as_str().unwrap().contains("within a minute"));
+    // every statement, check and question has a source, and every source resolves to stored data
+    let audit = ok(&app, "/api/v2/audit").await;
+    let seqs: BTreeSet<u64> = audit["entries"].as_array().unwrap().iter().filter_map(|e| e["seq"].as_u64()).collect();
+    let inv = ok(&app, &format!("/api/v2/investigations/{case}")).await;
+    let known: BTreeSet<String> = alerts_before.as_array().unwrap().iter().filter_map(|a| a["alert_id"].as_str().map(String::from)).collect();
+    let items = st.iter().chain(n["suggested_checks"].as_array().unwrap()).chain(n["open_questions"].as_array().unwrap());
+    let mut checked = 0;
+    for s in items {
+        let src = s["sources"].as_array().unwrap();
+        assert!(!src.is_empty(), "unsourced: {s}");
+        if let Some(t) = s["type"].as_str() {
+            assert!(types.contains(&t), "{s}");
+            assert!(!s["text"].as_str().unwrap().to_lowercase().contains("is fraud"), "{s}");
+        }
+        for x in src {
+            match x["kind"].as_str().unwrap() {
+                "alert" => assert!(known.contains(x["id"].as_str().unwrap()), "{x}"),
+                "transaction" => assert_eq!(get(&app, &format!("/api/v2/transactions/{}", x["id"].as_str().unwrap())).await.0, StatusCode::OK, "{x}"),
+                "ledger" => assert!(seqs.contains(&x["seq"].as_u64().unwrap()), "{x}"),
+                "evidence_pack" => assert_eq!(ok(&app, &format!("/api/v2/alerts/{}/evidence", x["alert_id"].as_str().unwrap())).await["pack_hash"], x["pack_hash"], "{x}"),
+                "comment" => assert!(inv["investigation"]["comments"][x["index"].as_u64().unwrap() as usize]["text"].is_string(), "{x}"),
+                k => panic!("unknown source kind {k}"),
+            }
+            checked += 1;
+        }
+    }
+    assert!(checked > 50, "{checked} sources resolved");
+    assert_eq!(get(&app, "/api/v2/investigations/INV-99999/narrative").await.0, StatusCode::NOT_FOUND);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_reads_events_and_case_work_stay_consistent() {
     let (app, _) = app();
