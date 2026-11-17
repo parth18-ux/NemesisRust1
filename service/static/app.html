@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RuseTect Workspace</title>
+<meta name="description" content="RuseTect financial-crime intelligence workspace: dashboard, alerts and investigations.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/app.css">
+<script src="/assets/js/theme.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+  <aside class="side" id="side" aria-label="Sections">
+    <a class="brand" href="#/dashboard">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#17304d"/><circle cx="20" cy="22" r="6" fill="#e6edf5"/><circle cx="44" cy="22" r="6" fill="#e6edf5"/><circle cx="32" cy="44" r="7" fill="#35b3d4"/><path d="M24 25l6 13M40 25l-6 13M26 22h12" stroke="#e6edf5" stroke-width="3" stroke-linecap="round"/></svg>
+      <span><b>RuseTect</b><small>part of NEMESIS</small></span>
+    </a>
+    <nav class="nav" id="nav" aria-label="Workspace"></nav>
+    <div class="side-foot">Decision support for analysts. Nothing here blocks a payment on its own.<br><a href="/">About RuseTect</a></div>
+  </aside>
+  <div class="main">
+    <header class="top">
+      <button class="btn icon" id="menu" type="button" aria-controls="side" aria-expanded="false" aria-label="Open menu">☰</button>
+      <h1 id="title">RuseTect</h1>
+      <div class="chips" id="chips" aria-label="Instance status"></div>
+      <div class="who" id="who"></div>
+      <button class="btn icon" id="theme" type="button" aria-label="Switch colour theme"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor"/></svg></button>
+    </header>
+    <main id="main" tabindex="-1"></main>
+  </div>
+</div>
+<div id="scrim" hidden></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<noscript>RuseTect Workspace needs JavaScript. The API is documented at /docs.</noscript>
+<script type="module" src="/assets/js/app.js"></script>
+</body>
+</html>

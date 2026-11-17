@@ -357,6 +357,8 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/console", get(|s| page(s, "console.html")))
         .route("/investigate", get(|s| page(s, "investigate.html")))
         .route("/report", get(|s| page(s, "report.html")))
+        .route("/app", get(app_page))
+        .route("/assets/{*path}", get(asset))
         .route("/favicon.svg", get(favicon))
         .route("/openapi.json", get(|| async { PyJson(StatusCode::OK, openapi::spec()) }))
         .route("/docs", get(|| async { axum::response::Html(openapi::DOCS_HTML) }))
@@ -386,6 +388,8 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/models/sanctions_sdn.csv", "research/out/sanctions_eval.json", "research/out/sanctions_eval_v2.json",
     "research/out/payee_check_eval.json", "research/out/payee_check_eval_v2.json",
     "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html",
+    "service/static/app.html", "service/static/assets/app.css", "service/static/assets/js/theme.js", "service/static/assets/js/app.js",
+    "service/static/assets/js/api.js", "service/static/assets/js/util.js", "service/static/assets/js/dashboard.js", "service/static/assets/js/alerts.js",
     "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
 ];
 
@@ -516,6 +520,37 @@ async fn page(State(app): State<AppRef>, name: &'static str) -> Response {
     let root = app.root.clone();
     match tokio::fs::read_to_string(root.join("service/static").join(name)).await {
         Ok(html) => axum::response::Html(html).into_response(),
+        Err(_) => ApiError::new(404, "Not Found").into_response(),
+    }
+}
+
+/// Policy for the app shell (`/app`). Its scripts and styles are files under `/assets`, so nothing inline is allowed;
+/// the three font families come from Google Fonts, as on the other pages. The older pages keep inline code and are
+/// served without this header.
+pub const APP_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; \
+font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; \
+frame-ancestors 'none'; form-action 'self'";
+
+async fn app_page(s: State<AppRef>) -> Response {
+    let mut r = page(s, "app.html").await;
+    r.headers_mut().insert("content-security-policy", HeaderValue::from_static(APP_CSP));
+    r
+}
+
+/// The app's embedded files under `service/static/assets/`, as (path below `/assets/`, content type).
+pub fn app_assets() -> impl Iterator<Item = (&'static str, &'static str)> {
+    ASSETS.iter().filter_map(|(p, _)| p.strip_prefix("service/static/assets/")).map(|p| {
+        (p, if p.ends_with(".css") { "text/css; charset=utf-8" } else if p.ends_with(".js") { "text/javascript; charset=utf-8" } else { "application/octet-stream" })
+    })
+}
+
+/// `/assets/{path}`: only a file in the embedded list is served, so a request cannot name any other file on disk.
+async fn asset(State(app): State<AppRef>, Path(path): Path<String>) -> Response {
+    let Some((name, ctype)) = app_assets().find(|(p, _)| *p == path) else {
+        return ApiError::new(404, "Not Found").into_response();
+    };
+    match tokio::fs::read(app.root.join("service/static/assets").join(name)).await {
+        Ok(b) => ([("content-type", ctype), ("cache-control", "no-cache")], b).into_response(),
         Err(_) => ApiError::new(404, "Not Found").into_response(),
     }
 }
