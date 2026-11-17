@@ -29,7 +29,7 @@ list with configured keys).
 CI: `.github/workflows/ci.yml` job `website` (after `rust`) builds the server, checks the frontend for secrets, installs
 the Playwright pinned in `tests/e2e/package-lock.json` with its official installer (`npx playwright install --with-deps
 chromium`) and runs the suite at the three widths, each on a fresh demo server. The workflow runs on pushes and pull
-requests to `main`; it did not run on this branch push.
+requests to `main`, so this branch is tested through its open pull request (#38).
 
 ## 2. What the browser suite tests, per section
 
