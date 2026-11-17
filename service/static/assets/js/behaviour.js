@@ -135,6 +135,11 @@ function wirePramaan(box) {
   }));
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const bad = [["amount", "Amount"], ["submit_s", "Seconds to submit"], ["events", "Input events"]].find(([k]) => !(Number(form[k].value) >= 0) || form[k].value.trim() === "");
+    if (bad || (form.sim.value.trim() !== "" && !(Number(form.sim.value) >= 0))) {
+      out.innerHTML = html`<p class="msg err" role="alert">${bad ? bad[1] : "SIM change hours"} must be a number of 0 or more.</p>`;
+      return;
+    }
     clock += 3600; // each demo attempt is an hour after the last, so the account builds a history
     const sim = form.sim.value.trim();
     const body = {user_id: user, ts: clock,

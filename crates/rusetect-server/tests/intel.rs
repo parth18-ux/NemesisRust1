@@ -134,6 +134,9 @@ async fn a_mule_network_is_searchable_explained_and_drawn_from_stored_payments()
         assert_eq!((&row["band"], &row["risk"], &row["alert_id"], &row["reasons"]), (&r["action"], &r["risk"], &r["alert_id"], &r["reasons"]));
         assert_eq!((row["source"].as_str(), row["demo"].as_bool()), (Some("live"), Some(false)));
     }
+    // the webhook's alerts are a bank's events: never demo, even on a demo-mode instance
+    let al = ok(&app, "/api/v2/alerts?q=MULE01&limit=200").await;
+    assert!(al["total"].as_u64().unwrap() >= 1 && al["demo"] == 0 && al["alerts"].as_array().unwrap().iter().all(|a| a["demo"] == false), "{al}");
     // filters
     let n = |v: Value| v["total"].as_u64().unwrap();
     assert_eq!(n(ok(&app, "/api/v2/transactions?account=COLL01&bank=0300").await), 12);

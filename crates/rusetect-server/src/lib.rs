@@ -345,6 +345,7 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/v2/keys/public", get(v2_public_key))
         .route("/v2/verify", post(v2_verify))
         .route("/v2/demo/analysts", get(v2_demo_analysts))
+        .route("/v2/whoami", get(v2_whoami))
         .route("/v2/fixtures/mule", get(v2_fixture_mule))
         .route("/v2/audit", get(v2_audit))
         .route("/v2/message", post(v2_message))
@@ -709,18 +710,132 @@ fn assess(s: &mut AppState, a: &AssessIn, d: &Payment) -> ApiResult {
 
 // ---------------------------------------------------------------- review desk
 
-#[derive(serde::Deserialize)]
-struct StatusQ {
-    status: Option<String>,
+/// Query keys that switch GET /v2/alerts to its searched, sorted and paged form. Without them (or with `status` only)
+/// the route answers as before: a plain array, newest first.
+const ALERT_PAGE_KEYS: [&str; 10] = ["q", "band", "state", "priority", "assigned_to", "demo", "sort", "order", "limit", "offset"];
+const ALERT_SORTS: [&str; 10] = ["time", "score", "id", "priority", "assignee", "status", "source", "typology", "entity", "txn"];
+
+/// True when an alert came from /api/v2/assess on a demo-mode instance (demo keys, public replay and fixtures); alerts
+/// from the signed webhook are a bank's events and never demo.
+fn alert_is_demo(a: &Value) -> bool {
+    KEYS.demo_mode && a["event_id"].is_null()
 }
 
-/// Alerts awaiting or after human review, newest first.
-async fn v2_alerts(State(app): State<AppRef>, h: HeaderMap, Query(q): Query<StatusQ>) -> ApiResult {
+/// The band of a shown decision, as the website names it (allow, verify, hold, block).
+fn alert_band(a: &Value) -> String {
+    if let Some(b) = a["assessed"]["risk_score"]["band"].as_str() {
+        return b.to_string();
+    }
+    let d = a["shown_decision"].as_str().unwrap_or("").to_lowercase();
+    if d.starts_with("block") { "block" } else if d.starts_with("hold") { "hold" } else if d.starts_with("step") || d.starts_with("verify") { "verify" } else { "allow" }.into()
+}
+
+fn alert_typology(a: &Value) -> String {
+    let mut m: Vec<String> = Vec::new();
+    for r in a["assessed"]["payment"]["reasons"].as_array().into_iter().flatten() {
+        for x in r["motifs"].as_array().into_iter().flatten().filter_map(|x| x.as_str()) {
+            let w = x.replace('_', " ");
+            if !m.contains(&w) {
+                m.push(w);
+            }
+        }
+    }
+    m.join(", ")
+}
+
+/// Sort key of one alert: numbers sort as numbers, everything else as text.
+fn alert_key(a: &Value, sort: &str) -> (f64, String) {
+    let p = &a["payment"];
+    let s = |v: &Value| v.as_str().unwrap_or("").to_string();
+    match sort {
+        "score" => (a["assessed"]["risk_score"]["score"].as_f64().unwrap_or(f64::NEG_INFINITY), String::new()),
+        "priority" => (["low", "medium", "high", "critical"].iter().position(|x| a["workflow"]["priority"] == *x).map(|i| i as f64 + 1.0).unwrap_or(0.0), String::new()),
+        "id" => (0.0, s(&a["alert_id"])),
+        "assignee" => (0.0, s(&a["workflow"]["assignee"])),
+        "status" => (0.0, s(&a["status"])),
+        "source" => (0.0, if a["event_id"].is_null() { "assess" } else { "live" }.into()),
+        "typology" => (0.0, alert_typology(a)),
+        "entity" => (0.0, format!("{}:{}", s(&p["to_bank"]), s(&p["to_account"]))),
+        "txn" => (0.0, a["event_id"].as_str().or(a["alert_id"].as_str()).unwrap_or("").into()),
+        _ => (0.0, s(&p["timestamp"])),
+    }
+}
+
+/// Alerts awaiting or after human review, newest first. Each carries `demo`. With any of ALERT_PAGE_KEYS the answer
+/// is `{alerts, total, all, offset, limit, sort, order, assignees, demo}`: `q` searches the alert id, accounts, event
+/// id, typology, assignee, case id and decision; `band`, `state`, `priority` (or `none`), `assigned_to` (or
+/// `unassigned`), `demo` (true / false) filter; `sort` is one of ALERT_SORTS, `order` asc or desc; `limit` 1 to 200
+/// (default 50) and `offset` page.
+async fn v2_alerts(State(app): State<AppRef>, h: HeaderMap, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     require_reader(&h)?;
+    let paged = ALERT_PAGE_KEYS.iter().any(|k| q.contains_key(*k));
+    let limit = int_query(&q.get("limit").cloned(), "limit", 50)?.clamp(1, 200) as usize;
+    let offset = int_query(&q.get("offset").cloned(), "offset", 0)?.max(0) as usize;
+    let sort = q.get("sort").map(String::as_str).unwrap_or("time").to_string();
+    let order = q.get("order").map(String::as_str).unwrap_or(if matches!(sort.as_str(), "time" | "score" | "priority") { "desc" } else { "asc" }).to_string();
+    if !ALERT_SORTS.contains(&sort.as_str()) {
+        return Err(ApiError::new(422, format!("sort must be one of {}", ALERT_SORTS.join(", "))));
+    }
+    if order != "asc" && order != "desc" {
+        return Err(ApiError::new(422, "order must be asc or desc"));
+    }
+    let demo_f = match q.get("demo").map(String::as_str) {
+        None | Some("") => None,
+        Some("true") => Some(true),
+        Some("false") => Some(false),
+        Some(_) => return Err(ApiError::new(422, "demo must be true or false")),
+    };
+    let text = q.get("q").map(|x| x.trim().to_lowercase()).unwrap_or_default();
+    if text.chars().count() > 200 {
+        return Err(ApiError::new(422, "q: at most 200 characters"));
+    }
     blocking(move || {
-        let al: Vec<Value> = live::all_alerts(&app)?.into_iter().filter(|a| q.status.as_deref().map(|st| a["status"] == st).unwrap_or(true)).collect();
-        ok(Value::Array(al))
+        let st = q.get("status");
+        let mut al: Vec<Value> = live::all_alerts(&app)?.into_iter().filter(|a| st.map(|st| a["status"] == st.as_str()).unwrap_or(true)).collect();
+        for a in &mut al {
+            a["demo"] = json!(alert_is_demo(a));
+        }
+        if !paged {
+            return ok(Value::Array(al));
+        }
+        let all = al.len();
+        let mut assignees: Vec<&str> = al.iter().filter_map(|a| a["workflow"]["assignee"].as_str()).collect();
+        assignees.sort();
+        assignees.dedup();
+        let assignees = json!(assignees);
+        let f = |k: &str| q.get(k).filter(|x| !x.is_empty()).map(String::as_str);
+        let wf = |a: &Value, k: &str| a["workflow"][k].as_str().unwrap_or("").to_string();
+        let mut hits: Vec<Value> = al.into_iter().filter(|a| {
+            let p = &a["payment"];
+            let hay = [a["alert_id"].as_str().unwrap_or("").into(), format!("{}:{}", p["from_bank"].as_str().unwrap_or(""), p["from_account"].as_str().unwrap_or("")),
+                       format!("{}:{}", p["to_bank"].as_str().unwrap_or(""), p["to_account"].as_str().unwrap_or("")), a["event_id"].as_str().unwrap_or("").into(),
+                       alert_typology(a), wf(a, "assignee"), a["case_id"].as_str().unwrap_or("").into(), a["shown_decision"].as_str().unwrap_or("").into()].join(" ").to_lowercase();
+            (text.is_empty() || hay.contains(&text))
+                && f("band").is_none_or(|b| alert_band(a) == b)
+                && f("state").is_none_or(|x| wf(a, "state") == x || (x == "new" && wf(a, "state").is_empty()))
+                && f("priority").is_none_or(|x| if x == "none" { wf(a, "priority").is_empty() } else { wf(a, "priority") == x })
+                && f("assigned_to").is_none_or(|x| if x == "unassigned" { wf(a, "assignee").is_empty() } else { wf(a, "assignee") == x })
+                && demo_f.is_none_or(|d| a["demo"] == d)
+        }).collect();
+        // stable sort; ties keep the newest-first order of the desk
+        hits.sort_by(|x, y| {
+            let (a, b) = (alert_key(x, &sort), alert_key(y, &sort));
+            let o = a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.1.cmp(&b.1));
+            if order == "desc" { o.reverse() } else { o }
+        });
+        let total = hits.len();
+        let demo_n = hits.iter().filter(|a| a["demo"] == true).count();
+        let page: Vec<Value> = hits.into_iter().skip(offset).take(limit).collect();
+        ok(json!({"alerts": page, "total": total, "all": all, "offset": offset, "limit": limit, "sort": sort, "order": order,
+                  "assignees": assignees, "demo": demo_n}))
     }).await
+}
+
+/// Who the presented X-Analyst-Key belongs to (analyst id and role), so the website can disable what the role or the
+/// four-eyes rule would refuse. 401 without a known key. The key itself is never returned.
+async fn v2_whoami(h: HeaderMap) -> ApiResult {
+    let who = analyst_for(header(&h, "x-analyst-key").as_deref()).ok_or_else(|| ApiError::new(401, "missing or unknown X-Analyst-Key"))?;
+    ok(json!({"analyst": who.analyst, "role": who.role, "demo_mode": KEYS.demo_mode}))
 }
 
 /// Alerts, evidence packs, STR drafts, cases and the audit log name accounts and suspicions (sharing an STR is tipping

@@ -1,0 +1,13 @@
+{
+  "name": "rusetect-e2e",
+  "private": true,
+  "description": "Browser smoke tests of the RuseTect website. Used only for tests: the site itself has no build step. Start a demo server first (see README.md, Website).",
+  "license": "MIT",
+  "scripts": {
+    "smoke": "node smoke.js",
+    "smoke:all": "VIEWPORT=desktop node smoke.js && VIEWPORT=tablet node smoke.js && VIEWPORT=phone node smoke.js"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

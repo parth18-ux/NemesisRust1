@@ -1,28 +1,43 @@
-// Browser smoke test of the app shell (W2), the dashboard and alert views (W3), the network view (W4) and the transaction and
-// investigation views (W5), the assistant and report views (W6), the scam and behavioural views (W7), against a running rusetect-server
-// in demo mode:  RUSETECT_DEMO=1 RUSETECT_RATE_LIMIT=100000 rusetect-server --port 8011 ; BASE=http://localhost:8011 node tests/e2e/smoke.js
+// Browser smoke test of the whole website: the app shell (W2), the dashboard and alert views (W3), the network view (W4), the
+// transaction and investigation views (W5), the assistant and report views (W6), the scam and behavioural views (W7) and the W8 audit
+// (review actions, server-side alert search, demo labels, every route's console, CSP, accessibility and layout), against a running
+// rusetect-server in demo mode (see the Website section of README.md; `npm ci` here installs the pinned Playwright):
+//   RUSETECT_DEMO=1 RUSETECT_RATE_LIMIT=100000 rusetect-server --port 8011
+//   BASE=http://localhost:8011 VIEWPORT=desktop node tests/e2e/smoke.js      (VIEWPORT: desktop 1440, tablet 834, phone 390)
 // (the report and screenshot steps send more than the default 240 requests per 10 s from one client, so raise the limit)
-// Uses the preinstalled Playwright (Apache-2.0) and Chromium. SHOTS=1 also writes screenshots to docs/screenshots/.
+// Uses Playwright (Apache-2.0) and Chromium. SHOTS=1 also writes screenshots of every view at desktop, tablet and phone width to
+// docs/screenshots/.
 const {chromium} = require("playwright");
 const path = require("path");
 
 const BASE = process.env.BASE || "http://localhost:8011";
 const SHOTS = process.env.SHOTS === "1";
+const VIEWPORTS = {desktop: [1440, 900], tablet: [834, 1112], phone: [390, 844]};
+const VIEWPORT = process.env.VIEWPORT || "desktop";
+const SIZES = [[1440, 900, "desktop"], [834, 1112, "tablet"], [390, 844, "phone"]];
 const OUT = path.join(__dirname, "..", "..", "docs", "screenshots");
 const results = [];
 
 async function check(name, fn) {
-  try { await fn(); results.push(["PASS", name]); } catch (e) { results.push(["FAIL", name, e.message.split("\n")[0]]); }
+  const t0 = Date.now();
+  try { await fn(); results.push(["PASS", name, `${Date.now() - t0} ms`]); } catch (e) { results.push(["FAIL", name, e.message.split("\n")[0]]); }
 }
 function assert(c, msg) { if (!c) throw new Error(msg); }
 
 (async () => {
+  const started = Date.now();
+  if (!VIEWPORTS[VIEWPORT]) throw new Error("VIEWPORT must be one of " + Object.keys(VIEWPORTS));
   const browser = await chromium.launch();
-  const ctx = await browser.newContext({viewport: {width: 1440, height: 900}, deviceScaleFactor: 2});
+  const [vw, vh] = VIEWPORTS[VIEWPORT];
+  const ctx = await browser.newContext({viewport: {width: vw, height: vh}, deviceScaleFactor: 2});
+  // CSP violations are recorded in the page (the browser also logs them to the console as errors)
+  await ctx.addInitScript(() => { window.__csp = []; document.addEventListener("securitypolicyviolation", (e) => window.__csp.push(`${e.violatedDirective} ${e.blockedURI}`)); });
   const page = await ctx.newPage();
   const errors = [];
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
   page.on("pageerror", (e) => errors.push(e.message));
+  // narrow layouts hide the section menu behind the menu button
+  const openMenu = async () => { if (await page.locator("#menu").isVisible()) { if ((await page.getAttribute("#menu", "aria-expanded")) !== "true") await page.click("#menu"); } };
 
   await check("dashboard renders from the API with no console error", async () => {
     await page.goto(BASE + "/app#/dashboard");
@@ -40,6 +55,7 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
     const links = await page.locator('#nav a[href^="#/"]').evaluateAll((as) => as.map((a) => [a.getAttribute("href"), a.textContent.trim()]));
     assert(links.length === 9, `${links.length} section links`);
     for (const [href] of links) {
+      await openMenu();
       await page.click(`#nav a[href="${href}"]`);
       await page.waitForFunction((h) => location.hash === h && document.querySelector('#nav a[aria-current="page"]')?.getAttribute("href") === h, href);
       await page.waitForSelector("#main > *:not([role=status])", {timeout: 10000});
@@ -149,26 +165,76 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
     assert(await page.locator(".banner.demo >> text=Demonstration data").count() === 1, "demo banner");
   });
 
-  await check("alerts: search and band filter", async () => {
-    await page.fill("#al-q", "COLL01");
+  // the alert list is searched, filtered, sorted and paged by the server: wait for the response each change asks for
+  const alertsReq = (fn, re = /\/api\/v2\/alerts\?/) => Promise.all([page.waitForResponse((r) => re.test(r.url())), fn()]);
+  await check("alerts: server-side search, band, status, state, priority and assignee filters", async () => {
+    const [r] = await alertsReq(() => page.fill("#al-q", "COLL01"), /\/api\/v2\/alerts\?.*q=COLL01/);
+    assert(r.status() === 200, "search status " + r.status());
+    await page.waitForFunction(() => [...document.querySelectorAll("#al-table tbody tr td:nth-child(6)")].every((t) => t.textContent.includes("COLL01")));
     const ents = await page.locator("#al-table tbody tr td:nth-child(6)").allTextContents();
-    assert(ents.length > 0 && ents.every((t) => t.includes("COLL01")), "search: " + ents.join(","));
-    await page.fill("#al-q", "");
-    await page.selectOption("#al-band", "verify");
+    assert(ents.length > 0, "no search hit");
+    assert(/filtered from/.test(await page.textContent("#al-pager")), "pager shows the unfiltered count");
+    await alertsReq(() => page.fill("#al-q", "no-such-alert-zz"));
+    await page.waitForSelector("#al-table >> text=No alert matches these filters.");
+    await alertsReq(() => page.fill("#al-q", ""));
+    await alertsReq(() => page.selectOption("#al-band", "verify"));
     const bands = await page.locator("#al-table tbody tr td:nth-child(3) .pill").allTextContents();
     assert(bands.length > 0 && bands.every((t) => t === "verify"), "band filter: " + bands.join(","));
-    await page.selectOption("#al-band", "");
+    await alertsReq(() => page.selectOption("#al-band", ""));
+    for (const [sel, v] of [["#al-status", "open"], ["#al-state", "new"], ["#al-prio", "none"], ["#al-assignee", "unassigned"]]) {
+      const [x] = await alertsReq(() => page.selectOption(sel, v));
+      assert(x.status() === 200 && (await page.locator("#al-table tbody tr[data-id]").count()) > 0, `${sel}=${v}`);
+      await alertsReq(() => page.selectOption(sel, ""));
+    }
+    const api = await (await page.request.get(BASE + "/api/v2/alerts?q=COLL01&limit=1")).json();
+    assert(api.alerts.length === 1 && api.total >= 1 && typeof api.all === "number", "paged API form");
+    assert(Array.isArray(await (await page.request.get(BASE + "/api/v2/alerts")).json()), "no parameter: the plain array as before");
   });
 
-  await check("alerts: sort by risk both ways", async () => {
-    const scores = async () => (await page.locator("#al-table tbody tr td:nth-child(3) .num").allTextContents()).map(Number);
-    await page.click('[data-sort="score"]');
-    let s = await scores();
-    assert(await page.getAttribute('th:has([data-sort="score"])', "aria-sort") === "descending", "aria-sort");
-    assert(s.every((v, i) => i === 0 || s[i - 1] >= v), "descending " + s);
-    await page.click('[data-sort="score"]');
-    s = await scores();
-    assert(s.every((v, i) => i === 0 || s[i - 1] <= v), "ascending " + s);
+  await check("alerts: sort by every column, risk both ways, server-side", async () => {
+    // the response arrives before the page redraws: wait for the header state, then for the rows in that order
+    const sorted = (k, dir) => page.waitForFunction(([k, dir]) => document.querySelector(`th:has([data-sort="${k}"])`)?.getAttribute("aria-sort") === dir, [k, dir]);
+    const ordered = (desc) => page.waitForFunction((d) => { const s = [...document.querySelectorAll("#al-table tbody tr td:nth-child(3) .num")].map((x) => Number(x.textContent));
+      return s.length > 0 && s.every((v, i) => i === 0 || (d ? s[i - 1] >= v : s[i - 1] <= v)); }, desc, {timeout: 5000})
+      .catch(async () => { throw new Error(`${desc ? "descending" : "ascending"}: ${await page.locator("#al-table tbody tr td:nth-child(3) .num").allTextContents()}`); });
+    await alertsReq(() => page.click('[data-sort="score"]'), /sort=score&order=desc/);
+    await sorted("score", "descending");
+    await ordered(true);
+    await alertsReq(() => page.click('[data-sort="score"]'), /sort=score&order=asc/);
+    await sorted("score", "ascending");
+    await ordered(false);
+    for (const k of ["id", "source", "typology", "entity", "txn", "assignee", "status", "prio", "time"]) {
+      const [r] = await alertsReq(() => page.click(`[data-sort="${k}"]`), new RegExp(`sort=${k === "prio" ? "priority" : k}&`));
+      assert(r.status() === 200, "sort " + k);
+      await page.waitForFunction((k) => document.querySelector(`th:has([data-sort="${k}"])`)?.getAttribute("aria-sort") !== "none", k);
+    }
+    assert(await page.locator("#al-table tbody tr[data-id]").count() > 0, "rows after sorting");
+  });
+
+  await check("alerts: demo rows are labelled per alert, and the banner counts them", async () => {
+    const rows = await page.locator("#al-table tbody tr[data-id]").count();
+    assert(rows > 0 && await page.locator("#al-table tbody tr[data-id] .p-demo").count() === rows, "every demo row has its Demo label");
+    assert(/marked Demo/.test(await page.textContent("#al-demo")) && await page.locator("#al-demo").isVisible(), "banner");
+    const all = await (await page.request.get(BASE + "/api/v2/alerts")).json();
+    assert(all.every((a) => a.demo === true), "/assess alerts on a demo instance carry demo: true");
+    // the signed webhook's alerts are a bank's events; tests/intel.rs checks they carry demo: false
+    await alertsReq(() => page.click("#al-refresh"));
+    await page.check("#al-all");
+    assert(/Create investigation \(\d+\)/.test(await page.textContent("#al-case")), "select all on the page");
+    await page.uncheck("#al-all");
+    assert(await page.locator("#al-prev[disabled]").count() === 1, "first page: Previous disabled");
+  });
+
+  await check("alerts: the drawer's URL is the alert's deep link, and the link opens it", async () => {
+    const id = await page.locator("#al-table [data-open]").first().textContent();
+    await page.locator("#al-table [data-open]").first().click();
+    await page.waitForSelector("#al-drawer");
+    assert(await page.evaluate(() => location.hash) === "#/alerts/" + id, "hash " + await page.evaluate(() => location.hash));
+    await page.keyboard.press("Escape");
+    assert(await page.evaluate(() => location.hash) === "#/alerts", "hash after close");
+    await page.goto(BASE + "/app?deep=1#/alerts/" + id);
+    await page.waitForSelector(`#al-drawer h2:has-text("${id}")`);
+    await page.keyboard.press("Escape");
   });
 
   await check("alerts: drawer opens with details and closes on Escape", async () => {
@@ -228,6 +294,45 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
     assert((await row.textContent()).includes("critical"), "table row not updated");
   });
 
+  await check("alerts: review decisions in the drawer: two analysts for a block, the same analyst cannot approve twice", async () => {
+    const pick = async (role, n = 0) => { const o = page.locator("#who-key option", {hasText: `(${role})`}).nth(n);
+      await page.selectOption("#who-key", await o.getAttribute("value")); await page.waitForSelector("#al-table tbody [data-open]"); return (await o.textContent()).split(" ")[0]; };
+    const all = await (await page.request.get(BASE + "/api/v2/alerts?status=open")).json();
+    const [blockId, holdId] = [all.at(-1).alert_id, all.at(-2).alert_id];
+    const open = async (id) => { await page.goto(BASE + "/app#/alerts/" + id); await page.waitForSelector(`#al-drawer h2:has-text("${id}")`); };
+    await pick("viewer");
+    await open(blockId);
+    assert(await page.locator("[data-review][disabled]").count() === 4 && /cannot decide alerts/.test(await page.textContent("#al-rwhy")), "viewer: decisions disabled with the reason");
+    const a = await pick("analyst", 0);
+    await open(blockId);
+    await page.fill("#al-review [name=note]", "Smoke: first approval");
+    await page.click('[data-review="approve_block"]');
+    await page.waitForSelector("#al-rmsg .msg.ok", {timeout: 10000});
+    assert(/block pending second approval/.test(await page.textContent("#al-rmsg")), await page.textContent("#al-rmsg"));
+    assert(await page.locator('[data-review="approve_block"][disabled]').count() === 1, "approve disabled for the first approver");
+    assert((await page.textContent("#al-drawer")).includes(a) && /different analyst/.test(await page.textContent("#al-rwhy")), "four-eyes rule shown");
+    const b = await pick("analyst", 1);
+    assert(b !== a, "two analysts");
+    await open(blockId);
+    await page.click('[data-review="approve_block"]');
+    await page.waitForSelector("#al-rmsg .msg.ok", {timeout: 10000});
+    assert(/Status is now blocked/.test(await page.textContent("#al-rmsg")), await page.textContent("#al-rmsg"));
+    assert(await page.locator("[data-review][disabled]").count() === 4 && /final/.test(await page.textContent("#al-rwhy")), "a blocked alert is final");
+    await open(holdId);
+    await page.click('[data-review="hold"]');
+    await page.waitForSelector("#al-rmsg .msg.ok", {timeout: 10000});
+    await page.click('[data-review="verify"]');
+    await page.waitForSelector("#al-rmsg >> text=customer verification", {timeout: 10000});
+    const audit = await (await page.request.get(BASE + "/api/v2/audit")).json();
+    const acts = audit.entries.filter((e) => e.type === "analyst_action" && (e.alert_id === blockId || e.alert_id === holdId)).map((e) => e.action);
+    assert(audit.chain_valid && ["approve_block", "hold", "verify"].every((x) => acts.includes(x)), "ledger: " + acts);
+    // the server refuses a replayed nonce and the same analyst twice, whatever the page shows
+    const r = await page.request.post(BASE + `/api/v2/alerts/${holdId}/review`, {headers: {"X-Analyst-Key": await page.inputValue("#who-key"), "X-Nonce": "smoke-fixed-nonce", "content-type": "application/json"}, data: {action: "approve_block"}});
+    const r2 = await page.request.post(BASE + `/api/v2/alerts/${holdId}/review`, {headers: {"X-Analyst-Key": await page.inputValue("#who-key"), "X-Nonce": "smoke-fixed-nonce", "content-type": "application/json"}, data: {action: "approve_block"}});
+    assert(r.status() === 200 && r2.status() === 409, `nonce replay: ${r.status()} ${r2.status()}`);
+    await page.keyboard.press("Escape");
+  });
+
   await check("alerts: create an investigation from selected alerts", async () => {
     const free = await page.locator("#al-table tbody tr").evaluateAll((trs) => trs.filter((t) => !t.querySelector(".pill.plain.small")).map((t) => t.dataset.id));
     assert(free.length >= 2, "need two alerts outside an investigation");
@@ -242,8 +347,8 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
   });
 
   await check("no console error during the alert flows", async () => {
-    // the 401 and 403 responses above are expected; the browser logs failed requests as errors, so ignore those only
-    const real = errors.filter((e) => !/status of (401|403)/.test(e));
+    // the 401, 403 and 409 responses above are expected; the browser logs failed requests as errors, so ignore those only
+    const real = errors.filter((e) => !/status of (401|403|409)/.test(e));
     assert(real.length === 0, real.join(" | "));
   });
 
@@ -677,9 +782,243 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
     assert(real.length === 0, real.join(" | "));
   });
 
+  // ---- W8: whole-site audit. Every route at this viewport: no console error, no CSP violation, no horizontal page scroll,
+  // every form control labelled, every button and link named, text contrast at least WCAG AA (an axe-like check written here:
+  // axe-core is MPL-2.0, which this project does not vendor).
+  const audit = () => page.evaluate(() => {
+    const out = {unlabelled: [], unnamed: [], contrast: [], overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth};
+    const visible = (e) => { const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && cs.display !== "none"; };
+    const named = (e) => (e.getAttribute("aria-label") || e.getAttribute("title") || e.textContent || "").trim() ||
+      (e.getAttribute("aria-labelledby") || "").split(" ").map((id) => document.getElementById(id)?.textContent || "").join("").trim();
+    const tag = (e) => e.tagName.toLowerCase() + (e.id ? "#" + e.id : "") + (e.name ? `[name=${e.name}]` : "") + (e.className && typeof e.className === "string" ? "." + e.className.split(" ")[0] : "");
+    for (const e of document.querySelectorAll("input:not([type=hidden]), select, textarea")) {
+      if (!visible(e) || e.closest(".__________cytoscape_container")) continue;
+      const lab = e.getAttribute("aria-label") || e.getAttribute("aria-labelledby") || e.closest("label") || (e.id && document.querySelector(`label[for="${e.id}"]`)) || e.getAttribute("title");
+      if (!lab) out.unlabelled.push(tag(e));
+    }
+    for (const e of document.querySelectorAll("button, a[href], [role=button]")) if (visible(e) && !named(e)) out.unnamed.push(tag(e));
+    for (const e of document.querySelectorAll("img")) if (!e.hasAttribute("alt")) out.unnamed.push(tag(e));
+    // contrast of every visible text run against the first opaque background behind it
+    const rgb = (c) => (c.match(/[\d.]+/g) || []).map(Number);
+    const lum = ([r, g, b]) => [r, g, b].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+    const bgOf = (e) => { for (let x = e; x; x = x.parentElement) { const c = rgb(getComputedStyle(x).backgroundColor); if (c.length >= 3 && (c[3] ?? 1) > 0.5) return c; } return [255, 255, 255]; };
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const seen = new Set();
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const e = n.parentElement;
+      if (!n.textContent.trim() || seen.has(e) || !visible(e) || e.closest("[disabled], [aria-disabled=true], .__________cytoscape_container, noscript, script, style, option")) continue;
+      seen.add(e);
+      let op = 1; for (let x = e; x; x = x.parentElement) op *= +getComputedStyle(x).opacity;
+      if (op < 1) continue; // faded (disabled) controls are exempt
+      const cs = getComputedStyle(e), fg = rgb(cs.color);
+      if ((fg[3] ?? 1) < 1) continue;
+      const [l1, l2] = [lum(fg), lum(bgOf(e))].sort((a, b) => b - a);
+      const ratio = (l1 + 0.05) / (l2 + 0.05), size = parseFloat(cs.fontSize), bold = +cs.fontWeight >= 700;
+      const need = size >= 24 || (size >= 18.66 && bold) ? 3 : 4.5;
+      if (ratio < need) out.contrast.push(`${tag(e)} "${n.textContent.trim().slice(0, 24)}" ${ratio.toFixed(2)} < ${need}`);
+    }
+    out.csp = window.__csp;
+    return out;
+  });
+  const auditRoutes = () => ["dashboard", "transactions", `transactions/${triaged}`, "scam", "behaviour", "network?account=MULE01&bank=0200", "alerts", `alerts/${triaged}`,
+    "investigations", `investigations/${caseId}`, `assistant/${caseId}`, "reports", `reports/${caseId}`];
+  for (const theme of ["light", "dark"]) {
+    await check(`audit (${theme} theme): every route is console-error-free, CSP-clean, labelled, named, AA contrast and fits the width`, async () => {
+      await page.emulateMedia({colorScheme: theme});
+      const bad = [];
+      for (const r of auditRoutes()) {
+        const n0 = errors.length;
+        await page.goto(BASE + `/app?audit=${theme}#/` + r);
+        await page.waitForSelector("#main > *:not([role=status])", {timeout: 15000});
+        await page.waitForLoadState("networkidle");
+        const a = await audit();
+        const errs = errors.slice(n0);
+        if (errs.length) bad.push(`${r}: console ${errs.join(" | ")}`);
+        if (a.csp.length) bad.push(`${r}: CSP ${a.csp.join(", ")}`);
+        if (a.overflow > 0) bad.push(`${r}: page scrolls sideways by ${a.overflow}px`);
+        if (a.unlabelled.length) bad.push(`${r}: unlabelled ${a.unlabelled.join(", ")}`);
+        if (a.unnamed.length) bad.push(`${r}: unnamed ${a.unnamed.join(", ")}`);
+        if (a.contrast.length) bad.push(`${r}: contrast ${a.contrast.slice(0, 4).join("; ")}`);
+      }
+      await page.emulateMedia({colorScheme: null});
+      assert(bad.length === 0, bad.join(" || "));
+    });
+  }
+
+  await check("audit: the CSP header is set on the app and the legacy pages keep working", async () => {
+    const r = await page.request.get(BASE + "/app");
+    const csp = r.headers()["content-security-policy"] || "";
+    assert(/script-src 'self'/.test(csp) && !/unsafe-inline'[^;]*script|script-src[^;]*unsafe/.test(csp), "CSP: " + csp);
+    for (const href of ["/", "/console", "/investigate", "/report", "/docs", "/openapi.json", "/favicon.svg"]) assert((await page.request.get(BASE + href)).ok(), href);
+  });
+
+  await check("audit: keyboard: skip link first, visible focus on every stop, drawer traps focus, dialog closes on Escape", async () => {
+    await page.goto(BASE + "/app?kb=1#/alerts");
+    await page.waitForSelector("#al-table tbody [data-open]");
+    await page.keyboard.press("Tab");
+    assert(await page.evaluate(() => document.activeElement.classList.contains("skip")), "first Tab stop is the skip link");
+    assert(await page.evaluate(() => document.activeElement.getBoundingClientRect().left >= 0), "skip link visible on focus");
+    await page.keyboard.press("Enter");
+    assert(await page.evaluate(() => document.activeElement.id === "main" || location.hash.startsWith("#main") || document.activeElement.closest("#main")), "skip link moves focus to the content");
+    await page.goto(BASE + "/app?kb=2#/alerts");
+    await page.waitForSelector("#al-table tbody [data-open]");
+    const noRing = [];
+    for (let i = 0; i < 40; i++) {
+      await page.keyboard.press("Tab");
+      const f = await page.evaluate(() => { const e = document.activeElement, cs = getComputedStyle(e);
+        return {t: e.tagName + (e.id ? "#" + e.id : ""), ring: (cs.outlineStyle !== "none" && parseFloat(cs.outlineWidth) > 0) || cs.boxShadow !== "none"}; });
+      if (!f.ring && f.t !== "BODY") noRing.push(f.t);
+    }
+    assert(noRing.length === 0, "no visible focus: " + [...new Set(noRing)].join(", "));
+    await page.locator("#al-table [data-open]").first().focus();
+    await page.keyboard.press("Enter");
+    await page.waitForSelector("#al-drawer");
+    assert(await page.evaluate(() => document.activeElement.id === "al-close"), "focus moves into the drawer");
+    for (let i = 0; i < 60; i++) await page.keyboard.press("Tab");
+    assert(await page.evaluate(() => !!document.activeElement.closest("#al-drawer")), "focus stays in the drawer");
+    await page.keyboard.press("Escape");
+    assert(await page.locator("#al-drawer").count() === 0 && await page.evaluate(() => !!document.activeElement.closest("#al-table")), "Escape closes and returns focus");
+    await page.check("[data-pick]");
+    await page.click("#al-case");
+    await page.waitForSelector("dialog[open]");
+    await page.keyboard.press("Escape");
+    assert(await page.locator("dialog[open]").count() === 0, "dialog closes on Escape");
+  });
+
+  await check("audit: malformed input on every form gives a clear message, never raw JSON", async () => {
+    const said = async (sel, re) => { await page.waitForFunction(([s, src]) => new RegExp(src).test(document.querySelector(s)?.textContent || ""), [sel, re.source], {timeout: 8000})
+      .catch(async () => { throw new Error(`${sel}: ${(await page.textContent(sel).catch(() => "missing")).trim().slice(0, 160)}`); });
+      assert(!/\[\{"type"/.test(await page.textContent(sel)), `${sel} shows raw JSON`); };
+    await who("analyst");
+    // transactions: min above max is refused by the server and said so
+    await page.goto(BASE + "/app#/transactions");
+    await page.waitForSelector("#tx-form");
+    await page.fill("#tx-form [name=min_amount]", "500");
+    await page.fill("#tx-form [name=max_amount]", "100");
+    await page.click("#tx-form [type=submit]");
+    await said("#main", /min_amount is above max_amount/);
+    await page.click("#tx-clear");
+    // network: an unknown account, and markup typed as an account, are shown as text
+    await page.goto(BASE + "/app#/network?account=MULE01&bank=0200");
+    await page.waitForSelector("#nw-search");
+    await page.fill("#nw-search", "<img src=x onerror=alert(1)>");
+    await page.press("#nw-search", "Enter");
+    await said("#nw-msg", /No stored payment names account|Request failed/);
+    assert(await page.locator("#nw-msg img").count() === 0, "markup rendered");
+    // alert triage: SLA hours that are not a positive number; a case with a blank title
+    await page.goto(BASE + "/app#/alerts");
+    await page.waitForSelector("#al-table tbody [data-open]");
+    await page.locator("#al-table [data-open]").first().click();
+    for (const v of ["abc", "-5", "99999"]) {
+      await page.fill("#al-triage [name=sla_hours]", v);
+      await page.click("#al-triage [type=submit]");
+      await said("#al-tmsg", /SLA hours must be a number above 0/);
+    }
+    await page.fill("#al-triage [name=sla_hours]", "");
+    await page.click("#al-triage [type=submit]");
+    await said("#al-tmsg", /Nothing changed/);
+    await page.keyboard.press("Escape");
+    await page.check("[data-pick]");
+    await page.click("#al-case");
+    await page.fill("dialog [name=title]", "   ");
+    await page.click("dialog [type=submit]");
+    await said("#al-cmsg", /A title is needed/);
+    await page.keyboard.press("Escape");
+    // review: a malformed body and an unknown action are refused by the server
+    const key = await page.inputValue("#who-key");
+    const bad = await page.request.post(BASE + `/api/v2/alerts/${triaged}/review`, {headers: {"X-Analyst-Key": key, "X-Nonce": "smoke-" + Date.now(), "content-type": "application/json"}, data: Buffer.from("{bad")});
+    const unk = await page.request.post(BASE + `/api/v2/alerts/${triaged}/review`, {headers: {"X-Analyst-Key": key, "X-Nonce": "smoke2-" + Date.now(), "content-type": "application/json"}, data: {action: "delete"}});
+    assert(bad.status() === 422 && [400, 403].includes(unk.status()), `review: ${bad.status()} ${unk.status()}`);
+    for (const q of ["sort=nope", "limit=x", "demo=maybe"]) assert((await page.request.get(BASE + "/api/v2/alerts?" + q)).status() === 422, q);
+    // investigation: a blank comment
+    await ws(caseId);
+    await page.fill('[data-act="comment"] textarea', "   ");
+    await page.click('[data-act="comment"] [type=submit]');
+    await said("#ws-msg", /\S/);
+    // behaviour: a negative amount, a short PIN, a check before enrolment
+    await page.goto(BASE + "/app#/behaviour");
+    await page.waitForSelector("#bh-pf");
+    await page.fill("#bh-pf [name=amount]", "-1");
+    await page.click("#bh-pf button[type=submit]");
+    await said("#bh-pout", /Amount must be a number of 0 or more/);
+    await page.fill("#bh-df [name=normal]", "12");
+    await page.click("#bh-dreg");
+    await said("#bh-dout", /PINs are 4 to 6 digits/);
+    await page.click("#bh-reset");
+    await page.click("#bh-check");
+    await said("#bh-tout", /Type the sentence first/);
+  });
+
+  await check("audit: every remaining control is exercised once (dashboard buckets, theme, filters, zoom, tabs, presets, pickers)", async () => {
+    await page.goto(BASE + "/app#/dashboard");
+    await page.waitForSelector("[data-bucket]");
+    for (const b of ["day", "hour"]) {
+      await page.click(`[data-bucket="${b}"]`);
+      await page.waitForSelector(`[data-bucket="${b}"][aria-pressed="true"]`);
+      assert(await page.locator("#main svg rect, #main svg path").count() > 0, "chart drawn for " + b);
+    }
+    await page.locator('#main a[href^="#/alerts/"]').first().click();
+    await page.waitForSelector("#al-drawer");
+    await page.keyboard.press("Escape");
+    const t0 = await page.evaluate(() => document.documentElement.getAttribute("data-theme"));
+    await page.click("#theme");
+    assert(await page.evaluate(() => document.documentElement.getAttribute("data-theme")) !== t0, "theme toggles");
+    await page.click("#theme");
+    await page.goto(BASE + "/app#/transactions");
+    await page.waitForSelector("#tx-form");
+    await page.selectOption("#tx-form [name=source]", "assess");
+    await page.fill("#tx-form [name=max_amount]", "1000000");
+    await page.fill("#tx-form [name=to]", "2030-01-01T00:00");
+    await page.click("#tx-form [type=submit]");
+    await page.waitForFunction(() => /source=assess/.test(location.hash));
+    if (await page.locator("#tx-next:not([disabled])").count()) { await page.click("#tx-next"); await page.waitForSelector("#tx-prev:not([disabled])"); await page.click("#tx-prev"); }
+    await page.goto(BASE + "/app#/scam");
+    await page.waitForSelector("#sc-hf");
+    await page.selectOption("#sc-form [name=channel]", {index: 1});
+    await page.fill("#sc-hf [name=q]", "UPI");
+    await Promise.all([page.waitForResponse((r) => /\/api\/v2\/messages\?.*q=UPI/.test(r.url())), page.click("#sc-hf button")]);
+    await page.waitForSelector("#sc-hist, #sc-htable, #main .empty");
+    await page.goto(BASE + "/app#/behaviour");
+    await page.waitForSelector("#bh-pf");
+    for (const p of ["owner", "coached"]) {
+      await page.click(`[data-preset="${p}"]`);
+      const [r] = await Promise.all([page.waitForResponse((x) => x.url().endsWith("/v2/authenticate")), page.click("#bh-pf button[type=submit]")]);
+      assert(r.ok(), "PRAMAAN " + p);
+    }
+    await page.click("#bh-if button");
+    await page.waitForSelector("[data-identity]");
+    await page.goto(BASE + "/app#/network?account=MULE01&bank=0200");
+    await page.waitForFunction(() => document.querySelector("#nw-graph")?._cyreg?.cy?.nodes().length > 0);
+    const z = () => page.evaluate(() => document.querySelector("#nw-graph")._cyreg.cy.zoom());
+    const z0 = await z();
+    await page.click("#nw-in");
+    assert(await z() > z0, "zoom in");
+    await page.click("#nw-out");
+    await page.click("#nw-fit");
+    await page.fill("#nw-from", "2022-09-01T00:00");
+    await page.dispatchEvent("#nw-from", "change");
+    await page.waitForFunction(() => /from=/.test(location.hash));
+    await page.fill("#nw-to", "2022-09-30T00:00");
+    await page.dispatchEvent("#nw-to", "change");
+    await page.waitForFunction(() => /to=/.test(location.hash));
+    await page.click("#nw-form button >> nth=0");
+    await page.goto(BASE + "/app#/investigations");
+    await page.waitForSelector(".tabs");
+    for (const tab of ["pending", "critical", "sla", "open"]) {
+      await page.click(`.tabs a[href$="tab=${tab}"]`);
+      await page.waitForFunction((t) => location.hash.endsWith("tab=" + t) && document.querySelector('.tabs a[aria-selected="true"]'), tab);
+    }
+    await page.goto(BASE + "/app#/assistant/" + caseId);
+    await page.waitForSelector("#as-pick");
+    const other = await page.locator("#as-pick option").evaluateAll((os, c) => os.map((o) => o.value).find((v) => v !== c), caseId);
+    if (other) { await page.selectOption("#as-pick", other); await page.waitForFunction((c) => location.hash === "#/assistant/" + c, other); }
+    const real = errors.filter((e) => !/status of (401|403|400|404|409|422|503)/.test(e));
+    assert(real.length === 0, real.join(" | "));
+  });
+
   if (SHOTS) {
     await page.selectOption("#who-key", "");
-    for (const [w, h, tag] of [[1440, 900, "desktop"], [390, 844, "phone"]]) {
+    for (const [w, h, tag] of SIZES) {
       const c = await browser.newContext({viewport: {width: w, height: h}, deviceScaleFactor: 2});
       const p = await c.newPage();
       await p.goto(BASE + "/app#/dashboard");
@@ -755,13 +1094,14 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
     await page.waitForSelector(".risk-box");
     assert(await page.locator(".bars .bar-row").count() > 0, "SHAP rows");
     assert(await page.locator(".banner.demo").count() === 1, "demo banner");
-    // 503 only from the report check's simulated audit outage, 422 from the scam view's refused oversized message
-    const real = errors.filter((e) => !/status of (401|403|400|422|503)/.test(e));
+    // 503 only from the report check's simulated audit outage, 422 from the refused malformed inputs, 404 from the unknown account
+    // the audit searches for, 409 from the replayed nonce
+    const real = errors.filter((e) => !/status of (401|403|400|404|409|422|503)/.test(e));
     assert(real.length === 0, real.join(" | "));
   });
 
   if (SHOTS && demoTxn) {
-    for (const [w, h, tag] of [[1440, 900, "desktop"], [390, 844, "phone"]]) {
+    for (const [w, h, tag] of SIZES) {
       const c = await browser.newContext({viewport: {width: w, height: h}, deviceScaleFactor: 2});
       const p = await c.newPage();
       await p.goto(BASE + "/app#/transactions");
@@ -777,6 +1117,6 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
   await browser.close();
   for (const r of results) console.log(r.join("  "));
   const failed = results.filter((r) => r[0] === "FAIL").length;
-  console.log(`${results.length - failed} passed, ${failed} failed`);
+  console.log(`${results.length - failed} passed, ${failed} failed at ${VIEWPORT} (${vw}x${vh}) in ${((Date.now() - started) / 1000).toFixed(1)} s`);
   process.exit(failed ? 1 : 0);
 })();

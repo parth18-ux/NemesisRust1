@@ -1,4 +1,13 @@
-# Website implementation map (Stage W0 audit)
+# Website implementation map (Stage W0 audit, reclassified after W8)
+
+**Status after W8 (17 Nov 2026).** The classifications in sections 1 and 3 were re-checked against the code and the
+tests after stages W1 to W8 (branch `ccr-a05856fa-mavodd`) and changed where the truth changed; each changed row names
+the stage. The evidence for a row marked "tested" is now also the browser suite `tests/e2e/smoke.js` (54 checks, run at
+desktop, tablet and phone width; results in `docs/FINAL_TEST_REPORT.md`). Sections 2, 4 and 5 are the W0 audit as it
+was written and describe the code before the website stages; their "Missing" notes are answered in sections 1 and 3.
+In W8 the app (`assets/app.css`) was restyled to the original site's look described in section 4: the olive and sage on
+warm white tokens, a light sidebar in the original chrome, the same three fonts; red, amber and green are used for risk
+states only, and the dark theme is the same palette on warm charcoal.
 
 Audit of `main` at `aa9121f` (16 Nov 2026), done before any website change. It covers brief sections 1 and 4: what
 exists, how it is wired, and what the planned website sections A to I can and cannot show today. Test evidence is in
@@ -26,8 +35,8 @@ Ground rules used here:
 | 1e | Signed live ingest webhook `/v2/events/payment` (memory and Redis) | Fully implemented and tested | `tests/live.rs` (14 tests, Redis included), smoke |
 | 1f | Drift monitor `/v2/drift` | Fully implemented and tested | `tests/api.rs` drift tests; known limit: demo traffic feeds it |
 | 1g | L0 onboarding gate `/v2/onboard` | Fully implemented and tested | `tests/api.rs::onboarding_gate` |
-| 1h | L4 "cases" `/v2/cases` (engine case list) | Implemented but untested | no test calls the route; smoke only; returns `[]` after `/v2/assess` because it lists the engine's L4 cases, not desk alerts |
-| 1i | Transaction search, transaction detail by id, beneficiary history | Not implemented | no transaction store; the engine keeps only per-account aggregates |
+| 1h | L4 "cases" `/v2/cases` (engine case list) | Implemented but untested | no test calls the route; smoke only; returns `[]` after `/v2/assess` because it lists the engine's L4 cases, not desk alerts. The website's investigations (8b) are a separate, tested object |
+| 1i | Transaction search, transaction detail by id, beneficiary history | Fully implemented and tested (W1, W5) | `GET /v2/transactions` (filters, paging), `/v2/transactions/{id}` (risk, SHAP and motif reasons, related accounts, beneficiary history, ledger timeline) over stored decisions (memory, or the Redis feed); `tests/intel.rs`, `intel_auth.rs`; browser: `#/transactions` checks in `smoke.js` |
 | 2a | Scam-message detector `/v2/message` (TF-IDF logistic regression + tactics, workflows, entities) | Fully implemented and tested | `tests/api.rs`, `scam_text` unit tests |
 | 2b | Lure fusion (a risky message raises a later payment) | Fully implemented and tested | `lure_fusion` unit tests, `tests/api.rs` |
 | 2c | Alert-fatigue summary `/v2/alerts/summary` | Fully implemented and tested | `tests/api.rs` |
@@ -43,28 +52,29 @@ Ground rules used here:
 | 4c | Sanctions screening `/v2/sanctions/screen` | Fully implemented and tested | `tests/api.rs::sanctions_screen_finds_variants_and_validates` |
 | 4d | Payee name check `/v2/payee/check` | Fully implemented and tested | `tests/api.rs` |
 | 4e | Linked alerts in the evidence pack | Fully implemented and tested | `tests/api.rs::alert_review_audit_evidence` |
-| 4f | Entity graph (accounts, devices, customers, merchants as nodes; typed edges) as an API | Not implemented | the only graph is drawn in the browser (`investigate.html`, `ring()`), from alert payer/payee pairs |
+| 4f | Entity graph (accounts, devices, customers, merchants as nodes; typed edges) as an API | Partially implemented and tested (W1, W4) | `GET /v2/graph`: account and bank nodes, one directed edge per stored payment with amount, time and evidence ids, depth and time range, backend indicators; `tests/intel.rs`; browser: `#/network` checks in `smoke.js`. Devices, customers and merchants are not in the stored data and the response says so (`not_available`) |
 | 5a | Campaign linking `/v2/campaigns` (shared payee, message identifiers, script similarity) | Fully implemented and tested | `tests/api.rs::campaigns_use_only_the_newest_alerts`, STR test uses it |
-| 6a | Rust serving layer (axum, 41 API routes, 7 page routes) | Fully implemented and tested | 133 Rust tests passed; 62/62 smoke requests |
-| 6b | Auth: demo keys, configured keys, 4 roles, nonce, rate limit, body limit, security headers | Fully implemented and tested | `security` unit tests, `tests/api.rs`; configured-key smoke (section 5b of the test report) |
+| 6a | Rust serving layer (axum, 52 API routes, 10 page and asset routes after W8) | Fully implemented and tested | `cargo test --release --workspace` (count in `docs/FINAL_TEST_REPORT.md`); `tests/assets.rs` for `/app` and `/assets` |
+| 6b | Auth: demo keys, configured keys, 4 roles, nonce, rate limit, body limit, security headers | Fully implemented and tested | `security` unit tests, `tests/api.rs`, `tests/intel_auth.rs` (role matrix, `/v2/whoami` with configured keys); `/app` sends a Content-Security-Policy (`script-src 'self'`, no inline script); the browser suite checks every app route for CSP violations. The four legacy pages still use inline scripts and send no CSP |
 | 6c | Redis durable store and scale-out workers | Fully implemented and tested | `tests/live.rs`, `tests/scale.rs` (Redis ran locally) |
 | 6d | Vercel deployment | Implemented but untested here | `vercel.json` + `api/rusetect.rs`; the live site was not reachable from this sandbox (proxy refused) |
 | 7a | Python API port (`/home/user/nemesis1/service/server.py`) | Fully implemented and tested, with one failing test | 57 of 58 pytest tests pass; the failure is caused by git-ignored `graphify-out/` cache files (test report section 4) |
 | 7b | Python research and evaluation scripts (`research/*.py`, `nemesis1/ml/*.py`) | Implemented but untested | outputs committed in `research/out/` and `results/`; no unit tests for the scripts |
 | 8a | Alert desk: open, release, verify, hold, two-analyst block (maker-checker), customer answer, re-verify | Fully implemented and tested | `tests/api.rs`, `review` unit tests, smoke |
-| 8b | Assignment, comments, priority, SLA, case entity that groups alerts | Not implemented | `ReviewDesk` alerts have `status`, `actions`, `block_approvals` only |
+| 8b | Assignment, comments, priority, SLA, case entity that groups alerts | Fully implemented and tested (W1, W3, W5, W8) | alert triage (`/v2/alerts/{id}/triage`), investigations with two-person closure (`/v2/investigations*`), server-side alert search, sort and paging and a per-alert `demo` flag (`GET /v2/alerts?q=&sort=&limit=...`, W8), `/v2/whoami` (W8); `tests/api.rs::alert_queue_searches_sorts_and_pages_on_the_server`, `tests/intel.rs`, `intel_auth.rs`; browser: alert and investigation checks in `smoke.js`, including the review decisions in the alert drawer (two analysts for a block). File attachments are not supported (the workspace says so) |
 | 9a | Evidence pack with content hash and Ed25519 signature, `/v2/verify`, `/v2/keys/public` | Fully implemented and tested | `tests/api.rs` verifies the signature |
 | 9b | Hash-chained audit log `/v2/audit` (`chain_valid`) | Fully implemented and tested | `review` unit tests, `tests/api.rs` |
 | 10a | STR draft `/v2/alerts/{id}/str` (template, FIU-IND sections A to F) | Fully implemented and tested | `tests/api.rs::digital_arrest_end_to_end` |
 | 10b | Benchmark report page `/report`, model card `/v2/model-card`, message-model card | Implemented but untested | pages are static HTML built in the Python repo; no test calls `/v2/model-card` or `/v2/message-model` (smoke only) |
-| 10c | Printable/exportable case report (PDF or HTML) | Not implemented | |
+| 10c | Printable/exportable case report (PDF or HTML) | Fully implemented and tested (W6) | `#/reports/{case}`: ten sections from the case, evidence, narrative and audit routes, verification from `/v2/verify` and `chain_valid`, JSON download, print stylesheet; browser: report checks in `smoke.js` (print to PDF) |
+| 11a | Website `/app` (sections A to I, hash routes, design tokens, light and dark themes) | Fully implemented and tested (W2 to W8) | `tests/assets.rs`; `tests/e2e/smoke.js` at 1440, 834 and 390 px: every nav link, button, form, filter, search and chart once, malformed input per form, console errors and CSP per route, labels, names, AA contrast in both themes, keyboard focus, no sideways scroll |
 | 10d | Console replay `/v2/demo/reset`, `/v2/demo/next` | Demo/mock only (real models on recorded synthetic IBM AMLworld data) | `tests/api.rs`; labels used only to report accuracy |
 | 10e | Investigator mule fixture `/v2/fixtures/mule` | Demo/mock only | fictional fixture `fixtures/mule_replay.json` |
 | -- | Broken | none found | every route answered as expected locally; see the risks in section 6 |
 
-Counts over the 41 rows: 29 fully implemented and tested (7a with one failing Python test caused by local files),
-4 implemented but untested (6d untested from this sandbox), 1 partially implemented, 2 demo/mock only, 0 broken,
-5 not implemented.
+Counts over the 42 rows after W8: 33 fully implemented and tested (7a as classified at W0, not re-run here),
+4 implemented but untested (1h, 6d untested from this sandbox, 7b, 10b), 3 partially implemented (2d, 3f, 4f), 2 demo/mock
+only, 0 broken, 0 not implemented. At W0 the 41 rows were 29, 4, 1, 2, 0 and 5.
 
 ## 2. Components (brief section 4)
 
@@ -234,15 +244,15 @@ Alerts, evidence, STR, cases and audit also need a key of any role (`require_rea
 
 | Section | Backend data that exists | Gaps that block it |
 |---|---|---|
-| A. Executive dashboard | `/v2/stats` (payments seen, accounts, decisions, open cases), `/v2/alerts` (status counts derivable), `/v2/alerts/summary` (message volumes), `/v2/campaigns` (count), `/v2/drift` (status), `/health` (engine, store, signing, ready), `/v2/model-card` (offline detection performance) | no time-bucketed activity series; no confirmed-fraud source except demo-replay labels (`demo/next` `truth`); counts are per instance on Vercel; no single summary endpoint, so the page would aggregate in the browser |
-| B. Transaction intelligence | per-payment risk, band, reasons, features, layer exit (`/v2/payment`, `/v2/assess`), live feed `/v2/live`, replay feed | no stored transactions, no search or filter, no detail by id, no beneficiary history or account timeline, no model version in responses |
+| A. Executive dashboard | Built in W3 (`#/dashboard`): one `/v2/dashboard` read (counts with their source, hour and day activity series, health, drift, model card) | confirmed fraud only from two-analyst blocks or the demo stream's synthetic labels (shown as not available otherwise); counts are per instance without Redis |
+| B. Transaction intelligence | Built in W5 (`#/transactions`, detail `#/transactions/{id}`): `/v2/transactions` search and filters, detail with SHAP and motif reasons, related accounts, beneficiary history, ledger timeline | Redis lists only the newest 200 live events (older ones by id); approved `/assess` calls are not stored |
 | C. Scam intelligence | Built in W7 (`#/scam`, `assets/js/scam.js`): `/v2/message` (band, workflow, tactics, key phrases highlighted from the model's output, entities, lure outcome), `GET /v2/messages` (history and search), `/v2/message-model` (card, synthetic Indian rows labelled), lure-raised alerts from `/v2/alerts`, campaigns | no version string for the message model; history in memory only (per instance with Redis); a history row is not joined to an alert |
 | D. Behavioural | Built in W7 (`#/behaviour`, `assets/js/behaviour.js`), each panel marked consent-based: typing enrol and check (browser keystroke capture or labelled synthetic), session signals read from stored `/v2/assess` alerts, identity check, PRAMAAN with challenge outcome, duress PIN | mouse dynamics not served (shown as not available); no summary counts or PRAMAAN and typing history endpoint; profiles not persisted |
-| E. Network graph | alert payer and payee pairs, evidence `linked_alerts`, campaigns `linked_by`, coordination counts, consortium flags | no graph endpoint, no typed edges with evidence, no device or customer nodes, no time-range query; the current graph is computed in the browser |
-| F. Alert management | `/v2/alerts` with status filter, review actions with roles, nonce and maker-checker, `assessed` detail with reasons and risk score | no assignment, priority, typology field, search, sort or pagination on the server; no "create case" |
-| G. Case management | alert actions history, audit chain, evidence pack, customer path | no case entity, comments, attachments, SLA, investigator assignment or progress; dual approval exists only for blocks |
-| H. AI-assisted investigation | evidence pack, STR template (every sentence traceable), reasons, campaigns | no narrative endpoint that labels fact, model output, rule, interpretation and analyst conclusion; no paid LLM may be used |
-| I. Reports and evidence | evidence pack + signature + `/v2/verify`, audit `chain_valid`, STR draft, consortium Merkle root, benchmark report | no combined printable case report; no server-side pack re-hash check; ephemeral demo signing key |
+| E. Network graph | Built in W4 (`#/network`): `/v2/graph` (typed edges with evidence ids, depth, time range, backend indicators), Cytoscape.js (MIT, vendored) | no device, customer or merchant nodes in the stored data (labelled not available) |
+| F. Alert management | Built in W3, completed in W8 (`#/alerts`, drawer `#/alerts/{id}`): server-side search, filters, sort and paging (`/v2/alerts?q=&sort=...`), per-alert demo label, triage, the review decision in the drawer (hold, verify, release, approve block; two analysts for a block, the approver's second click disabled via `/v2/whoami`), investigations from a selection | concurrent edits across instances are last-write-wins (`docs/live.md`) |
+| G. Case management | Built in W5 (`#/investigations`, workspace `#/investigations/{id}`): assignment, priority, status, SLA, comments, alerts, network excerpt, timeline, audit, two-person closure, supervisor reopen | file attachments not supported (said on the page) |
+| H. AI-assisted investigation | Built in W6 (`#/assistant`, and in the workspace): `/v2/investigations/{id}/narrative`, deterministic template v1, every statement typed and sourced, accept-into-comment with audit | no language model (by design); the optional LLM rephrasing hook is shown as not enabled |
+| I. Reports and evidence | Built in W6 (`#/reports/{id}`): printable ten-section report, verification from `/v2/verify` and `chain_valid`, JSON and STR draft downloads | no server-side pack re-hash route; the demo signing key is ephemeral per process |
 
 ## 4. Frontend as it is
 

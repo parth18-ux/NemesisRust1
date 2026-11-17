@@ -49,7 +49,9 @@ export async function api(path, {method = "GET", body} = {}) {
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
   if (!r.ok) {
     const d = data && typeof data === "object" ? data.detail : data;
-    throw new ApiError(r.status, typeof d === "string" ? d : JSON.stringify(d ?? r.statusText));
+    // a validation error is a list of {loc, msg}: show the messages, not the JSON
+    const list = Array.isArray(d) && d.every((x) => x && typeof x.msg === "string") ? d.map((x) => x.msg.replace(/^Value error, /, "")).join("; ") : null;
+    throw new ApiError(r.status, list ?? (typeof d === "string" ? d : JSON.stringify(d ?? r.statusText)));
   }
   return data;
 }
@@ -63,10 +65,13 @@ export async function demoKeys() {
   return demoAnalysts;
 }
 export const isDemo = async () => (await demoKeys()).length > 0;
-/** The analyst behind the current key when the server named it (demo mode), else null. */
+const whoCache = new Map();
+/** The analyst id and role behind the current key, from GET /api/v2/whoami (demo or configured keys), else null. */
 export async function currentAnalyst() {
   const k = getKey();
-  return (await demoKeys()).find((a) => a.key === k) || null;
+  if (!k) return null;
+  if (!whoCache.has(k)) whoCache.set(k, api("/v2/whoami").catch(() => null));
+  return whoCache.get(k);
 }
 
 /** Demo mode only: replays the fictional mule fixture (victims pay one mule, who forwards to a collector) through

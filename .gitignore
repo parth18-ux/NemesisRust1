@@ -9,3 +9,4 @@ research/out/run.log
 research/out/*.log
 graphify-out/
 research/__pycache__/
+tests/e2e/node_modules/

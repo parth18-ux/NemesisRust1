@@ -12,7 +12,7 @@ review desk already hold, and each response says where it came from.
 
 | Routes | Demo mode | With `RUSETECT_ANALYST_KEYS` |
 | --- | --- | --- |
-| `GET /api/v2/dashboard`, `/transactions`, `/transactions/{id}`, `/graph`, `/investigations`, `/investigations/{id}`, `/investigations/{id}/narrative`, `/messages` | open | `X-Analyst-Key` of any role (viewer, channel, analyst, supervisor); else `401` |
+| `GET /api/v2/dashboard`, `/alerts`, `/transactions`, `/transactions/{id}`, `/graph`, `/investigations`, `/investigations/{id}`, `/investigations/{id}/narrative`, `/messages`, `/whoami` | open (`/whoami` needs a key) | `X-Analyst-Key` of any role (viewer, channel, analyst, supervisor); else `401` |
 | `POST /api/v2/alerts/{id}/triage`, `/investigations`, `/investigations/{id}/actions` | a demo analyst or supervisor key | analyst or supervisor key; viewer and channel get `403`, no key `401` |
 
 Writes also need a fresh `X-Nonce` (8 to 128 characters, not seen in the last 10 minutes; `409` otherwise), as a review
@@ -103,6 +103,35 @@ Query: `account` (required), `bank`, `depth` (1 to 3, default 1), `from`, `to`, 
   evidence) and `ring_case` (the engine's ring linker, this instance). They are leads for an analyst: the response's
   `disclaimer` says that neither a link nor an indicator is a finding, and a page must not present them as one.
 - `not_available`: devices, customers and merchants. Stored payments name accounts and banks only.
+
+## GET /api/v2/alerts
+
+Without a query (or with `status` only) the answer is what it always was: a plain array of alerts, newest first. Each
+alert now also carries `demo`: `true` for an alert opened by `POST /api/v2/assess` on a demo-mode instance (public demo
+keys, replays and fictional fixtures), `false` for every alert from the signed webhook and on an instance with
+configured keys. The website labels only the `demo: true` rows as demonstration data.
+
+Any of these parameters returns one page, searched, filtered and sorted by the server:
+
+| Parameter | Meaning |
+| --- | --- |
+| `q` | text in the alert id, payer or payee (`bank:account`), event id, typology, assignee, investigation id or shown decision (case-insensitive, at most 200 characters) |
+| `status` | the decision status (`open`, `held`, `customer_verification`, `block_pending_second_approval`, `released`, `blocked`, ...) |
+| `band` | `allow`, `verify`, `hold`, `block` |
+| `state`, `priority`, `assigned_to` | the triage fields; `priority=none` and `assigned_to=unassigned` find the unset ones |
+| `demo` | `true` or `false` |
+| `sort`, `order` | `time` (payment time, the default), `score`, `id`, `priority`, `assignee`, `status`, `source`, `typology`, `entity`, `txn`; `asc` or `desc` (default `desc` for time, score and priority) |
+| `limit`, `offset` | page size 1 to 200 (default 50) and start |
+
+Answer: `alerts` (the page), `total` (matching), `all` (before the filters), `offset`, `limit`, `sort`, `order`,
+`assignees` (every assignee, for a filter list) and `demo` (how many matching alerts are demo). A bad `sort`, `order`,
+`demo` or a non-number `limit` or `offset` is a `422`.
+
+## GET /api/v2/whoami
+
+The analyst id and role behind the presented `X-Analyst-Key` (`{analyst, role, demo_mode}`), so the website can
+disable what the role or the four-eyes rule would refuse (an analyst who approved a block cannot give the second
+approval; the server refuses it anyway). `401` without a known key. The key itself is never returned.
 
 ## POST /api/v2/alerts/{id}/triage
 

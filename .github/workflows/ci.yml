@@ -53,3 +53,48 @@ jobs:
           cargo test --release --workspace 2>&1 | tee test.log
           if grep -q "redis-server not installed" test.log; then echo "Redis tests were skipped"; exit 1; fi
         shell: bash -o pipefail {0}
+
+  # Browser smoke test of the website (tests/e2e/smoke.js) at desktop, tablet and phone width, against the release server in demo
+  # mode. Playwright is pinned by tests/e2e/package-lock.json; its official installer fetches the matching Chromium and system
+  # libraries, since the runner has no browser for it.
+  website:
+    needs: rust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: No secrets in the website's code
+        run: |
+          if grep -rnE "demo-(analyst|supervisor|viewer)|BEGIN [A-Z ]*PRIVATE KEY|RUSETECT_(WEBHOOK_SECRET|ANALYST_KEYS)|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}" \
+               service/static --exclude-dir=vendor; then
+            echo "a key or secret is written in the frontend code"; exit 1
+          fi
+
+      - name: Build the server
+        run: cargo build --release -p rusetect-server
+
+      - name: Playwright and Chromium
+        working-directory: tests/e2e
+        run: |
+          npm ci --ignore-scripts
+          npx --no-install playwright install --with-deps chromium
+
+      - name: Website smoke test (desktop, tablet, phone)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for v in desktop tablet phone; do
+            RUSETECT_DEMO=1 RUSETECT_RATE_LIMIT=100000 ./target/release/rusetect-server --port 8011 > "server-$v.log" 2>&1 &
+            pid=$!
+            for _ in $(seq 60); do curl -sf http://localhost:8011/api/health > /dev/null && break; sleep 1; done
+            BASE=http://localhost:8011 VIEWPORT=$v node tests/e2e/smoke.js
+            kill "$pid"; wait "$pid" || true
+          done

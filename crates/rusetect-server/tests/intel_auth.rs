@@ -54,6 +54,15 @@ async fn configured_keys_gate_reads_and_case_work_by_role() {
     let (_, t) = call(&app, "GET", &format!("/api/v2/transactions/{alert}"), Some("viewer-key-0123456789"), None).await;
     assert_eq!((t["transaction"]["source"].as_str(), &t["transaction"]["risk"], &t["transaction"]["reasons"]), (Some("assess"), &fwd["payment"]["risk"], &fwd["payment"]["reasons"]));
 
+    // whoami: the key's analyst and role; alerts from a configured-key instance are not demo
+    assert_eq!(call(&app, "GET", "/api/v2/whoami", None, None).await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(call(&app, "GET", "/api/v2/whoami", Some("wrong-key-0123456789"), None).await.0, StatusCode::UNAUTHORIZED);
+    let (_, w) = call(&app, "GET", "/api/v2/whoami", Some("second-key-0123456789"), None).await;
+    assert_eq!((w["analyst"].as_str(), w["role"].as_str(), w["demo_mode"].as_bool()), (Some("ravi"), Some("analyst"), Some(false)));
+    let (s, p) = call(&app, "GET", "/api/v2/alerts?limit=5", Some("viewer-key-0123456789"), None).await;
+    assert_eq!((s, p["demo"].as_u64()), (StatusCode::OK, Some(0)), "{p}");
+    assert_eq!(call(&app, "GET", "/api/v2/alerts?limit=5", None, None).await.0, StatusCode::UNAUTHORIZED);
+
     // case work: analysts and supervisors only
     let triage = format!("/api/v2/alerts/{alert}/triage");
     let open = json!({"title": "forward", "alert_ids": [alert]});

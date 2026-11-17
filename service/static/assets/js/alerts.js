@@ -1,5 +1,6 @@
-// F. Alert management: every alert the review desk holds (GET /api/v2/alerts), searched, filtered, sorted and paged
-// in the browser; a detail drawer; triage through POST /api/v2/alerts/{id}/triage; investigations from a selection.
+// F. Alert management: the review desk's alerts (GET /api/v2/alerts), searched, filtered, sorted and paged on the
+// server; a detail drawer (deep link #/alerts/{id}) with the review decision (POST /api/v2/alerts/{id}/review, two
+// analysts for a block) and triage (POST /api/v2/alerts/{id}/triage); investigations from a selection.
 import {api, isDemo, demoKeys, currentAnalyst, getKey, replayMule} from "./api.js";
 import {$, $$, html, num, money, words, bandOf, bandPill, prioPill, demoPill, toast} from "./util.js";
 import {evidenceRow, wireEvidence} from "./evidence.js";
@@ -9,11 +10,15 @@ const txnLink = (id) => html`<a class="mono" href="#/transactions/${encodeURICom
 const PAGE = 25;
 const PRIOS = ["critical", "high", "medium", "low"];
 const STATES = ["new", "in_progress", "escalated", "done"];
+const STATUSES = ["open", "held", "customer_verification", "block_pending_second_approval", "released", "blocked"];
+const REVIEW = [["hold", "Hold"], ["verify", "Ask customer to verify"], ["release", "Release"], ["approve_block", "Approve block"]];
+const SORT_PARAM = {prio: "priority"};
 const COLS = [
   ["id", "Alert"], ["score", "Risk"], ["source", "Source"], ["typology", "Typology"], ["entity", "Entity (payee)"], ["txn", "Transaction"],
   ["time", "Time (UTC)"], ["assignee", "Assignee"], ["status", "Status"], ["prio", "Priority"],
 ];
-const st = {rows: [], q: "", band: "", status: "", prio: "", assignee: "", sort: "time", dir: -1, page: 0, sel: new Set(), demo: false};
+const st = {rows: [], total: 0, all: 0, demoN: 0, q: "", band: "", status: "", state: "", prio: "", assignee: "", sort: "time", dir: -1, page: 0, sel: new Set(), demo: false};
+let loadSeq = 0, qTimer;
 let mainEl, lastFocus;
 
 function toRow(a, caseOf) {
@@ -28,17 +33,6 @@ function toRow(a, caseOf) {
   };
 }
 
-function view() {
-  const q = st.q.toLowerCase();
-  let rows = st.rows.filter((r) => (!st.band || r.band === st.band) && (!st.status || r.status === st.status || r.state === st.status)
-    && (!st.prio || (st.prio === "none" ? !r.prio : r.prio === st.prio))
-    && (!st.assignee || (st.assignee === "unassigned" ? !r.assignee : r.assignee === st.assignee))
-    && (!q || [r.id, r.entity, r.payer, r.txn, r.typology, r.assignee, r.case, r.a.shown_decision].join(" ").toLowerCase().includes(q)));
-  const key = st.sort, rank = (r) => (key === "prio" ? (r.prio ? 4 - PRIOS.indexOf(r.prio) : 0) : r[key] ?? "");
-  rows = rows.sort((x, y) => { const a = rank(x), b = rank(y); return (a > b ? 1 : a < b ? -1 : 0) * st.dir || (x.id < y.id ? 1 : -1); });
-  return rows;
-}
-
 /** "View in network" link for one account (the Network intelligence view, section E). */
 const netLink = (bank, account, short) => (account ? html`<a class="small" href="#/network?${new URLSearchParams({account, bank: bank ?? ""})}"
   title="View ${bank ?? ""}:${account} in the network">${short ? "network" : "View in network"}</a>` : "");
@@ -49,43 +43,48 @@ function statusCell(r) {
 }
 
 function drawTable() {
-  const rows = view();
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
-  st.page = Math.min(st.page, pages - 1);
-  const shown = rows.slice(st.page * PAGE, st.page * PAGE + PAGE);
+  const shown = st.rows;
+  const pages = Math.max(1, Math.ceil(st.total / PAGE));
   const allSel = shown.length > 0 && shown.every((r) => st.sel.has(r.id));
   $("#al-table", mainEl).innerHTML = html`<table>
-    <caption class="sr">Alerts, ${rows.length} matching</caption>
+    <caption class="sr">Alerts, ${st.total} matching</caption>
     <thead><tr><th scope="col"><input type="checkbox" id="al-all" aria-label="Select all on this page" ${allSel ? "checked" : ""}></th>
       ${COLS.map(([k, label]) => html`<th scope="col" ${k === "score" ? html`class="r"` : ""} aria-sort="${st.sort === k ? (st.dir > 0 ? "ascending" : "descending") : "none"}">
         <button type="button" data-sort="${k}">${label}</button></th>`)}</tr></thead>
     <tbody>${shown.length ? shown.map((r) => html`<tr class="${st.sel.has(r.id) ? "sel" : ""}" data-id="${r.id}">
       <td><input type="checkbox" data-pick="${r.id}" aria-label="Select ${r.id}" ${st.sel.has(r.id) ? "checked" : ""}></td>
-      <td><button class="link-btn" type="button" data-open="${r.id}">${r.id}</button>${r.case ? html` <span class="pill plain small" title="In investigation">${r.case}</span>` : ""}</td>
+      <td><button class="link-btn" type="button" data-open="${r.id}">${r.id}</button>${r.a.demo ? html` ${demoPill()}` : ""}${r.case ? html` <span class="pill plain small" title="In investigation">${r.case}</span>` : ""}</td>
       <td class="r"><span class="num">${r.score ?? "n/a"}</span> ${bandPill(r.band)}</td>
       <td>${r.source}</td>
       <td>${r.typology || html`<span class="muted">none</span>`}</td>
       <td class="mono">${r.entity} ${netLink(r.a.payment?.to_bank, r.a.payment?.to_account, true)}</td><td>${txnLink(r.txn)}</td><td class="mono">${r.time}</td>
       <td>${r.assignee || html`<span class="muted">unassigned</span>`}</td><td>${statusCell(r)}</td><td>${prioPill(r.prio)}</td></tr>`)
-    : html`<tr><td colspan="${COLS.length + 1}" class="empty">${st.rows.length ? "No alert matches these filters." : "The review desk holds no alert yet."}</td></tr>`}</tbody>
+    : html`<tr><td colspan="${COLS.length + 1}" class="empty">${st.all ? "No alert matches these filters." : "The review desk holds no alert yet."}</td></tr>`}</tbody>
   </table>`;
-  $("#al-pager", mainEl).innerHTML = html`<span>${rows.length ? `${st.page * PAGE + 1} to ${st.page * PAGE + shown.length} of ${num(rows.length)}` : "0 alerts"}
-      ${rows.length !== st.rows.length ? `(filtered from ${num(st.rows.length)})` : ""}</span>
+  $("#al-pager", mainEl).innerHTML = html`<span>${st.total ? `${st.page * PAGE + 1} to ${st.page * PAGE + shown.length} of ${num(st.total)}` : "0 alerts"}
+      ${st.total !== st.all ? `(filtered from ${num(st.all)})` : ""}</span>
     <span class="sp">${st.sel.size} selected</span>
     <button class="btn" type="button" id="al-prev" ${st.page === 0 ? "disabled" : ""}>Previous</button>
     <span>Page ${st.page + 1} of ${pages}</span>
     <button class="btn" type="button" id="al-next" ${st.page >= pages - 1 ? "disabled" : ""}>Next</button>`;
   $("#al-case", mainEl).disabled = st.sel.size === 0;
   $("#al-case", mainEl).textContent = st.sel.size ? `Create investigation (${st.sel.size})` : "Create investigation";
+  const b = $("#al-demo", mainEl);
+  b.hidden = !st.demoN;
+  if (st.demoN) $("#al-demo-n", mainEl).textContent = st.demoN === st.total ? `All ${num(st.total)} matching alerts are` : `${num(st.demoN)} of ${num(st.total)} matching alerts are`;
 }
+
+/** Reload the current page from the server (filters, sort and page are server-side). */
+const refetch = () => load(true).catch((e) => toast(e.explain || e.message));
 
 function wire() {
   const m = mainEl;
-  $("#al-q", m).addEventListener("input", (e) => { st.q = e.target.value; st.page = 0; drawTable(); });
-  for (const k of ["band", "status", "prio", "assignee"]) $(`#al-${k}`, m).addEventListener("change", (e) => { st[k] = e.target.value; st.page = 0; drawTable(); });
+  $("#al-q", m).addEventListener("input", (e) => { st.q = e.target.value; st.page = 0; clearTimeout(qTimer); qTimer = setTimeout(refetch, 250); });
+  for (const k of ["band", "status", "state", "prio", "assignee"]) $(`#al-${k}`, m).addEventListener("change", (e) => { st[k] = e.target.value; st.page = 0; refetch(); });
   $("#al-table", m).addEventListener("click", (e) => {
     const s = e.target.closest("[data-sort]");
-    if (s) { const k = s.dataset.sort; st.dir = st.sort === k ? -st.dir : (k === "time" || k === "score" || k === "prio" ? -1 : 1); st.sort = k; drawTable(); $(`[data-sort="${k}"]`, m).focus(); return; }
+    if (s) { const k = s.dataset.sort; st.dir = st.sort === k ? -st.dir : (k === "time" || k === "score" || k === "prio" ? -1 : 1); st.sort = k; st.page = 0;
+      load(true).then(() => $(`[data-sort="${k}"]`, m)?.focus()).catch((err) => toast(err.explain || err.message)); return; }
     const o = e.target.closest("[data-open]");
     if (o) { openDrawer(o.dataset.open, o); return; }
   });
@@ -99,7 +98,7 @@ function wire() {
   });
   $("#al-pager", m).addEventListener("click", (e) => {
     if (e.target.id === "al-prev") st.page--; else if (e.target.id === "al-next") st.page++; else return;
-    drawTable();
+    refetch();
   });
   $("#al-case", m).addEventListener("click", openCaseDialog);
   $("#al-refresh", m).addEventListener("click", () => load(true));
@@ -111,12 +110,66 @@ function wire() {
 function closeDrawer() {
   $("#al-drawer")?.remove();
   $("#scrim").hidden = true;
+  if (location.hash.startsWith("#/alerts/")) history.replaceState(null, "", "#/alerts");
   lastFocus?.focus?.();
 }
 
-async function openDrawer(id, from) {
+// Escape closes the drawer wherever focus is (a button disabled while saving drops focus to the page)
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("#al-drawer") && !$("dialog[open]")) closeDrawer(); });
+
+/** The alert's row: from the page shown, else looked up on the server (a deep link to an alert on another page). */
+async function rowFor(id) {
   const r = st.rows.find((x) => x.id === id);
-  if (!r) { toast(`Alert ${id} is not in the list`); return; }
+  if (r) return r;
+  const p = await api(`/v2/alerts?${new URLSearchParams({q: id, limit: 200})}`).catch(() => null);
+  const a = p?.alerts?.find((x) => x.alert_id === id);
+  return a ? toRow(a, {[id]: a.case_id || ""}) : null;
+}
+
+const canReview = (me) => !me || me.role === "analyst" || me.role === "supervisor";
+
+function reviewSection(a, me) {
+  const appr = a.block_approvals || [];
+  const final = a.status === "released" || a.status === "blocked";
+  const mine = !!me && appr.includes(me.analyst);
+  const why = final ? `This alert is final (${words(a.status)}); no further decision is taken.`
+    : !canReview(me) ? `Your role (${me.role}) cannot decide alerts; an analyst or supervisor key can.` : "";
+  return html`<section class="sect" aria-labelledby="al-rh"><h3 id="al-rh">Decision</h3>
+    <p class="small muted">Decides the payment. A block needs two different analysts (four-eyes); release and block are final.
+      Block approvals: ${appr.length ? appr.join(", ") : "none"}${a.status === "block_pending_second_approval" ? " (waiting for a second analyst)" : ""}.</p>
+    <form id="al-review" class="form" novalidate>
+      <label class="field full">Note (optional)<textarea name="note" maxlength="500" rows="2" ${why ? "disabled" : ""}></textarea></label>
+      <div class="full btn-row">${REVIEW.map(([k, label]) => html`<button class="btn ${k === "approve_block" ? "danger" : ""}" type="button" data-review="${k}"
+        ${why || (k === "approve_block" && mine) ? "disabled" : ""}>${label}</button>`)}</div>
+      ${why ? html`<p class="full small muted" id="al-rwhy">${why}</p>` : mine ? html`<p class="full small muted" id="al-rwhy">You approved the block; a different analyst must give the second approval.</p>` : ""}
+      <div class="full" id="al-rmsg" role="status" aria-live="polite"></div>
+    </form></section>`;
+}
+
+async function review(r, action) {
+  const form = $("#al-review"), msg = $("#al-rmsg");
+  const note = String(new FormData(form).get("note") || "").trim();
+  $$("[data-review]", form).forEach((b) => { b.disabled = true; });
+  try {
+    const a = await api(`/v2/alerts/${encodeURIComponent(r.id)}/review`, {method: "POST", body: {action, note}});
+    a.demo = r.a.demo;
+    const i = st.rows.findIndex((x) => x.id === r.id);
+    const row = toRow(a, {[r.id]: r.case});
+    if (i >= 0) { st.rows[i] = row; drawTable(); }
+    toast(`Alert ${r.id}: ${words(a.status)}`);
+    await openDrawer(r.id, lastFocus, row);
+    $("#al-rmsg").innerHTML = html`<p class="msg ok">Recorded: ${words(action)}. Status is now ${words(a.status)}.</p>`;
+  } catch (e) {
+    msg.innerHTML = html`<p class="msg err" role="alert">${e.explain || e.message}</p>`;
+    $$("[data-review]", form).forEach((b) => { b.disabled = false; });
+    $(`[data-review="${action}"]`, form)?.focus();
+  }
+}
+
+async function openDrawer(id, from, known) {
+  const r = known || await rowFor(id);
+  if (!r) { toast(`Alert ${id} was not found`); return; }
+  if (location.hash !== "#/alerts/" + encodeURIComponent(id)) history.replaceState(null, "", "#/alerts/" + encodeURIComponent(id));
   lastFocus = from || document.activeElement;
   $("#al-drawer")?.remove();
   const a = r.a, as = a.assessed || {}, p = a.payment || {}, wf = a.workflow || {};
@@ -129,7 +182,7 @@ async function openDrawer(id, from) {
   d.setAttribute("role", "dialog");
   d.setAttribute("aria-modal", "true");
   d.setAttribute("aria-labelledby", "al-dh");
-  d.innerHTML = html`<div class="drawer-h"><h2 id="al-dh">Alert <span class="mono">${a.alert_id}</span></h2>${st.demo ? demoPill() : ""}
+  d.innerHTML = html`<div class="drawer-h"><h2 id="al-dh">Alert <span class="mono">${a.alert_id}</span></h2>${a.demo ? demoPill() : ""}
       <button class="btn icon" type="button" id="al-close" aria-label="Close details">&#10005;</button></div>
     <div class="drawer-b">
       <dl class="kv">
@@ -155,6 +208,7 @@ async function openDrawer(id, from) {
         <p class="small muted">Funds: ${as.intervention.funds ?? "n/a"}${as.intervention.step_up?.length ? ` · step-up: ${as.intervention.step_up.join(", ")}` : ""}</p></section>` : ""}
       <section class="sect"><h3>Evidence</h3><ul class="ev-list">${evidenceRow(a.alert_id)}</ul>
         ${as.signature ? html`<p class="small muted">Assessment signed ${as.signature.alg}, key <span class="mono">${as.signature.key_id}</span>.</p>` : ""}</section>
+      ${reviewSection(a, me)}
       <section class="sect" aria-labelledby="al-th"><h3 id="al-th">Triage</h3>
         <form id="al-triage" class="form" novalidate>
           <label class="field">Assignee
@@ -177,10 +231,10 @@ async function openDrawer(id, from) {
   $("#scrim").addEventListener("click", closeDrawer, {once: true});
   $("#al-close", d).addEventListener("click", closeDrawer);
   $("#al-triage", d).addEventListener("submit", (e) => { e.preventDefault(); triage(r, e.target); });
+  $$("[data-review]", d).forEach((b) => b.addEventListener("click", () => review(r, b.dataset.review)));
   $("#al-open-inv", d)?.addEventListener("click", () => { closeDrawer(); st.sel = new Set([r.id]); openCaseDialog(); });
   wireEvidence(d);
   d.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeDrawer();
     if (e.key === "Tab") {
       const f = $$("a[href],button:not([disabled]),input,select,textarea", d);
       if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f.at(-1).focus(); }
@@ -197,23 +251,28 @@ async function triage(r, form) {
   if (assignee && assignee !== wf.assignee) body.assignee = assignee;
   if (state && state !== (wf.state || "new")) body.state = state;
   if (prio && prio !== wf.priority) body.priority = prio;
-  if (sla) body.sla_hours = Number(sla);
-  if (comment) body.comment = comment;
   const msg = $("#al-tmsg");
+  if (sla) {
+    body.sla_hours = Number(sla);
+    if (!(body.sla_hours > 0 && body.sla_hours <= 2160)) { msg.innerHTML = html`<p class="msg err" role="alert">SLA hours must be a number above 0 and at most 2160.</p>`; return; }
+  }
+  if (comment) body.comment = comment;
   if (!Object.keys(body).length) { msg.innerHTML = html`<p class="msg err">Nothing changed: pick a new value or write a comment.</p>`; return; }
   const btn = form.querySelector("[type=submit]");
   btn.disabled = true;
   try {
     const a = await api(`/v2/alerts/${encodeURIComponent(r.id)}/triage`, {method: "POST", body});
+    a.demo = r.a.demo;
     const i = st.rows.findIndex((x) => x.id === r.id);
-    st.rows[i] = toRow(a, {[r.id]: r.case});
-    drawTable();
+    const row = toRow(a, {[r.id]: r.case});
+    if (i >= 0) { st.rows[i] = row; drawTable(); }
     toast(`Alert ${r.id} updated`);
-    await openDrawer(r.id, lastFocus);
+    await openDrawer(r.id, lastFocus, row);
     $("#al-tmsg").innerHTML = html`<p class="msg ok">Saved: ${Object.keys(body).join(", ")}.</p>`;
   } catch (e) {
     msg.innerHTML = html`<p class="msg err" role="alert">${e.explain || e.message}</p>`;
     btn.disabled = false;
+    btn.focus();
   }
 }
 
@@ -273,20 +332,21 @@ async function seedDemo(e) {
 // ---- load and render
 
 async function load(keepFilters) {
-  const [alerts, invs] = await Promise.all([api("/v2/alerts"), api("/v2/investigations").catch(() => [])]);
+  const seq = ++loadSeq;
+  const p = {sort: SORT_PARAM[st.sort] || st.sort, order: st.dir > 0 ? "asc" : "desc", limit: PAGE, offset: st.page * PAGE};
+  for (const [k, v] of [["q", st.q.trim()], ["band", st.band], ["status", st.status], ["state", st.state], ["priority", st.prio], ["assigned_to", st.assignee]]) if (v) p[k] = v;
+  const [res, invs] = await Promise.all([api("/v2/alerts?" + new URLSearchParams(p)), api("/v2/investigations").catch(() => [])]);
+  if (seq !== loadSeq) return;
+  if (st.page > 0 && !res.alerts.length && res.total) { st.page = Math.ceil(res.total / PAGE) - 1; return load(keepFilters); }
   const caseOf = {};
   for (const inv of Array.isArray(invs) ? invs : invs?.investigations || invs?.data || []) {
     if (inv.status !== "closed") for (const id of inv.alert_ids || []) caseOf[id] = inv.case_id;
   }
-  st.rows = (alerts || []).map((a) => toRow(a, caseOf));
+  Object.assign(st, {rows: res.alerts.map((a) => toRow(a, caseOf)), total: res.total, all: res.all, demoN: res.demo});
   if (!keepFilters) st.sel.clear();
-  const known = new Set(st.rows.map((r) => r.id));
-  for (const id of st.sel) if (!known.has(id)) st.sel.delete(id);
-  const assignees = [...new Set(st.rows.map((r) => r.assignee).filter(Boolean))].sort();
-  $("#al-assignee", mainEl).innerHTML = html`<option value="">Any assignee</option><option value="unassigned">Unassigned</option>
-    ${assignees.map((x) => html`<option value="${x}" ${x === st.assignee ? "selected" : ""}>${x}</option>`)}`;
-  if (st.assignee === "unassigned") $("#al-assignee", mainEl).value = "unassigned";
-  $("#al-seedbox", mainEl).hidden = !(st.demo && st.rows.length === 0);
+  $("#al-assignee", mainEl).innerHTML = html`<option value="">Any assignee</option><option value="unassigned" ${st.assignee === "unassigned" ? "selected" : ""}>Unassigned</option>
+    ${res.assignees.map((x) => html`<option value="${x}" ${x === st.assignee ? "selected" : ""}>${x}</option>`)}`;
+  $("#al-seedbox", mainEl).hidden = !(st.demo && st.all === 0);
   drawTable();
 }
 
@@ -296,16 +356,17 @@ export async function render(main, ctx) {
   mainEl = main;
   st.demo = await isDemo();
   main.innerHTML = html`
-    ${st.demo ? html`<div class="banner demo" role="note"><b>Demonstration data</b><span>This instance runs in demo mode: its alerts come from demo replays and
-      fictional fixtures, not from a bank's payments. Demo analyst keys are offered in the top bar.</span></div>` : ""}
     <section class="card" aria-labelledby="al-h">
       <div class="card-h"><h2 id="al-h">Alerts</h2>
         <button class="btn" type="button" id="al-refresh">Refresh</button>
         <button class="btn primary" type="button" id="al-case" disabled>Create investigation</button></div>
+      <div class="banner demo" role="note" id="al-demo" hidden><b>Demonstration data</b><span><span id="al-demo-n"></span> marked Demo: opened by
+        demo replays and fictional fixtures through /api/v2/assess on this demo-mode instance, not from a bank's payments. Alerts from the signed webhook are never marked.</span></div>
       <div class="toolbar" role="search">
         <label class="field grow">Search<input id="al-q" type="search" placeholder="Alert, account, transaction, typology, assignee" value="${st.q}"></label>
         <label class="field">Risk band<select id="al-band">${opts(["verify", "hold", "block", "allow"], "Any band", st.band)}</select></label>
-        <label class="field">Status<select id="al-status">${opts(["open", "released", "blocked", ...STATES], "Any status", st.status, words)}</select></label>
+        <label class="field">Decision status<select id="al-status">${opts(STATUSES, "Any status", st.status, words)}</select></label>
+        <label class="field">Work state<select id="al-state">${opts(STATES, "Any state", st.state, words)}</select></label>
         <label class="field">Priority<select id="al-prio">${opts([...PRIOS, "none"], "Any priority", st.prio)}</select></label>
         <label class="field">Assignee<select id="al-assignee"><option value="">Any assignee</option></select></label>
       </div>
@@ -313,8 +374,9 @@ export async function render(main, ctx) {
         through <span class="mono">/api/v2/assess</span> to open demonstration alerts.</span><button class="btn primary" type="button" id="al-seed">Load demonstration alerts</button></div>
       <div class="table-wrap" id="al-table"></div>
       <div class="pager" id="al-pager"></div>
-      <p class="src">Source: GET /api/v2/alerts (the review desk; with Redis also live:alerts) and GET /api/v2/investigations. Risk is the display score
-        derived from the decision, not a probability. Triage changes the workflow fields only; an alert's decision status changes only through review.</p>
+      <p class="src">Source: GET /api/v2/alerts (the review desk; with Redis also live:alerts; searched, sorted and paged by the server) and GET /api/v2/investigations.
+        Risk is the display score derived from the decision, not a probability. Triage changes the workflow fields only; an alert's decision status changes only
+        through review (POST /api/v2/alerts/{id}/review).</p>
     </section>`;
   wire();
   try {

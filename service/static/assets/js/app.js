@@ -1,5 +1,5 @@
 // App shell: the section navigation (A to I), hash routing, the instance status chips, the analyst key and the theme.
-import {api, getKey, setKey, demoKeys} from "./api.js";
+import {api, getKey, setKey, demoKeys, currentAnalyst} from "./api.js";
 import {$, $$, html, toast} from "./util.js";
 
 const SECTIONS = [
@@ -101,7 +101,8 @@ async function drawWho() {
     box.innerHTML = html`<label for="who-key">Analyst key</label>
       <input id="who-key" type="password" autocomplete="off" placeholder="${key ? "key set for this tab" : "paste key"}" size="14">
       <button class="btn" id="who-set" type="button">${key ? "Change" : "Use"}</button>
-      ${key ? html`<button class="btn" id="who-clear" type="button">Clear</button>` : ""}`;
+      ${key ? html`<button class="btn" id="who-clear" type="button">Clear</button>` : ""}<span class="small" id="who-me" aria-live="polite"></span>`;
+    if (key) currentAnalyst().then((me) => { $("#who-me").textContent = me ? `${me.analyst} (${me.role})` : "key not recognised"; });
     $("#who-set").addEventListener("click", () => { setKey($("#who-key").value.trim()); drawWho(); route(); });
     $("#who-clear")?.addEventListener("click", () => { setKey(""); drawWho(); route(); });
   }
