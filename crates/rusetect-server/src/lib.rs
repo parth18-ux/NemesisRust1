@@ -954,7 +954,7 @@ async fn v2_str(State(app): State<AppRef>, h: HeaderMap, Path(alert_id): Path<St
     require_reader(&h)?;
     blocking(move || live::with_alert(&app, &alert_id.clone(), |s| {
         let pack = s.desk.evidence(&alert_id).ok_or_else(|| ApiError::new(404, "unknown alert"))?;
-        let camps = rusetect::campaigns::build_recent(&s.desk.alerts);
+        let camps = rusetect::campaigns::build_recent_values(s.desk.alerts.values());
         let camp = camps.iter().find(|c| c["alerts"].as_array().map(|a| a.iter().any(|x| x == alert_id.as_str())).unwrap_or(false));
         ok(rusetect::str_report::draft(&pack, camp, rusetect::str_report::DEFAULT_ENTITY))
     })).await
@@ -963,7 +963,7 @@ async fn v2_str(State(app): State<AppRef>, h: HeaderMap, Path(alert_id): Path<St
 /// Alerts linked into scam campaigns by shared payee, payee identifiers in messages, or near identical scripts.
 async fn v2_campaigns(State(app): State<AppRef>) -> ApiResult {
     with_state(app, |s| {
-        ok(Value::Array(rusetect::campaigns::build_recent(&s.desk.alerts)))
+        ok(Value::Array(rusetect::campaigns::build_recent_values(s.desk.alerts.values())))
     }).await
 }
 

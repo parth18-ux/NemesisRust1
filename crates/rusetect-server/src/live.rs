@@ -421,7 +421,7 @@ impl Attempt {
     /// never committed or answered); otherwise a void entry names them.
     fn unwind(&self, s: &mut AppState, ev_id: &str) {
         if let Some(a) = &self.alert_id {
-            s.desk.alerts.shift_remove(a);
+            s.desk.alerts.remove(a);
         }
         if self.end == self.mark {
             return;
@@ -440,7 +440,7 @@ impl Attempt {
     /// voided only if a later attempt finds the event uncommitted.
     fn unknown(&self, s: &mut AppState, ev_id: &str) {
         if let Some(a) = &self.alert_id {
-            s.desk.alerts.shift_remove(a);
+            s.desk.alerts.remove(a);
         }
         if self.end > self.mark {
             let v = self.void(s, ev_id, "commit outcome unknown; a later attempt found the event uncommitted");
