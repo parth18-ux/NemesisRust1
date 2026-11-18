@@ -393,7 +393,7 @@ pub async fn v2_investigation_narrative(State(app): State<AppRef>, h: HeaderMap,
             let record = pack["alert"]["event_id"].as_str().and_then(|e| live::stored_event(&app, e).ok().flatten()).unwrap_or(Value::Null);
             Some(json!({"pack": pack, "record": record}))
         }).collect();
-        let camps = rusetect::campaigns::build_recent(&lock(&app.state).desk.alerts);
+        let camps = rusetect::campaigns::build_recent_values(lock(&app.state).desk.alerts.values());
         ok(rusetect::narrative::build(&c, &alerts, &camps))
     }).await
 }

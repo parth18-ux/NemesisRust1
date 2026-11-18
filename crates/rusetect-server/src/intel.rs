@@ -492,7 +492,7 @@ pub async fn v2_dashboard(State(app): State<AppRef>, h: HeaderMap, Query(q): Que
         let s = lock(&app.state);
         let eng = s.engine.as_ref();
         let demo_n = s.demo.ptr.saturating_sub(s.demo.warm);
-        let campaigns = rusetect::campaigns::build_recent(&s.desk.alerts).len();
+        let campaigns = rusetect::campaigns::build_recent_values(s.desk.alerts.values()).len();
         ok(json!({
             "generated_at": now,
             "data": {"kind": c.data_kind(), "live_events": c.live_seq, "demo_payments_replayed": demo_n,

@@ -33,7 +33,12 @@ pub const MAX_ALERTS: usize = 2_000;
 
 /// Campaigns over the newest MAX_ALERTS alerts of the review desk (kept in arrival order).
 pub fn build_recent(alerts: &IndexMap<String, Value>) -> Vec<Value> {
-    let all: Vec<&Value> = alerts.values().skip(alerts.len().saturating_sub(MAX_ALERTS)).collect();
+    build_recent_values(alerts.values())
+}
+
+pub fn build_recent_values<'a>(alerts: impl ExactSizeIterator<Item = &'a Value>) -> Vec<Value> {
+    let skip = alerts.len().saturating_sub(MAX_ALERTS);
+    let all: Vec<&Value> = alerts.skip(skip).collect();
     build(&all)
 }
 
