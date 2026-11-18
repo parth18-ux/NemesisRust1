@@ -539,6 +539,10 @@ mod f1 {
 
     /// Start Redis and the server on the F1 ports. Returns them, a Redis connection and the two pids.
     async fn start() -> (Kill, Kill, redis::Connection, String, String) {
+        for p in [REDIS_PORT, SERVER_PORT] {
+            // a leftover process on a fixed port would answer in place of the fresh one
+            drop(std::net::TcpListener::bind(("127.0.0.1", p)).unwrap_or_else(|_| panic!("port {p} is in use")));
+        }
         let (redis, url) = redis_server_on(REDIS_PORT).await;
         let (srv, _) = server_on(SERVER_PORT, Some(&url)).await;
         let con = redis::Client::open(url.as_str()).unwrap().get_connection().unwrap();
