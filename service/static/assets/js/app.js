@@ -13,19 +13,15 @@ const SECTIONS = [
   {k: "H", id: "assistant", name: "AI-assisted investigation", load: () => import("./assistant.js")},
   {k: "I", id: "reports", name: "Reports and evidence", load: () => import("./reports.js")},
 ];
-const OTHER = [["/console", "Live console"], ["/investigate", "Investigator"], ["/report", "Benchmark report"], ["/docs", "API docs"]];
 
 const main = $("#main");
-const side = $("#side");
-const menu = $("#menu");
-const scrim = $("#scrim");
 
 function drawNav(current) {
-  $("#nav").innerHTML = html`<div class="nav-h">Workspace</div>
-    ${SECTIONS.map((s) => html`<a href="#/${s.id}" data-id="${s.id}" ${s.id === current ? html`aria-current="page"` : ""}>
-      <span class="k" aria-hidden="true">${s.k}</span><span>${s.name}</span>${s.load ? "" : html`<span class="soon">${s.stage}</span>`}</a>`)}
-    <div class="nav-h">Other pages</div>
-    ${OTHER.map(([href, name]) => html`<a href="${href}"><span class="k" aria-hidden="true">&#8599;</span><span>${name}</span></a>`)}`;
+  $("#nav").innerHTML = html`${SECTIONS.map((s) => html`<a href="#/${s.id}" data-id="${s.id}" ${s.id === current ? html`aria-current="page"` : ""}>
+      <span class="k" aria-hidden="true">${s.k}</span><span>${s.name}</span>${s.load ? "" : html`<span class="soon">${s.stage}</span>`}</a>`)}`;
+  // narrow screens scroll the section nav sideways: bring the current section into view without moving the page
+  const cur = $("#nav [aria-current]");
+  if (cur) cur.parentElement.scrollLeft = cur.offsetLeft - 16;
 }
 
 function soonView(s) {
@@ -48,8 +44,8 @@ async function route() {
   drawNav(s.id);
   $("#title").textContent = s.name;
   document.title = `${s.name} · RuseTect`;
-  closeMenu();
   $$(".drawer, dialog").forEach((d) => d.remove());
+  $("#scrim").hidden = true;
   const seq = ++renderSeq;
   if (!s.load) { soonView(s); return; }
   main.innerHTML = html`<p class="muted" role="status">Loading ${s.name.toLowerCase()}…</p>`;
@@ -60,12 +56,6 @@ async function route() {
     if (seq === renderSeq) main.innerHTML = html`<div class="banner err" role="alert">This view failed to load: ${e.explain || e.message}</div>`;
   }
 }
-
-function openMenu() { side.classList.add("open"); scrim.hidden = false; menu.setAttribute("aria-expanded", "true"); $("#nav a")?.focus(); }
-function closeMenu() { side.classList.remove("open"); scrim.hidden = true; menu.setAttribute("aria-expanded", "false"); }
-menu.addEventListener("click", () => (side.classList.contains("open") ? closeMenu() : openMenu()));
-scrim.addEventListener("click", closeMenu);
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && side.classList.contains("open")) { closeMenu(); menu.focus(); } });
 
 $("#theme").addEventListener("click", () => {
   const t = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
