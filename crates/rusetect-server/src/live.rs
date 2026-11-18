@@ -16,6 +16,12 @@
 //! `Idempotent-Replayed: true`) and is not scored or written again. In Redis the claim is `pending:<seq>`, a token unique
 //! to this request; the commit is applied only while ev:{id} still holds that token, and a failed request deletes only
 //! its own claim, so a request that outlived its claim (CLAIM_TTL_S) cannot overwrite or delete a retry's claim or result.
+//! A commit that did not land takes its alert and desk-chain entries back out of the desk (Attempt::unwind), so the
+//! retry leaves one alert and one decision; when the outcome is unknown, the entries are voided by the next attempt that
+//! finds the event uncommitted. The retry is scored from the features stored with the payment's first account write
+//! (seen:{eid}), and its pair-window member replaces the earlier one, so it decides as a clean single send would.
+//! A success means the decision and its feed, ledger and alert records are all written: a record the commit could not
+//! write stays listed in repair:{id}, the answer is a 503, and every replay completes the list before answering.
 //!
 //! Concurrency (Redis mode): scoring and Redis I/O run outside the state mutex, on a small connection pool
 //! (RUSETECT_LIVE_POOL, default 2 x logical CPUs). Payments that share a payer or a payee are scored one at a time
@@ -65,15 +71,43 @@ const CLAIM_AND_SEQ: &str = "local v = redis.call('GET', KEYS[1]) if v then retu
     local n = tostring(redis.call('INCR', KEYS[2])) redis.call('SET', KEYS[1], 'pending:' .. n, 'EX', ARGV[1]) return {1, n}";
 /// Delete a claim only while it is still ours (a retry may hold the key by now).
 const RELEASE: &str = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0";
-/// Commit only while ev:{id} holds our claim: store the result, then the feed, ledger and alert (each attempted, as in a
-/// MULTI: the stored result stands when one of them fails). Not ours: return what ev:{id} holds (a result, another
+/// Key types the side records need (none: not created yet); a key of another type is refused before anything is written.
+const CHECK_TYPES: &str = "local function bad_type(k, want) local t = redis.call('TYPE', k)['ok'] return t ~= 'none' and t ~= want end \
+    if bad_type(KEYS[2], 'list') or bad_type(KEYS[3], 'list') or bad_type(KEYS[4], 'hash') or bad_type(KEYS[5], 'hash') then return {2, false} end ";
+/// Apply the side records listed in repair:{id} (KEYS[5]), each removed from it once written; returns how many are
+/// still missing. Shared by COMMIT and REPAIR, so a retry completes exactly the records a commit could not write.
+const APPLY: &str = "local function apply(feed_last, ledger_first, fail) local left = 0 \
+    for _, f in ipairs({'feed', 'ledger', 'alert'}) do local v = redis.call('HGET', KEYS[5], f) if v then local r \
+    if f == fail then r = {err = 'injected fault'} \
+    elseif f == 'feed' then r = redis.pcall('LPUSH', KEYS[2], v) redis.pcall('LTRIM', KEYS[2], 0, feed_last) \
+    elseif f == 'ledger' then r = redis.pcall('RPUSH', KEYS[3], v) redis.pcall('LTRIM', KEYS[3], ledger_first, -1) \
+    else r = redis.pcall('HSET', KEYS[4], redis.call('HGET', KEYS[5], 'alert_id'), v) end \
+    if type(r) == 'table' and r.err then left = left + 1 else redis.call('HDEL', KEYS[5], f) end end end \
+    if left == 0 then redis.call('DEL', KEYS[5]) end return left end ";
+/// Commit only while ev:{id} holds our claim. A side-record key of the wrong type: {2}, nothing written. Otherwise the
+/// side records (feed, ledger, alert) are listed in repair:{id} first, then the result is stored, then each record is
+/// written and struck off the list: {1, records still missing}. A result is never stored without its repair list, so
+/// a missing record is completed by the next replay (REPAIR). Not ours: {0, what ev:{id} holds} (a result, another
 /// request's claim, or nil when the claim expired), having written nothing.
-/// KEYS ev feed ledger alerts; ARGV token record event_ttl feed_last ledger_entry ledger_first alert_id alert.
-const COMMIT: &str = "local v = redis.call('GET', KEYS[1]) if v ~= ARGV[1] then return {0, v} end \
-    redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3]) local bad = 0 \
-    local function try(...) local r = redis.pcall(...) if type(r) == 'table' and r.err then bad = bad + 1 end end \
-    try('LPUSH', KEYS[2], ARGV[2]) try('LTRIM', KEYS[2], 0, ARGV[4]) try('RPUSH', KEYS[3], ARGV[5]) try('LTRIM', KEYS[3], ARGV[6], -1) \
-    if ARGV[7] ~= '' then try('HSET', KEYS[4], ARGV[7], ARGV[8]) end return {1, tostring(bad)}";
+/// KEYS ev feed ledger alerts repair; ARGV token record event_ttl feed_last ledger_entry ledger_first alert_id alert fault.
+const COMMIT: &str = "local v = redis.call('GET', KEYS[1]) if v ~= ARGV[1] then return {0, v} end ";
+/// Replay of a stored result: complete its missing side records ({2} on a key of the wrong type, else {1, still
+/// missing}). KEYS as COMMIT; ARGV feed_last ledger_first.
+const REPAIR: &str = "if redis.call('EXISTS', KEYS[5]) == 0 then return {1, '0'} end ";
+
+fn commit_script() -> &'static str {
+    static S: OnceLock<String> = OnceLock::new();
+    S.get_or_init(|| format!("{COMMIT}{CHECK_TYPES}{APPLY}\
+        redis.call('HSET', KEYS[5], 'feed', ARGV[2], 'ledger', ARGV[5]) \
+        if ARGV[7] ~= '' then redis.call('HSET', KEYS[5], 'alert', ARGV[8], 'alert_id', ARGV[7]) end \
+        redis.call('EXPIRE', KEYS[5], ARGV[3]) redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3]) \
+        return {{1, tostring(apply(ARGV[4], ARGV[6], ARGV[9]))}}"))
+}
+
+fn repair_script() -> &'static str {
+    static S: OnceLock<String> = OnceLock::new();
+    S.get_or_init(|| format!("{REPAIR}{CHECK_TYPES}{APPLY}return {{1, tostring(apply(ARGV[1], ARGV[2], ''))}}"))
+}
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
@@ -118,6 +152,10 @@ pub struct Durable {
     /// live alerts: an analyst action (write) holds it from its HGET through its HSET, a read (read) from its HGET until
     /// the copy is in the desk, so a read never puts a copy older than an action into the desk
     alert_io: RwLock<()>,
+    /// failure injection for tests (`fail_next_commit`): 0 none, 1 commit not sent, 2 commit applied and its reply lost,
+    /// 3 commit not sent and the outcome check fails too (outcome unknown), 5/6/7 the feed/ledger/alert write fails
+    /// after the result is stored
+    fault: AtomicU8,
 }
 
 impl Durable {
@@ -126,7 +164,13 @@ impl Durable {
         let size = std::env::var("RUSETECT_LIVE_POOL").ok().and_then(|v| v.trim().parse().ok()).filter(|&n: &usize| n > 0).unwrap_or(2 * cores);
         Durable { client, px: px.into(), idle: Mutex::new(vec![]), slots: Arc::new(tokio::sync::Semaphore::new(size)), size,
                   reachable: AtomicU8::new(0), eng: OnceLock::new(), stripes: std::array::from_fn(|_| Mutex::new(())),
-                  ledger_order: Mutex::new(()), alert_io: RwLock::new(()) }
+                  ledger_order: Mutex::new(()), alert_io: RwLock::new(()), fault: AtomicU8::new(0) }
+    }
+
+    /// Test hook: make the next commit fail as `fault` describes (see the field).
+    #[doc(hidden)]
+    pub fn fail_next_commit(&self, fault: u8) {
+        self.fault.store(fault, Ordering::Relaxed);
     }
 
     fn key(&self, k: &str) -> String {
@@ -214,15 +258,55 @@ impl Durable {
         Ok(Ok((seq, format!("pending:{seq}"))))
     }
 
-    /// The COMMIT script: (1, failed side writes) when applied, else (0, what ev:{id} holds). No retry: a commit whose
-    /// reply was lost may have been applied.
+    /// KEYS of COMMIT and REPAIR for the event whose ev: key is `key`.
+    fn side_keys(&self, key: &str) -> [String; 5] {
+        let id = key.rsplit_once("live:ev:").map(|x| x.1).unwrap_or(key);
+        [key.to_string(), self.key("feed"), self.key("ledger"), self.key("alerts"), self.key(&format!("repair:{id}"))]
+    }
+
+    /// The COMMIT script: (1, side records still missing) when the result was stored, (2, _) when a side-record key has
+    /// the wrong type (nothing written), else (0, what ev:{id} holds). No retry: a commit whose reply was lost may have
+    /// been applied.
     fn commit(&self, key: &str, token: &str, rec: &Value, entry: &Value, alert: Option<&Value>) -> redis::RedisResult<(i64, Option<String>)> {
-        let (fk, ak, lk) = (self.key("feed"), self.key("alerts"), self.key("ledger"));
         let (aid, abody) = alert.map(|a| (a["alert_id"].as_str().unwrap_or("").to_string(), a.to_string())).unwrap_or_default();
+        let fault = self.fault.load(Ordering::Relaxed);
+        let side_fault = match fault { 5 => "feed", 6 => "ledger", 7 => "alert", _ => "" };
+        if !side_fault.is_empty() {
+            self.fault.store(0, Ordering::Relaxed);
+        }
         let mut c = redis::cmd("EVAL");
-        c.arg(COMMIT).arg(4).arg(key).arg(&fk).arg(&lk).arg(&ak).arg(token).arg(rec.to_string()).arg(EVENT_TTL_S).arg(FEED - 1)
-            .arg(entry.to_string()).arg(-(LEDGER_MAX as i64)).arg(&aid).arg(&abody);
-        self.run(false, |st| c.query(&mut st.con))
+        c.arg(commit_script()).arg(5).arg(&self.side_keys(key)[..]).arg(token).arg(rec.to_string()).arg(EVENT_TTL_S).arg(FEED - 1)
+            .arg(entry.to_string()).arg(-(LEDGER_MAX as i64)).arg(&aid).arg(&abody).arg(side_fault);
+        let injected = || Err(redis::RedisError::from((redis::ErrorKind::IoError, "injected fault")));
+        if fault == 1 || fault == 3 {
+            self.fault.store(if fault == 3 { 4 } else { 0 }, Ordering::Relaxed);
+            return injected();
+        }
+        let r = self.run(false, |st| c.query(&mut st.con));
+        if fault == 2 && r.is_ok() {
+            self.fault.store(0, Ordering::Relaxed);
+            return injected();
+        }
+        r
+    }
+
+    /// After a commit error: what ev:{id} holds now.
+    fn outcome(&self, key: &str) -> redis::RedisResult<Option<String>> {
+        if self.fault.swap(0, Ordering::Relaxed) == 4 {
+            return Err(redis::RedisError::from((redis::ErrorKind::IoError, "injected fault")));
+        }
+        self.run(true, |st| redis::cmd("GET").arg(key).query(&mut st.con))
+    }
+
+    /// Before a stored result is answered: complete the side records its commit could not write. Ok when none is missing.
+    fn repair(&self, key: &str) -> Result<(), ApiError> {
+        let mut c = redis::cmd("EVAL");
+        c.arg(repair_script()).arg(5).arg(&self.side_keys(key)[..]).arg(FEED - 1).arg(-(LEDGER_MAX as i64));
+        let (code, left): (i64, Option<String>) = self.run(true, |st| c.query(&mut st.con)).map_err(store_err)?;
+        if code == 1 && left.as_deref() == Some("0") {
+            return Ok(());
+        }
+        Err(incomplete())
     }
 
     fn get_alert(&self, id: &str) -> Result<Option<Value>, ApiError> {
@@ -247,6 +331,9 @@ pub struct Live {
     events: IndexMap<String, Value>,
     feed: VecDeque<Value>,
     seq: u64,
+    /// Redis mode: attempts whose commit outcome was unknown (store unreachable), by event id, with the void entry that
+    /// settles their desk-chain entries if a later attempt finds the event uncommitted (`settle_unknown`)
+    unsettled: IndexMap<String, Value>,
 }
 
 impl Live {
@@ -287,6 +374,12 @@ impl Live {
     }
 }
 
+/// A stored decision whose feed, ledger or alert record is not written yet: a 503 (with Retry-After), so the sender
+/// retries and the replay completes the records.
+fn incomplete() -> ApiError {
+    ApiError::new(503, "durable store: the decision is stored but its feed, ledger or alert record is not written yet; retry")
+}
+
 fn store_err(e: redis::RedisError) -> ApiError {
     ApiError::new(503, format!("durable store unavailable: {e}"))
 }
@@ -302,6 +395,69 @@ pub struct Event {
 fn eid_of(id: &str) -> i64 {
     let h = Sha256::digest(id.as_bytes());
     i64::from_be_bytes(h[..8].try_into().unwrap()) & i64::MAX
+}
+
+/// Attempts with an unknown commit outcome remembered per instance (oldest dropped first).
+const MAX_UNSETTLED: usize = 10_000;
+
+/// What `decide` added to this instance's desk for one attempt: its alert and the desk-chain entries log[mark..end].
+struct Attempt {
+    seq: u64,
+    alert_id: Option<String>,
+    mark: usize,
+    end: usize,
+}
+
+impl Attempt {
+    /// The void entry for this attempt's desk-chain entries: it names them by hash, so the chain stays append-only.
+    fn void(&self, s: &AppState, ev_id: &str, reason: &str) -> Value {
+        let voids: Vec<Value> = s.desk.log.get(self.mark..self.end).unwrap_or_default().iter().map(|e| e["hash"].clone()).collect();
+        json!({"type": "live_decision_void", "event_id": ev_id, "event_seq": self.seq, "alert_id": self.alert_id, "voids": voids,
+               "reason": reason})
+    }
+
+    /// The commit did not land: take this attempt out of the desk, so a retry leaves one alert and one decision. Its
+    /// chain entries are removed while they are still the chain's tail (nothing was chained after them, and they were
+    /// never committed or answered); otherwise a void entry names them.
+    fn unwind(&self, s: &mut AppState, ev_id: &str) {
+        if let Some(a) = &self.alert_id {
+            s.desk.alerts.shift_remove(a);
+        }
+        if self.end == self.mark {
+            return;
+        }
+        let tail = s.desk.log.len() == self.end;
+        if tail {
+            s.desk.log.truncate(self.mark);
+        } else {
+            let v = self.void(s, ev_id, "commit not applied");
+            s.desk.append(v);
+        }
+    }
+
+    /// The commit outcome is unknown (the store was unreachable): the desk's copy of the alert goes (live alerts are read
+    /// from Redis, where it is if the commit landed); the chain entries stay, since live:ledger may hold them, and are
+    /// voided only if a later attempt finds the event uncommitted.
+    fn unknown(&self, s: &mut AppState, ev_id: &str) {
+        if let Some(a) = &self.alert_id {
+            s.desk.alerts.shift_remove(a);
+        }
+        if self.end > self.mark {
+            let v = self.void(s, ev_id, "commit outcome unknown; a later attempt found the event uncommitted");
+            s.live.unsettled.insert(ev_id.to_string(), v);
+            if s.live.unsettled.len() > MAX_UNSETTLED {
+                s.live.unsettled.shift_remove_index(0);
+            }
+        }
+    }
+}
+
+/// Called holding a fresh claim on ev:{id}, so no result is stored: an earlier attempt here whose outcome was unknown did
+/// not commit, and its chain entries are voided before this attempt decides.
+fn settle_unknown(s: &mut AppState, ev_id: &str) {
+    if let Some(v) = s.live.unsettled.shift_remove(ev_id) {
+        s.desk.append(v);
+    }
 }
 
 fn action_of(decision: &str) -> &'static str {
@@ -342,7 +498,7 @@ fn ingest_redis(app: &crate::Shared, du: &Durable, ev: &Event, ready: Result<(),
     let key = du.key(&format!("ev:{}", ev.id));
     let (seq, token) = match du.claim(&key).map_err(store_err)? {
         Ok(x) => x,
-        Err(v) => return stored(v),
+        Err(v) => return replay(du, &key, v),
     };
     // P1, no state lock: 2. score on the bank-scale path, account state and pair window in Redis (one at a time per
     // payer and per payee)
@@ -361,11 +517,21 @@ fn ingest_redis(app: &crate::Shared, du: &Durable, ev: &Event, ready: Result<(),
     };
     // P2, state lock: 3-4 (PRAMAAN only raises, so an allow without a PRAMAAN request stays unchained)
     let chained = decision_rank(r["final_decision"].as_str().unwrap_or("Approve")) > 0 || ev.auth.is_some();
+    // (held to the end, so the desk-chain entries of a commit that did not land are still the chain's tail when unwound)
     let _order = chained.then(|| lock(&du.ledger_order));
-    let res = decide(&mut lock(&app.state), ev, &d, seq, Some(&r));
+    let (res, att) = {
+        let mut s = lock(&app.state);
+        settle_unknown(&mut s, &ev.id);
+        let mark = s.desk.log.len();
+        let res = decide(&mut s, ev, &d, seq, Some(&r));
+        let att = Attempt { seq, alert_id: res.as_ref().ok().and_then(|x| x.0["alert_id"].as_str().map(String::from)), mark, end: s.desk.log.len() };
+        (res, att)
+    };
+    let unwind = || att.unwind(&mut lock(&app.state), &ev.id);
     let (mut rec, alert, entry) = match res {
         Ok(x) => x,
         Err(e) => {
+            unwind();
             du.release(&key, &token);
             return Err(e);
         }
@@ -373,28 +539,53 @@ fn ingest_redis(app: &crate::Shared, du: &Durable, ev: &Event, ready: Result<(),
     rec["latency_ms"] = jf(py_round(t0.elapsed().as_secs_f64() * 1000.0, 2));
     // P3, no state lock: 5. commit, only while ev:{id} still holds our claim
     match du.commit(&key, &token, &rec, &entry, alert.as_ref()) {
-        Ok((1, bad)) => {
-            if bad.as_deref().is_some_and(|b| b != "0") {
-                eprintln!("live commit {}: result stored, {} feed/ledger/alert write(s) failed", ev.id, bad.unwrap_or_default());
-            }
-            Ok((rec, false))
+        Ok((1, left)) if left.as_deref() == Some("0") => Ok((rec, false)),
+        // the decision is stored (the desk keeps it) but a side record is not: the replay completes it
+        Ok((1, left)) => {
+            eprintln!("live commit {}: result stored, {} feed/ledger/alert record(s) left for the replay", ev.id, left.unwrap_or_default());
+            Err(incomplete())
+        }
+        // a side-record key of the wrong type: nothing was written, so the retry is processed afresh
+        Ok((2, _)) => {
+            unwind();
+            du.release(&key, &token);
+            Err(ApiError::new(503, "durable store: a feed, ledger or alert key has the wrong type; nothing was committed, retry"))
         }
         // our claim expired while we worked: what ev:{id} holds now wins, and nothing of ours was written
-        Ok((_, v)) => stored(v),
+        Ok((_, v)) => {
+            unwind();
+            replay(du, &key, v)
+        }
         Err(e) => {
             // look before releasing the claim: our stored result means the commit was applied (a reply timeout)
-            match du.run(true, |st| redis::cmd("GET").arg(&key).query::<Option<String>>(&mut st.con)) {
+            match du.outcome(&key) {
                 Ok(Some(v)) if !v.starts_with("pending") => {
                     let r: Value = serde_json::from_str(&v).unwrap_or(rec);
                     let ours = r["seq"].as_u64() == Some(seq);
+                    if !ours {
+                        unwind();
+                    }
+                    du.repair(&key)?;
                     return Ok((r, !ours));
                 }
-                Ok(_) => du.release(&key, &token),
-                Err(_) => {} // unknown: the claim expires after CLAIM_TTL_S, and a late commit needs the claim, so no double commit
+                Ok(_) => {
+                    unwind();
+                    du.release(&key, &token);
+                }
+                // unknown: the claim expires after CLAIM_TTL_S, and a late commit needs the claim, so no double commit
+                Err(_) => att.unknown(&mut lock(&app.state), &ev.id),
             }
             Err(store_err(e))
         }
     }
+}
+
+/// `stored`, with a stored result's missing side records completed first (else a 503).
+fn replay(du: &Durable, key: &str, v: Option<String>) -> Result<(Value, bool), ApiError> {
+    if v.as_deref().is_some_and(|v| !v.starts_with("pending")) {
+        du.repair(key)?;
+    }
+    stored(v)
 }
 
 /// What ev:{id} holds when it is not ours: a stored result is replayed, another request's claim is a 409 (with

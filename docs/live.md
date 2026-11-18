@@ -101,9 +101,19 @@ not scored or written again. With Redis this holds across all function instances
 life of one instance.
 
 Every 5xx is safe to retry. When Redis fails before the commit, the claim on the `event_id` is released, so the retry
-is scored afresh; per-account totals are deduped by event (`seen:` keys), so they never count a payment twice (the 24 h
-pair window can: see Limits). When the outcome of the commit is unknown, the claim expires after 60 s and the retry
-then gets either the stored result or a fresh scoring, never a second commit. Each claim is a token unique to its
+is scored afresh, and it decides as a clean single send would: per-account totals are deduped by event (`seen:` keys,
+which also hold the features the payment was first scored with, so the retry is scored from those rather than from
+state that already holds its own write), and the 24 h pair window keeps one member per event (the retry replaces its
+own). The alert and desk-chain entries an attempt opened are taken back out when its commit did not land, so the retry
+leaves one alert, one ledger entry and one decision, and the stored `ev:` record, the alert, its evidence pack and the
+ledger agree. When the outcome of the commit is unknown, the claim expires after 60 s and the retry then gets either
+the stored result or a fresh scoring, never a second commit; on the instance that lost the outcome, the earlier
+attempt's desk-chain entries are then voided by a `live_decision_void` entry (the chain stays append-only and valid).
+A success always means the decision and its feed, ledger and alert records are all written. The commit checks those
+keys first and writes nothing when one has the wrong type (a `503`, claim released, the retry is processed afresh).
+Otherwise it lists the records in `live:repair:{event_id}` before storing the decision; a record whose write still
+fails stays listed and the answer is a `503`. Every replay completes the listed records first (each written once) and
+answers with the stored result, or with a `503` again while the store cannot take them. Each claim is a token unique to its
 request, and the commit and the release apply only while the token is still there: a request that outlives its claim
 cannot commit over a retry or delete the retry's claim or result; it answers with the retry's result, a `409`, or a
 `503` when nothing was committed.
@@ -184,9 +194,10 @@ the alert from `live:alerts`, and a review action writes the updated alert back.
   (both accounts' stripes), and the state lock is held only for PRAMAAN, the alert and the desk chain
   (`docs/SCALING.md` section 3c). Reading, listing and reviewing live alerts and the live feed also run their Redis calls
   outside the state lock. On Vercel an instance serves one request at a time anyway.
-- Known limits, left as they are: a commit that fails after scoring leaves the alert and desk-chain entry it opened on
-  that instance (an orphan; the retry opens its own); a retry that is scored afresh adds its risk to the 24 h pair
-  window a second time (account totals are deduped, the pair window is not); the drift monitor is fed by demo replay
+- Known limits, left as they are: when a commit's outcome is unknown and the retry lands on another instance, the
+  first instance's desk-chain entries for the attempt stay unvoided there (its alert copy is dropped; live alerts are
+  read from Redis); a retry rescored after `seen:` expired (26 h) is scored from current state; PRAMAAN's per-user
+  history and the drift monitor see each scored attempt; the drift monitor is fed by demo replay
   traffic as well as live events; with Redis an instance holds two engines in memory (the desk's and the stateless one
   the Redis path scores with).
 - The per-client rate limit (`RUSETECT_RATE_LIMIT`, requests per 10 s) applies to the webhook too and the webhook is not

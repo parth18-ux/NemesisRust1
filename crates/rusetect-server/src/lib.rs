@@ -396,7 +396,7 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/models/sanctions_sdn.csv", "research/out/sanctions_eval.json", "research/out/sanctions_eval_v2.json",
     "research/out/payee_check_eval.json", "research/out/payee_check_eval_v2.json",
     "service/static/index.html", "service/static/console.html", "service/static/investigate.html", "service/static/report.html",
-    "service/static/app.html", "service/static/assets/app.css", "service/static/assets/js/theme.js", "service/static/assets/js/app.js",
+    "service/static/app.html", "service/static/assets/tokens.css", "service/static/assets/app.css", "service/static/assets/js/theme.js", "service/static/assets/js/app.js",
     "service/static/assets/js/api.js", "service/static/assets/js/util.js", "service/static/assets/js/dashboard.js", "service/static/assets/js/alerts.js",
     "service/static/assets/js/network.js", "service/static/assets/js/transactions.js", "service/static/assets/js/investigations.js",
     "service/static/assets/js/assistant.js", "service/static/assets/js/reports.js",

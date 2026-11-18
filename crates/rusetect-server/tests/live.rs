@@ -296,18 +296,22 @@ async fn redis_failures_release_the_claim_or_keep_an_applied_commit() {
     redis::cmd("DEL").arg("f:a:{070|FV1}").query::<()>(&mut con).unwrap();
     let (s, ok, replayed) = send(&app, &event("evt-f1", "FV1"), now(), None).await;
     assert_eq!((s, replayed), (StatusCode::OK, false), "{ok}");
-    // the commit transaction reports an error after storing the result (feed of the wrong type): the stored result
-    // stands, so the claim is not released and a retry is a replay, not a second commit
+    // a side-record key of the wrong type (the feed): the commit writes nothing, not even the result, so the answer is a
+    // 503 rather than a success with a missing feed record; the claim is released and, once the key is fixed, the
+    // retry is processed (not a replay) and leaves one ledger entry
     redis::cmd("SET").arg("f:live:feed").arg("x").query::<()>(&mut con).unwrap();
-    let (s, first, _) = send(&app, &event("evt-f2", "FV2"), now(), None).await;
-    assert_eq!(s, StatusCode::OK, "{first}");
+    let (s, _, _) = send(&app, &event("evt-f2", "FV2"), now(), None).await;
+    assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(redis::cmd("GET").arg("f:live:ev:evt-f2").query::<Option<String>>(&mut con).unwrap(), None, "nothing stored");
+    redis::cmd("DEL").arg("f:live:feed").query::<()>(&mut con).unwrap();
+    let (s, first, replayed) = send(&app, &event("evt-f2", "FV2"), now(), None).await;
+    assert_eq!((s, replayed), (StatusCode::OK, false), "{first}");
     let (s, again, replayed) = send(&app, &event("evt-f2", "FV2"), now(), None).await;
     assert_eq!((s, replayed), (StatusCode::OK, true));
     assert_eq!(again, first);
     let n: i64 = redis::cmd("LLEN").arg("f:live:ledger").query(&mut con).unwrap();
     assert_eq!(n, 2, "one ledger entry per event");
     // a dropped connection is reopened once, without a PING per request
-    redis::cmd("DEL").arg("f:live:feed").query::<()>(&mut con).unwrap();
     redis::cmd("CLIENT").arg("KILL").arg("TYPE").arg("normal").arg("SKIPME").arg("yes").query::<i64>(&mut con).unwrap();
     let (s, _, _) = send(&app, &event("evt-f3", "FV3"), now(), None).await;
     assert_eq!(s, StatusCode::OK);
@@ -537,4 +541,223 @@ async fn concurrent_outage_fails_closed() {
     }
     drop(r);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A second 9000 ACH payment on one pair inside 24 h: the pair window raises it above allow, so it opens an alert.
+fn pair_events(acct: &str) -> (Value, Value) {
+    let mut b = event(&format!("{acct}-2"), acct);
+    b["timestamp"] = json!("2022-09-09 10:05");
+    (event(&format!("{acct}-1"), acct), b)
+}
+
+/// One process's view of one event: (live alerts for it, live:ledger entries for it, desk alerts for it, desk
+/// live_decision entries for it not voided). Checks the desk chain and that record, alert, evidence pack and ledger agree.
+fn one_decision(shared: &rusetect_server::AppRef, con: &mut redis::Connection, px: &str, rec: &Value) -> (usize, usize, usize, usize) {
+    let id = rec["event_id"].as_str().unwrap();
+    let alerts: Vec<(String, String)> = redis::cmd("HGETALL").arg(format!("{px}live:alerts")).query(con).unwrap();
+    let alerts: Vec<Value> = alerts.iter().map(|x| serde_json::from_str::<Value>(&x.1).unwrap()).filter(|a| a["event_id"] == id).collect();
+    let ledger: Vec<String> = redis::cmd("LRANGE").arg(format!("{px}live:ledger")).arg(0).arg(-1).query(con).unwrap();
+    let ledger: Vec<Value> = ledger.iter().map(|x| serde_json::from_str::<Value>(x).unwrap()).filter(|e| e["event_id"] == id).collect();
+    let stored: String = redis::cmd("GET").arg(format!("{px}live:ev:{id}")).query(con).unwrap();
+    assert_eq!(serde_json::from_str::<Value>(&stored).unwrap(), *rec, "ev: record is the answer");
+    for e in &ledger {
+        assert_eq!((&e["final_decision"], &e["alert_id"], &e["hash"]), (&rec["final_decision"], &rec["alert_id"], &rec["ledger"]["hash"]));
+    }
+    let st = shared.state.lock().unwrap();
+    assert!(st.desk.verify_chain());
+    let voided: Vec<&Value> = st.desk.log.iter().filter(|e| e["type"] == "live_decision_void").flat_map(|e| e["voids"].as_array().unwrap()).collect();
+    let desk_alerts = st.desk.alerts.values().filter(|a| a["event_id"] == id).count();
+    let entries: Vec<&Value> = st.desk.log.iter().filter(|e| e["type"] == "live_decision" && e["event_id"] == id && !voided.contains(&&e["hash"])).collect();
+    for e in &entries {
+        assert_eq!((&e["final_decision"], &e["hash"]), (&rec["final_decision"], &rec["ledger"]["hash"]));
+    }
+    if let Some(aid) = rec["alert_id"].as_str() {
+        assert_eq!(alerts.iter().map(|a| a["alert_id"].as_str().unwrap()).collect::<Vec<_>>(), [aid]);
+        let pack = st.desk.evidence(aid).expect("evidence pack");
+        assert_eq!(pack["alert"]["event_id"], id);
+        assert_eq!(pack["alert"]["assessed"]["final_decision"], rec["final_decision"]);
+        let decided: Vec<&Value> = pack["audit_entries"].as_array().unwrap().iter().filter(|e| e["type"] == "live_decision").collect();
+        assert_eq!(decided.len(), 1, "{pack}");
+        assert_eq!(decided[0]["hash"], rec["ledger"]["hash"]);
+    }
+    (alerts.len(), ledger.len(), desk_alerts, entries.len())
+}
+
+fn redis_instance(r: &Redis, px: &str) -> (axum::Router, rusetect_server::AppRef, std::sync::Arc<rusetect_server::live::Durable>) {
+    let (app, shared) = app();
+    let live = rusetect_server::live::Live::redis(&r.1, px).unwrap();
+    let du = live.redis.clone().unwrap();
+    shared.state.lock().unwrap().live = live;
+    (app, shared, du)
+}
+
+/// The commit fails after decide opened the alert and chained the entries: the attempt is taken out of the desk, the
+/// claim released, and the retry (scored again from the features the payment was first scored with, its own pair-window
+/// member replaced) gives exactly what a clean single send gives: one alert, one ledger entry, one decision.
+#[tokio::test]
+async fn a_commit_failure_then_a_retry_leaves_one_alert_one_entry_and_the_clean_decision() {
+    let Some(r) = redis_server() else { return };
+    let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
+    let (a, b) = pair_events("CF1");
+    // clean single send, in its own namespace
+    let (clean_app, _, _) = redis_instance(&r, "c:");
+    assert_eq!(send(&clean_app, &a, now(), None).await.0, StatusCode::OK);
+    let (s, clean, _) = send(&clean_app, &b, now(), None).await;
+    assert_eq!(s, StatusCode::OK, "{clean}");
+    assert_ne!(clean["action"], "allow", "the pair window raises the second payment: {clean}");
+    // the same two payments, the second one's commit failing once
+    let (app, shared, du) = redis_instance(&r, "k:");
+    assert_eq!(send(&app, &a, now(), None).await.0, StatusCode::OK);
+    let chain = shared.state.lock().unwrap().desk.log.len();
+    du.fail_next_commit(1);
+    assert_eq!(send(&app, &b, now(), None).await.0, StatusCode::SERVICE_UNAVAILABLE);
+    {
+        let st = shared.state.lock().unwrap();
+        assert_eq!(st.desk.log.len(), chain, "the attempt's chain entries are gone");
+        assert!(!st.desk.alerts.values().any(|x| x["event_id"] == "CF1-2"), "no orphan alert");
+    }
+    assert_eq!(redis::cmd("GET").arg("k:live:ev:CF1-2").query::<Option<String>>(&mut con).unwrap(), None, "claim released");
+    let (s, rec, replayed) = send(&app, &b, now(), None).await;
+    assert_eq!((s, replayed), (StatusCode::OK, false), "{rec}");
+    assert_eq!(one_decision(&shared, &mut con, "k:", &rec), (1, 1, 1, 1));
+    for k in ["action", "final_decision", "payment_decision", "risk", "context_band"] {
+        assert_eq!(rec[k], clean[k], "{k}: the retry decides as a clean single send");
+    }
+    // the pair window holds each payment once, with the same risks as the clean send
+    let window = |px: &str, con: &mut redis::Connection| {
+        let keys: Vec<String> = redis::cmd("KEYS").arg(format!("{px}pr:*")).query(con).unwrap();
+        assert_eq!(keys.len(), 1);
+        redis::cmd("ZRANGE").arg(&keys[0]).arg(0).arg(-1).query::<Vec<String>>(con).unwrap()
+    };
+    let w = window("k:", &mut con);
+    assert_eq!(w.len(), 2, "{w:?}");
+    assert_eq!(w, window("c:", &mut con));
+    // and a further retry is a replay
+    let (s, again, replayed) = send(&app, &b, now(), None).await;
+    assert_eq!((s, replayed, &again), (StatusCode::OK, true, &rec));
+    assert_eq!(one_decision(&shared, &mut con, "k:", &rec), (1, 1, 1, 1));
+}
+
+/// The commit is applied but its reply is lost: the request finds its own result and answers with it; the alert and the
+/// ledger entry it opened stand, once; a retry is a replay.
+#[tokio::test]
+async fn a_lost_commit_reply_gives_one_decision() {
+    let Some(r) = redis_server() else { return };
+    let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
+    let (app, shared, du) = redis_instance(&r, "lr:");
+    let mut e = event("LR-1", "LR1");
+    e["amount_paid"] = json!(950000);
+    e["timestamp"] = json!("2022-09-09 03:00");
+    du.fail_next_commit(2);
+    let (s, rec, replayed) = send(&app, &e, now(), None).await;
+    assert_eq!((s, replayed), (StatusCode::OK, false), "{rec}");
+    assert!(rec["alert_id"].is_string(), "{rec}");
+    assert_eq!(one_decision(&shared, &mut con, "lr:", &rec), (1, 1, 1, 1));
+    let (s, again, replayed) = send(&app, &e, now(), None).await;
+    assert_eq!((s, replayed, &again), (StatusCode::OK, true, &rec));
+    assert_eq!(one_decision(&shared, &mut con, "lr:", &rec), (1, 1, 1, 1));
+}
+
+/// The commit fails and the store cannot say whether it landed: the desk drops its copy of the alert and keeps the chain
+/// entries (live:ledger may hold them). When the claim has expired and the retry finds the event uncommitted, those
+/// entries are voided before the retry decides: one alert, one live decision, one ledger entry, the chain still valid.
+#[tokio::test]
+async fn an_unknown_commit_outcome_is_settled_by_the_retry() {
+    let Some(r) = redis_server() else { return };
+    let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
+    let (app, shared, du) = redis_instance(&r, "uk:");
+    let (a, b) = pair_events("UK1");
+    assert_eq!(send(&app, &a, now(), None).await.0, StatusCode::OK);
+    du.fail_next_commit(3);
+    assert_eq!(send(&app, &b, now(), None).await.0, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(!shared.state.lock().unwrap().desk.alerts.values().any(|x| x["event_id"] == "UK1-2"));
+    let claim: Option<String> = redis::cmd("GET").arg("uk:live:ev:UK1-2").query(&mut con).unwrap();
+    assert!(claim.unwrap().starts_with("pending:"), "outcome unknown: the claim is left to expire");
+    redis::cmd("DEL").arg("uk:live:ev:UK1-2").query::<()>(&mut con).unwrap(); // CLAIM_TTL_S passes
+    let (s, rec, replayed) = send(&app, &b, now(), None).await;
+    assert_eq!((s, replayed), (StatusCode::OK, false), "{rec}");
+    assert_eq!(one_decision(&shared, &mut con, "uk:", &rec), (1, 1, 1, 1));
+    let st = shared.state.lock().unwrap();
+    let void = st.desk.log.iter().find(|e| e["type"] == "live_decision_void").expect("the earlier attempt is voided");
+    assert_eq!((void["event_id"].as_str(), void["voids"].as_array().unwrap().len()), (Some("UK1-2"), 2), "{void}");
+}
+
+/// Memory mode decides and commits in one locked call, so there is no partial failure; a retry is a replay and record,
+/// alert, evidence pack and ledger agree on the one decision.
+#[tokio::test]
+async fn memory_mode_retry_keeps_one_decision() {
+    let (app, shared) = app();
+    let (a, b) = pair_events("MM1");
+    assert_eq!(send(&app, &a, now(), None).await.0, StatusCode::OK);
+    let (s, rec, _) = send(&app, &b, now(), None).await;
+    assert_eq!(s, StatusCode::OK);
+    let (s, again, replayed) = send(&app, &b, now(), None).await;
+    assert_eq!((s, replayed, &again), (StatusCode::OK, true, &rec));
+    let st = shared.state.lock().unwrap();
+    let entries: Vec<&Value> = st.desk.log.iter().filter(|e| e["type"] == "live_decision" && e["event_id"] == "MM1-2").collect();
+    assert_eq!(entries.len(), 1);
+    assert_eq!((&entries[0]["final_decision"], &entries[0]["hash"]), (&rec["final_decision"], &rec["ledger"]["hash"]));
+    assert_eq!(st.desk.alerts.values().filter(|x| x["event_id"] == "MM1-2").count(), rec["alert_id"].is_string() as usize);
+    if let Some(aid) = rec["alert_id"].as_str() {
+        let pack = st.desk.evidence(aid).unwrap();
+        assert_eq!(pack["alert"]["event_id"], "MM1-2");
+        assert_eq!(pack["audit_entries"].as_array().unwrap().iter().filter(|e| e["type"] == "live_decision").count(), 1);
+    }
+    assert_eq!(st.engine.as_ref().unwrap().n_seen, 2, "account state written once per payment");
+}
+
+/// A feed, ledger or alert record is never missing behind a success. A key of the wrong type: the commit writes
+/// nothing (503, claim released) and the retry is processed once the key is fixed. A write that fails after the result
+/// was stored: 503, the record stays listed in repair:{id}, and each replay completes it (503 again while the store is
+/// still broken), then answers with the stored result; every record exists once.
+#[tokio::test]
+async fn a_failed_feed_ledger_or_alert_write_is_never_a_silent_success() {
+    let Some(r) = redis_server() else { return };
+    let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
+    let (app, shared, du) = redis_instance(&r, "sw:");
+    let blocking = |id: &str| {
+        let mut e = event(id, &format!("{id}A"));
+        e["amount_paid"] = json!(950000);
+        e["timestamp"] = json!("2022-09-09 03:00");
+        e
+    };
+    for (i, (target, key)) in [("feed", "sw:live:feed"), ("ledger", "sw:live:ledger"), ("alert", "sw:live:alerts")].into_iter().enumerate() {
+        let (break_key, fix_key) = (|con: &mut redis::Connection| {
+            redis::cmd("RENAME").arg(key).arg(format!("{key}:keep")).query::<()>(con).ok();
+            redis::cmd("SET").arg(key).arg("x").query::<()>(con).unwrap();
+        }, |con: &mut redis::Connection| {
+            redis::cmd("DEL").arg(key).query::<()>(con).unwrap();
+            redis::cmd("RENAME").arg(format!("{key}:keep")).arg(key).query::<()>(con).ok();
+        });
+        // the wrong type: nothing written, the retry is processed afresh
+        let e = blocking(&format!("SWT{i}"));
+        break_key(&mut con);
+        assert_eq!(send(&app, &e, now(), None).await.0, StatusCode::SERVICE_UNAVAILABLE, "{target}");
+        assert_eq!(redis::cmd("GET").arg(format!("sw:live:ev:SWT{i}")).query::<Option<String>>(&mut con).unwrap(), None, "{target}");
+        fix_key(&mut con);
+        let (s, rec, replayed) = send(&app, &e, now(), None).await;
+        assert_eq!((s, replayed), (StatusCode::OK, false), "{target}: {rec}");
+        assert_eq!(one_decision(&shared, &mut con, "sw:", &rec), (1, 1, 1, 1), "{target}");
+        // the write fails after the result was stored: 503 until the replay has completed the record
+        let e = blocking(&format!("SWF{i}"));
+        du.fail_next_commit(5 + i as u8);
+        let (s, body, _) = send(&app, &e, now(), None).await;
+        assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE, "{target}: {body}");
+        let stored: String = redis::cmd("GET").arg(format!("sw:live:ev:SWF{i}")).query(&mut con).unwrap();
+        let rec: Value = serde_json::from_str(&stored).unwrap();
+        let pending: Vec<String> = redis::cmd("HKEYS").arg(format!("sw:live:repair:SWF{i}")).query(&mut con).unwrap();
+        assert!(pending.contains(&target.to_string()), "{target}: {pending:?}");
+        break_key(&mut con);
+        assert_eq!(send(&app, &e, now(), None).await.0, StatusCode::SERVICE_UNAVAILABLE, "{target}: store still broken");
+        fix_key(&mut con);
+        let (s, again, replayed) = send(&app, &e, now(), None).await;
+        assert_eq!((s, replayed, &again), (StatusCode::OK, true, &rec), "{target}");
+        assert_eq!(redis::cmd("EXISTS").arg(format!("sw:live:repair:SWF{i}")).query::<i64>(&mut con).unwrap(), 0);
+        assert_eq!(one_decision(&shared, &mut con, "sw:", &rec), (1, 1, 1, 1), "{target}");
+        let feed: Vec<String> = redis::cmd("LRANGE").arg("sw:live:feed").arg(0).arg(-1).query(&mut con).unwrap();
+        assert_eq!(feed.iter().filter(|x| x.contains(&format!("\"SWF{i}\""))).count(), 1, "{target}: one feed record");
+        // a further replay writes nothing more
+        assert_eq!(send(&app, &e, now(), None).await.1, rec);
+        assert_eq!(one_decision(&shared, &mut con, "sw:", &rec), (1, 1, 1, 1), "{target}");
+    }
 }

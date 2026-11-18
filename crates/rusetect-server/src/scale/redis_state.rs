@@ -6,8 +6,10 @@
 //!   wo:{acct}   zset   outgoing payments in the last 24 h (score = minute), member "eid|counterparty|usd"
 //!   wi:{acct}   zset   incoming payments in the last 24 h
 //!   bp          set    bank corridors seen
-//!   pr:{acct}>payee  zset  cascade risks of this payer->payee pair in the last 24 h (structuring window), member "eid|risk"
-//!   seen:{eid}  string  set once per payment eid (26 h), so a redelivered payment does not write account state twice
+//!   pr:{acct}>payee  zset  cascade risks of this payer->payee pair in the last 24 h (structuring window), member "eid|risk",
+//!               one member per eid (a rescored payment replaces its own member)
+//!   seen:{eid}  string  set once per payment eid (26 h), holding the features it was first scored with: a redelivered
+//!               payment does not write account state twice and is scored again from the same features
 //! Per payment: one pipelined read round trip, features computed exactly as Engine::features, then one Lua script that
 //! claims seen:{eid} and applies the writes atomically (a crash cannot leave the claim without the writes). score_one
 //! sends that script and the pair window in one round trip.
@@ -48,6 +50,14 @@ fn window(members: &[String], new_key: &str, usd: f64) -> (usize, usize, f64) {
     (keys.len(), members.len() + 1, total.max(0.0))
 }
 
+/// `seen:{eid}`'s value, "f {sender fan-in} {31 features}" (NaN kept), back to (fan-in, features); None for anything else.
+fn decode_features(v: &str) -> Option<(usize, [f64; 31])> {
+    let mut it = v.strip_prefix("f ")?.split(' ');
+    let sf = it.next()?.parse().ok()?;
+    let xs: Vec<f64> = it.map(|x| x.parse().ok()).collect::<Option<_>>()?;
+    Some((sf, xs.try_into().ok()?))
+}
+
 pub struct RedisState {
     pub con: redis::Connection,
     pub cfg: CascadeConfig,
@@ -62,7 +72,8 @@ impl RedisState {
 
     /// The structuring window of Engine::finish_risk (engine::PairWindow) kept in Redis, so a restarted or rebalanced
     /// worker keeps it: 24 h noisy-OR of the cascade risks of this payer's payments to `payee` (all payees when `payee`
-    /// is empty), current one included. A redelivered payment (same eid) is counted once. Returns (payments, noisy-OR).
+    /// is empty), current one included. A redelivered payment (same eid) is counted once, with its latest risk, and never
+    /// reads its own earlier member as a prior payment. Returns (payments, noisy-OR).
     pub fn pair_window(&mut self, p: &Payment, payee: &str, risk: f64) -> redis::RedisResult<(usize, f64)> {
         let mut pl = redis::pipe();
         self.pair_window_cmds(&mut pl, p, payee, risk);
@@ -75,16 +86,24 @@ impl RedisState {
     pub fn pair_window_cmds(&self, pl: &mut redis::Pipeline, p: &Payment, payee: &str, risk: f64) {
         let key = format!("{}>{}", self.k("pr", &format!("{}|{}", p.from_bank, p.from_account)), payee);
         let eid = p.eid.map(|e| e.to_string()).unwrap_or_else(|| format!("{}.{}", p.tmin, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
-        pl.cmd("ZREMRANGEBYSCORE").arg(&key).arg("-inf").arg(p.tmin - MIN24).ignore()
-            .cmd("ZADD").arg(&key).arg(p.tmin).arg(format!("{eid}|{risk}")).ignore()
-            .cmd("ZRANGE").arg(&key).arg(0).arg(-1)
-            .cmd("EXPIRE").arg(&key).arg(MIN24 * 60 + 3600).ignore();
+        // trim, drop this eid's own member (a rescore), add it with this risk, return the window
+        const PAIR: &str = "redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1]) \
+            for _, m in ipairs(redis.call('ZRANGE', KEYS[1], 0, -1)) do if string.sub(m, 1, #ARGV[3]) == ARGV[3] then redis.call('ZREM', KEYS[1], m) end end \
+            redis.call('ZADD', KEYS[1], ARGV[2], ARGV[3] .. ARGV[4]) redis.call('EXPIRE', KEYS[1], ARGV[5]) return redis.call('ZRANGE', KEYS[1], 0, -1)";
+        pl.cmd("EVAL").arg(PAIR).arg(1).arg(&key).arg(p.tmin - MIN24).arg(p.tmin).arg(format!("{eid}|")).arg(risk.to_string()).arg(MIN24 * 60 + 3600);
     }
 
-    /// (payments, noisy-OR) of the window's members.
+    /// (payments, noisy-OR) of the window's members. Members written before the window kept one per eid may repeat an
+    /// eid: each eid counts once, with its highest risk.
     pub fn pair_window_of(members: &[String]) -> (usize, f64) {
-        let prod: f64 = members.iter().map(|m| 1.0 - m.rsplit_once('|').and_then(|x| x.1.parse::<f64>().ok()).unwrap_or(0.0)).product();
-        (members.len(), 1.0 - prod)
+        let mut by_eid: indexmap::IndexMap<&str, f64> = indexmap::IndexMap::new();
+        for m in members {
+            let (eid, r) = m.rsplit_once('|').map(|(e, r)| (e, r.parse::<f64>().unwrap_or(0.0))).unwrap_or((m, 0.0));
+            let e = by_eid.entry(eid).or_insert(r);
+            *e = e.max(r);
+        }
+        let prod: f64 = by_eid.values().map(|r| 1.0 - r).product();
+        (by_eid.len(), 1.0 - prod)
     }
 
     fn k(&self, kind: &str, acct: &str) -> String {
@@ -107,10 +126,14 @@ impl RedisState {
         let eid = p.eid.map(|e| e.to_string()).unwrap_or_else(|| format!("{t}.{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let lo = format!("({}", t - MIN24);
         let bpk = format!("{}bp", self.px);
+        // seen:{eid} of a payment already written holds the features it was scored with (never set for a payment without
+        // an eid, whose made-up eid is unique)
+        let seen_key = self.k("seen", &eid);
         let (sa, da): (Vec<Option<String>>, Vec<Option<String>>);
         let (seen, recip, bp_seen): (bool, bool, bool);
         let (wo, wi, wi_s): (Vec<String>, Vec<String>, Vec<String>);
-        (sa, da, seen, recip, bp_seen, wo, wi, wi_s) = redis::pipe()
+        let first: Option<String>;
+        (sa, da, seen, recip, bp_seen, wo, wi, wi_s, first) = redis::pipe()
             .cmd("HMGET").arg(self.k("a", &s)).arg(&A_S[..])
             .cmd("HMGET").arg(self.k("a", &d)).arg(&A_D[..])
             .cmd("SISMEMBER").arg(self.k("p", &s)).arg(&d)
@@ -119,6 +142,7 @@ impl RedisState {
             .cmd("ZRANGEBYSCORE").arg(self.k("wo", &s)).arg(&lo).arg("+inf")
             .cmd("ZRANGEBYSCORE").arg(self.k("wi", &d)).arg(&lo).arg("+inf")
             .cmd("ZRANGEBYSCORE").arg(self.k("wi", &s)).arg(&lo).arg("+inf")
+            .cmd("GET").arg(&seen_key)
             .query(&mut self.con)?;
         self.last_sender_fan_in = wi_s.iter().map(|m| cp(m).0).collect::<HashSet<_>>().len();
         let nan = f64::NAN;
@@ -150,12 +174,19 @@ impl RedisState {
         f[D_CNT_24H] = b as f64;
         f[RECIPROCAL] = recip as i64 as f64;
         f[NEW_BANK_PAIR] = (!bp_seen) as i64 as f64;
+        let stored = format!("f {} {}", self.last_sender_fan_in, f.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(" "));
+        // a redelivered payment: its own write is in the state read above, so score it from the features it was first
+        // scored with (the write below is then skipped by the claim)
+        if let Some((sf, f0)) = first.as_deref().and_then(decode_features) {
+            self.last_sender_fan_in = sf;
+            f = f0;
+        }
         // ---- writes, as one script: claim seen:{eid} with SET NX, then apply every write, or nothing when the claim
         // exists. At-least-once delivery replays a payment scored before a crash: it is rescored from the current state
         // (so a decision is still emitted) without writing again. A payment without an eid has no identity to dedupe
         // on and always writes. ARGV after the TTL is a flat list of commands, each prefixed by its word count.
-        const CLAIM_AND_WRITE: &str = "if KEYS[1] and not redis.call('SET', KEYS[1], 1, 'NX', 'EX', ARGV[1]) then return 0 end \
-            local i = 2 while i <= #ARGV do local n = tonumber(ARGV[i]) redis.call(unpack(ARGV, i + 1, i + n)) i = i + n + 1 end return 1";
+        const CLAIM_AND_WRITE: &str = "if KEYS[1] and not redis.call('SET', KEYS[1], ARGV[2], 'NX', 'EX', ARGV[1]) then return 0 end \
+            local i = 3 while i <= #ARGV do local n = tonumber(ARGV[i]) redis.call(unpack(ARGV, i + 1, i + n)) i = i + n + 1 end return 1";
         let (ka_s, ka_d, ko_s, ki_d) = (self.k("a", &s), self.k("a", &d), self.k("wo", &s), self.k("wi", &d));
         let (u, ts, old) = (py_repr(usd), t.to_string(), (t - MIN24).to_string());
         let (mo, mi) = (format!("{eid}|{d}|{u}"), format!("{eid}|{s}|{u}"));
@@ -183,9 +214,9 @@ impl RedisState {
         if !bp_seen {
             w.push(vec!["SADD", &bpk, &bp]);
         }
-        let seen_key = p.eid.map(|e| self.k("seen", &e.to_string()));
+        let seen_key = p.eid.map(|_| seen_key);
         let mut c = redis::cmd("EVAL");
-        c.arg(CLAIM_AND_WRITE).arg(seen_key.is_some() as i32).arg(&seen_key).arg(26 * 3600);
+        c.arg(CLAIM_AND_WRITE).arg(seen_key.is_some() as i32).arg(&seen_key).arg(26 * 3600).arg(&stored);
         for x in &w {
             c.arg(x.len()).arg(x);
         }

@@ -43,11 +43,13 @@ pub fn parse_keys(raw: &str) -> Result<IndexMap<String, Analyst>, String> {
     if m.is_empty() {
         return Err("no keys".into());
     }
-    m.iter().map(|(k, a)| {
-        let analyst = a["analyst"].as_str().filter(|s| !s.trim().is_empty()).ok_or(format!("key {}...: no analyst", &k[..k.len().min(4)]))?;
-        let role = a["role"].as_str().filter(|r| ROLES.contains(r)).ok_or(format!("key {}...: role must be one of {ROLES:?}", &k[..k.len().min(4)]))?;
+    // errors name the entry by position, never by any part of the key: they go to the log
+    m.iter().enumerate().map(|(i, (k, a))| {
+        let n = i + 1;
+        let analyst = a["analyst"].as_str().filter(|s| !s.trim().is_empty()).ok_or(format!("entry {n}: no analyst"))?;
+        let role = a["role"].as_str().filter(|r| ROLES.contains(r)).ok_or(format!("entry {n}: role must be one of {ROLES:?}"))?;
         if k.chars().count() < 16 {
-            return Err(format!("key {}...: shorter than 16 characters", &k[..k.len().min(4)]));
+            return Err(format!("entry {n}: key shorter than 16 characters"));
         }
         Ok((k.clone(), Analyst { analyst: analyst.into(), role: role.into() }))
     }).collect()
@@ -315,6 +317,9 @@ mod tests {
         for bad in ["", "[]", "{}", r#"{"short": {"analyst": "a", "role": "analyst"}}"#, r#"{"0123456789abcdef": {"analyst": "a", "role": "root"}}"#] {
             assert!(parse_keys(bad).is_err(), "{bad:?} must be refused at start-up");
         }
+        // a bad entry is reported by position: no part of the key reaches the log, and a multi-byte key cannot panic
+        let e = parse_keys(r#"{"€€€secretpart": {"analyst": "a", "role": "root"}}"#).unwrap_err();
+        assert!(e.starts_with("entry 1:") && !e.contains('€') && !e.contains("secret"), "{e}");
     }
 
     #[test]
