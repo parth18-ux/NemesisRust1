@@ -434,8 +434,8 @@ mod f1 {
     const LEVELS: [usize; 5] = [1, 8, 32, 64, 128];
     const N_WEBHOOK: usize = 20_000;
     const WARM_WEBHOOK: usize = 1_000;
-    const N_READ: usize = 3_000;
-    const WARM_READ: usize = 200;
+    const N_READ: usize = 200;
+    const WARM_READ: usize = 20;
     const REPS: usize = 3;
     const SERVER_PORT: u16 = 8210;
     const REDIS_PORT: u16 = 8250;

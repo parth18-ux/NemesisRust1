@@ -214,7 +214,7 @@ quotes only that file.
     /api/v2/dashboard`; `GET /api/v2/transactions?limit=50&offset=k` with `k` cycling over 0, 50, ... 950; `GET
     /api/v2/graph?account=A&depth=2` for an account taken from the newest stored payment; `GET
     /api/v2/alerts?limit=50&offset=k` with `k` cycling the same way. 200 warm-up then 3,000 requests per endpoint
-    and level.
+    and level (cut by amendment 1 below).
 * Repetitions: 3. The table reports the median of the three for every figure, with the three throughputs next to it.
 * Per level: throughput (successful responses per wall second); latency p50, p95, p99 and max of successful requests;
   error rate (non-200 responses and connection errors over requests); CPU of the server, of `redis-server` and of the
@@ -230,6 +230,11 @@ quotes only that file.
   stored or decided, all tests green). If one is made, F1 is run again in full (3 repetitions) on the fixed code and
   both runs are kept in `results/perf_f1.json` and reported side by side. No target is set in advance: F1 and F2
   are measurements, not a pass or fail test.
+* **Amendment 1, made before any read result was recorded.** The first run was stopped during its first read level:
+  with the store as F1 leaves it, one `GET /api/v2/dashboard` took close to a second, so 3,000 requests per endpoint
+  and level (60,000 per repetition) would have run for many hours. The read load is cut to 20 warm-up and 200
+  requests per endpoint and level; everything else stands. The webhook figures of that stopped run were not kept;
+  the full protocol, webhook included, was run again from the start.
 * Scope, stated in the report: a shared 4-CPU container where the load generator, the server and Redis compete for the
   same cores; no network hop, TLS or cold start; not the Vercel deployment and **not a production capacity figure**.
 
