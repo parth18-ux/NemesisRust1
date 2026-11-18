@@ -616,6 +616,18 @@ payment. The window is now updated by one script that drops the event's own memb
 stores the features of the first scoring, so a retry is scored from them, not from state holding its own write: in
 the failure-injection test the retry's decision, risk and pair-window members equal a clean single send's. Tests
 inject a failed commit, a lost reply and an unknown outcome through a test hook (`Durable::fail_next_commit`).
+An external review (Codex) of that commit found one more gap: the commit stored the decision before the feed, ledger and
+alert writes, which were attempted under `pcall`, and the request answered `200` even when one failed, so a success
+could hide a missing ledger entry or alert (the old test expected exactly that replay). The contract is now: a success
+means every record is written. The commit checks the key types first and writes nothing on a mismatch (a `503`, claim
+released, a clean retry); otherwise it lists the side records in `live:repair:{id}` before storing the decision and
+strikes each off once written, so a decision is never stored without the list of what is still missing. A record left
+over gives a `503` with Retry-After, and every replay completes the list (each record once, by the same Lua code) before
+answering with the stored result, or answers `503` again while the store cannot take it. Rolling the decision back
+instead was not possible: Lua scripts in Redis have no rollback. A ledger entry completed by a replay lands after
+entries committed in the meantime; it keeps its own `seq` and hash. One test per record (feed, ledger, alert) covers
+both paths. The pair window also counts members written before this change (`eid|risk` repeated for one eid) once, at
+their highest risk.
 
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.

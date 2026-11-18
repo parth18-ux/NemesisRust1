@@ -119,6 +119,11 @@ fn redis_pair_window_matches_engine_window() {
     assert_eq!(n, 2);
     assert!((nor - (1.0 - 0.75 * 0.5)).abs() < 1e-12);
     assert_eq!(rs.pair_window(&p, "d", 0.1).unwrap().0, 2);
+    // duplicate members written before the upgrade count once, at their highest risk
+    let old = ["7|0.2".to_string(), "7|0.4".to_string(), "8|0.5".to_string()];
+    let (n, nor) = RedisState::pair_window_of(&old);
+    assert_eq!(n, 2);
+    assert!((nor - (1.0 - 0.6 * 0.5)).abs() < 1e-12);
 }
 
 #[test]

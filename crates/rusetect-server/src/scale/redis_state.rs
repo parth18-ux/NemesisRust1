@@ -93,10 +93,17 @@ impl RedisState {
         pl.cmd("EVAL").arg(PAIR).arg(1).arg(&key).arg(p.tmin - MIN24).arg(p.tmin).arg(format!("{eid}|")).arg(risk.to_string()).arg(MIN24 * 60 + 3600);
     }
 
-    /// (payments, noisy-OR) of the window's members.
+    /// (payments, noisy-OR) of the window's members. Members written before the window kept one per eid may repeat an
+    /// eid: each eid counts once, with its highest risk.
     pub fn pair_window_of(members: &[String]) -> (usize, f64) {
-        let prod: f64 = members.iter().map(|m| 1.0 - m.rsplit_once('|').and_then(|x| x.1.parse::<f64>().ok()).unwrap_or(0.0)).product();
-        (members.len(), 1.0 - prod)
+        let mut by_eid: indexmap::IndexMap<&str, f64> = indexmap::IndexMap::new();
+        for m in members {
+            let (eid, r) = m.rsplit_once('|').map(|(e, r)| (e, r.parse::<f64>().unwrap_or(0.0))).unwrap_or((m, 0.0));
+            let e = by_eid.entry(eid).or_insert(r);
+            *e = e.max(r);
+        }
+        let prod: f64 = by_eid.values().map(|r| 1.0 - r).product();
+        (by_eid.len(), 1.0 - prod)
     }
 
     fn k(&self, kind: &str, acct: &str) -> String {

@@ -108,7 +108,12 @@ own). The alert and desk-chain entries an attempt opened are taken back out when
 leaves one alert, one ledger entry and one decision, and the stored `ev:` record, the alert, its evidence pack and the
 ledger agree. When the outcome of the commit is unknown, the claim expires after 60 s and the retry then gets either
 the stored result or a fresh scoring, never a second commit; on the instance that lost the outcome, the earlier
-attempt's desk-chain entries are then voided by a `live_decision_void` entry (the chain stays append-only and valid). Each claim is a token unique to its
+attempt's desk-chain entries are then voided by a `live_decision_void` entry (the chain stays append-only and valid).
+A success always means the decision and its feed, ledger and alert records are all written. The commit checks those
+keys first and writes nothing when one has the wrong type (a `503`, claim released, the retry is processed afresh).
+Otherwise it lists the records in `live:repair:{event_id}` before storing the decision; a record whose write still
+fails stays listed and the answer is a `503`. Every replay completes the listed records first (each written once) and
+answers with the stored result, or with a `503` again while the store cannot take them. Each claim is a token unique to its
 request, and the commit and the release apply only while the token is still there: a request that outlives its claim
 cannot commit over a retry or delete the retry's claim or result; it answers with the retry's result, a `409`, or a
 `503` when nothing was committed.
