@@ -439,6 +439,8 @@ mod f1 {
     const REPS: usize = 3;
     const SERVER_PORT: u16 = 8210;
     const REDIS_PORT: u16 = 8250;
+    /// the harness kills the server above this resident size (the container has 16 GB, shared with other sessions)
+    const RSS_CAP_MB: u64 = 6_000;
     const WEBHOOK: &str = "POST /api/v2/events/payment";
     const READS: [&str; 4] = ["GET /api/v2/dashboard", "GET /api/v2/transactions", "GET /api/v2/graph", "GET /api/v2/alerts"];
 
@@ -475,9 +477,27 @@ mod f1 {
         let idx = Arc::new(AtomicUsize::new(0));
         let (c0, r0, l0) = (cpu_s(srv), cpu_s(red), cpu_s("self"));
         let t0 = Instant::now();
+        // memory guard: past RSS_CAP_MB the server is killed and the level marked aborted, so the shared container's
+        // memory limit is never reached (the kernel would pick a victim, possibly another session's process)
+        let killed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let watch = {
+            let (srv, killed, idx) = (srv.to_string(), killed.clone(), idx.clone());
+            tokio::spawn(async move {
+                loop {
+                    let rss = status_kb(&srv, "VmRSS:") / 1024;
+                    if rss > RSS_CAP_MB {
+                        let _ = Command::new("kill").args(["-9", &srv]).status();
+                        killed.store(true, Ordering::Relaxed);
+                        idx.store(usize::MAX / 2, Ordering::Relaxed);
+                        return rss;
+                    }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+            })
+        };
         let mut tasks = vec![];
         for _ in 0..conc {
-            let (idx, mk) = (idx.clone(), mk.clone());
+            let (idx, mk, killed) = (idx.clone(), mk.clone(), killed.clone());
             tasks.push(tokio::spawn(async move {
                 let mut r = BufReader::new(TcpStream::connect(("127.0.0.1", port)).await.unwrap());
                 r.get_mut().set_nodelay(true).unwrap();
@@ -494,6 +514,9 @@ mod f1 {
                         Ok(_) => errors += 1,
                         Err(_) => {
                             errors += 1;
+                            if killed.load(Ordering::Relaxed) {
+                                break;
+                            }
                             r = BufReader::new(TcpStream::connect(("127.0.0.1", port)).await.unwrap());
                         }
                     }
@@ -508,6 +531,11 @@ mod f1 {
             errors += e;
         }
         let wall = t0.elapsed().as_secs_f64();
+        watch.abort();
+        if killed.load(Ordering::Relaxed) {
+            eprintln!("  server killed: resident memory above {RSS_CAP_MB} MB");
+            return json!({"concurrency": conc, "requests": n, "aborted": format!("server resident memory passed {RSS_CAP_MB} MB after {wall:.1} s with {} responses; server killed by the harness", lat.len())});
+        }
         lat.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let pct = |p: f64| if lat.is_empty() { 0.0 } else { lat[((p / 100.0 * lat.len() as f64).ceil() as usize).clamp(1, lat.len()) - 1] };
         let r2 = |x: f64| (x * 100.0).round() / 100.0;
@@ -574,12 +602,18 @@ mod f1 {
         let v: Value = serde_json::from_slice(&b).unwrap();
         let account = v["transactions"][0]["from_account"].as_str().unwrap().to_string();
         let mut reads = vec![];
+        let mut dead = false;
         for ep in READS {
             let mut rows = vec![];
             for c in LEVELS {
+                if dead {
+                    rows.push(json!({"concurrency": c, "skipped": "the server was killed at an earlier level of this repetition"}));
+                    continue;
+                }
                 eprintln!("f1 rep {rep} {ep} concurrency {c}");
                 run(port, 4.min(c), WARM_READ, read(port, ep, account.clone()), (&sp, &rp), &mut con).await;
                 let row = run(port, c, N_READ, read(port, ep, account.clone()), (&sp, &rp), &mut con).await;
+                dead = row.get("aborted").is_some();
                 eprintln!("  {} rps p99 {} ms errors {}", row["throughput_rps"], row["latency_ms"]["p99"], row["errors"]);
                 rows.push(row);
             }
@@ -597,7 +631,11 @@ mod f1 {
     /// [rep][level] rows -> per level {concurrency, median of every figure, repetitions}.
     fn summarise(reps: &[Vec<Value>]) -> Value {
         json!(LEVELS.iter().enumerate().map(|(i, c)| {
-            let rows: Vec<&Value> = reps.iter().map(|r| &r[i]).collect();
+            let all: Vec<&Value> = reps.iter().map(|r| &r[i]).collect();
+            let rows: Vec<&Value> = all.iter().copied().filter(|r| r.get("aborted").is_none() && r.get("skipped").is_none()).collect();
+            if rows.is_empty() {
+                return json!({"concurrency": c, "median": null, "completed_repetitions": 0, "repetitions": all});
+            }
             let m = |f: &dyn Fn(&Value) -> f64| (median(&rows.iter().map(|r| f(r)).collect::<Vec<_>>()) * 100.0).round() / 100.0;
             let num = |p: &'static str| move |r: &Value| r.pointer(p).and_then(Value::as_f64).unwrap_or(0.0);
             json!({"concurrency": c, "median": {
@@ -607,7 +645,7 @@ mod f1 {
                 "server_rss_mb": m(&num("/server_rss_mb")), "server_peak_rss_mb": m(&num("/server_peak_rss_mb")), "redis_used_memory_mb": m(&num("/redis_used_memory_mb"))},
                 "throughput_by_repetition": rows.iter().map(|r| r["throughput_rps"].clone()).collect::<Vec<_>>(),
                 "check_green": rows.iter().all(|r| r.get("check").is_none_or(|g| g["green"] == true)),
-                "repetitions": rows})
+                "completed_repetitions": rows.len(), "repetitions": all})
         }).collect::<Vec<_>>())
     }
 

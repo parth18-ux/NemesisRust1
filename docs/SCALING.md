@@ -235,6 +235,13 @@ quotes only that file.
   and level (60,000 per repetition) would have run for many hours. The read load is cut to 20 warm-up and 200
   requests per endpoint and level; everything else stands. The webhook figures of that stopped run were not kept;
   the full protocol, webhook included, was run again from the start.
+* **Amendment 2, made before any figure of the second run was kept.** In the second run the dashboard level at
+  concurrency 128 grew the server past the container's memory limit and the kernel killed it. The container is shared
+  with other sessions, so the harness now kills the server itself once it holds more than 6,000 MB resident, marks
+  that level aborted and skips the rest of that repetition's read levels; medians are taken over completed
+  repetitions only, and the count is reported. The code as it was is measured under this rule as run `f1_before`.
+  The memory growth is a defect (any reader can exhaust the server's memory), so it falls under the fix rule: if it is
+  fixed, the full protocol runs again on the fixed code as `f1_after`, and both are reported.
 * Scope, stated in the report: a shared 4-CPU container where the load generator, the server and Redis compete for the
   same cores; no network hop, TLS or cold start; not the Vercel deployment and **not a production capacity figure**.
 
