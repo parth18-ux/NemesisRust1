@@ -1,0 +1,1200 @@
+{
+  "what": "F1/F2: the signed Redis webhook and the workspace read endpoints at concurrency 1 to 128 (protocol: docs/SCALING.md section 3d)",
+  "generated_by": "crates/rusetect-server/examples/e2e_bench.rs (e2e_bench f1 [label])",
+  "scope": "One shared 4-CPU container: load generator, server and redis-server compete for the same cores. Loopback, no TLS, no cold start. Not the Vercel deployment and not a production capacity figure.",
+  "runs": {
+    "f1_before": {
+      "generated_at": "2026-11-18T11:14:13Z",
+      "git_head": "2b56a8e-dirty",
+      "machine": {
+        "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+        "logical_cpus": 4,
+        "os": "Linux 6.18.44-fc-v595",
+        "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+        "redis_server": "Redis server v=7.0.15 sha=00000000:0 malloc=jemalloc-5.3.0 bits=64 build=d064f9f48c901a92"
+      },
+      "rusetect_live_pool": null,
+      "design": {
+        "levels": [
+          1,
+          8,
+          32,
+          64,
+          128
+        ],
+        "repetitions": 3,
+        "webhook_requests_per_level": 20000,
+        "webhook_warmup": 1000,
+        "read_requests_per_level": 200,
+        "read_warmup": 20,
+        "server_port": 8210,
+        "redis_port": 8250,
+        "read_queries": {
+          "GET /api/v2/transactions": "limit=50, offset cycling 0..950 by 50",
+          "GET /api/v2/alerts": "limit=50, offset cycling 0..950 by 50",
+          "GET /api/v2/graph": "depth=2, account of the newest stored payment",
+          "GET /api/v2/dashboard": "no query"
+        },
+        "cpu": "CPU seconds over wall seconds from /proc/<pid>/stat; 1.0 is one of the 4 logical CPUs"
+      },
+      "results": {
+        "POST /api/v2/events/payment": [
+          {
+            "concurrency": 1,
+            "median": {
+              "throughput_rps": 865.9,
+              "p50": 1.08,
+              "p95": 1.78,
+              "p99": 2.22,
+              "max": 16.04,
+              "error_rate": 0.0,
+              "cpu_server": 0.6,
+              "cpu_redis": 0.25,
+              "cpu_load_generator": 0.06,
+              "server_rss_mb": 168.83,
+              "server_peak_rss_mb": 168.83,
+              "redis_used_memory_mb": 32.43
+            },
+            "throughput_by_repetition": [
+              801.62,
+              865.9,
+              869.45
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 1,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 24.95,
+                "throughput_rps": 801.62,
+                "latency_ms": {
+                  "p50": 1.17,
+                  "p95": 1.87,
+                  "p99": 2.22,
+                  "max": 61.85
+                },
+                "cpu_cores": {
+                  "server": 0.6,
+                  "redis": 0.25,
+                  "load_generator": 0.05
+                },
+                "server_rss_mb": 168.83,
+                "server_peak_rss_mb": 168.83,
+                "redis_used_memory_mb": 32.43,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 1,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 23.1,
+                "throughput_rps": 865.9,
+                "latency_ms": {
+                  "p50": 1.08,
+                  "p95": 1.78,
+                  "p99": 2.15,
+                  "max": 9.24
+                },
+                "cpu_cores": {
+                  "server": 0.6,
+                  "redis": 0.26,
+                  "load_generator": 0.06
+                },
+                "server_rss_mb": 179.87,
+                "server_peak_rss_mb": 179.87,
+                "redis_used_memory_mb": 32.43,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 1,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 23.0,
+                "throughput_rps": 869.45,
+                "latency_ms": {
+                  "p50": 1.07,
+                  "p95": 1.78,
+                  "p99": 2.23,
+                  "max": 16.04
+                },
+                "cpu_cores": {
+                  "server": 0.6,
+                  "redis": 0.24,
+                  "load_generator": 0.06
+                },
+                "server_rss_mb": 165.27,
+                "server_peak_rss_mb": 165.27,
+                "redis_used_memory_mb": 32.43,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              }
+            ]
+          },
+          {
+            "concurrency": 8,
+            "median": {
+              "throughput_rps": 3454.29,
+              "p50": 2.2,
+              "p95": 3.62,
+              "p99": 4.49,
+              "max": 9.93,
+              "error_rate": 0.0,
+              "cpu_server": 1.98,
+              "cpu_redis": 0.7,
+              "cpu_load_generator": 0.14,
+              "server_rss_mb": 204.73,
+              "server_peak_rss_mb": 204.73,
+              "redis_used_memory_mb": 63.3
+            },
+            "throughput_by_repetition": [
+              3387.61,
+              3454.29,
+              3891.69
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 8,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 5.9,
+                "throughput_rps": 3387.61,
+                "latency_ms": {
+                  "p50": 2.24,
+                  "p95": 3.73,
+                  "p99": 4.58,
+                  "max": 8.91
+                },
+                "cpu_cores": {
+                  "server": 1.97,
+                  "redis": 0.7,
+                  "load_generator": 0.13
+                },
+                "server_rss_mb": 204.73,
+                "server_peak_rss_mb": 204.73,
+                "redis_used_memory_mb": 63.3,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 8,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 5.79,
+                "throughput_rps": 3454.29,
+                "latency_ms": {
+                  "p50": 2.2,
+                  "p95": 3.62,
+                  "p99": 4.49,
+                  "max": 9.93
+                },
+                "cpu_cores": {
+                  "server": 1.98,
+                  "redis": 0.7,
+                  "load_generator": 0.14
+                },
+                "server_rss_mb": 216.42,
+                "server_peak_rss_mb": 216.42,
+                "redis_used_memory_mb": 63.3,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 8,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 5.14,
+                "throughput_rps": 3891.69,
+                "latency_ms": {
+                  "p50": 1.93,
+                  "p95": 3.31,
+                  "p99": 4.18,
+                  "max": 10.36
+                },
+                "cpu_cores": {
+                  "server": 2.03,
+                  "redis": 0.66,
+                  "load_generator": 0.14
+                },
+                "server_rss_mb": 201.54,
+                "server_peak_rss_mb": 201.54,
+                "redis_used_memory_mb": 63.3,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              }
+            ]
+          },
+          {
+            "concurrency": 32,
+            "median": {
+              "throughput_rps": 3884.84,
+              "p50": 8.07,
+              "p95": 11.32,
+              "p99": 13.51,
+              "max": 20.23,
+              "error_rate": 0.0,
+              "cpu_server": 2.16,
+              "cpu_redis": 0.66,
+              "cpu_load_generator": 0.14,
+              "server_rss_mb": 233.55,
+              "server_peak_rss_mb": 233.55,
+              "redis_used_memory_mb": 92.47
+            },
+            "throughput_by_repetition": [
+              3635.51,
+              3884.84,
+              3896.57
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 32,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 5.5,
+                "throughput_rps": 3635.51,
+                "latency_ms": {
+                  "p50": 8.6,
+                  "p95": 11.65,
+                  "p99": 13.51,
+                  "max": 20.23
+                },
+                "cpu_cores": {
+                  "server": 2.16,
+                  "redis": 0.66,
+                  "load_generator": 0.14
+                },
+                "server_rss_mb": 233.55,
+                "server_peak_rss_mb": 233.55,
+                "redis_used_memory_mb": 92.47,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 32,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 5.15,
+                "throughput_rps": 3884.84,
+                "latency_ms": {
+                  "p50": 7.91,
+                  "p95": 11.32,
+                  "p99": 14.44,
+                  "max": 25.48
+                },
+                "cpu_cores": {
+                  "server": 2.15,
+                  "redis": 0.65,
+                  "load_generator": 0.14
+                },
+                "server_rss_mb": 243.84,
+                "server_peak_rss_mb": 243.84,
+                "redis_used_memory_mb": 92.46,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 32,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 5.13,
+                "throughput_rps": 3896.57,
+                "latency_ms": {
+                  "p50": 8.07,
+                  "p95": 10.6,
+                  "p99": 11.93,
+                  "max": 15.5
+                },
+                "cpu_cores": {
+                  "server": 2.16,
+                  "redis": 0.68,
+                  "load_generator": 0.14
+                },
+                "server_rss_mb": 228.51,
+                "server_peak_rss_mb": 228.51,
+                "redis_used_memory_mb": 92.47,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              }
+            ]
+          },
+          {
+            "concurrency": 64,
+            "median": {
+              "throughput_rps": 3657.21,
+              "p50": 16.11,
+              "p95": 28.39,
+              "p99": 36.42,
+              "max": 43.98,
+              "error_rate": 0.0,
+              "cpu_server": 2.06,
+              "cpu_redis": 0.67,
+              "cpu_load_generator": 0.13,
+              "server_rss_mb": 256.96,
+              "server_peak_rss_mb": 256.96,
+              "redis_used_memory_mb": 123.57
+            },
+            "throughput_by_repetition": [
+              3657.21,
+              3763.35,
+              3624.84
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 64,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 5.47,
+                "throughput_rps": 3657.21,
+                "latency_ms": {
+                  "p50": 16.11,
+                  "p95": 28.39,
+                  "p99": 37.66,
+                  "max": 49.45
+                },
+                "cpu_cores": {
+                  "server": 2.06,
+                  "redis": 0.67,
+                  "load_generator": 0.13
+                },
+                "server_rss_mb": 256.96,
+                "server_peak_rss_mb": 256.96,
+                "redis_used_memory_mb": 123.57,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 64,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 5.31,
+                "throughput_rps": 3763.35,
+                "latency_ms": {
+                  "p50": 15.75,
+                  "p95": 28.62,
+                  "p99": 36.42,
+                  "max": 43.94
+                },
+                "cpu_cores": {
+                  "server": 2.03,
+                  "redis": 0.67,
+                  "load_generator": 0.13
+                },
+                "server_rss_mb": 266.44,
+                "server_peak_rss_mb": 266.44,
+                "redis_used_memory_mb": 123.56,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 64,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 5.52,
+                "throughput_rps": 3624.84,
+                "latency_ms": {
+                  "p50": 16.5,
+                  "p95": 28.34,
+                  "p99": 36.34,
+                  "max": 43.98
+                },
+                "cpu_cores": {
+                  "server": 2.06,
+                  "redis": 0.68,
+                  "load_generator": 0.13
+                },
+                "server_rss_mb": 250.85,
+                "server_peak_rss_mb": 250.85,
+                "redis_used_memory_mb": 123.57,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              }
+            ]
+          },
+          {
+            "concurrency": 128,
+            "median": {
+              "throughput_rps": 2683.2,
+              "p50": 42.63,
+              "p95": 72.41,
+              "p99": 79.8,
+              "max": 94.61,
+              "error_rate": 0.0,
+              "cpu_server": 1.92,
+              "cpu_redis": 0.53,
+              "cpu_load_generator": 0.11,
+              "server_rss_mb": 277.1,
+              "server_peak_rss_mb": 277.1,
+              "redis_used_memory_mb": 150.57
+            },
+            "throughput_by_repetition": [
+              2523.17,
+              2735.97,
+              2683.2
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 128,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 7.93,
+                "throughput_rps": 2523.17,
+                "latency_ms": {
+                  "p50": 46.56,
+                  "p95": 76.21,
+                  "p99": 84.18,
+                  "max": 94.61
+                },
+                "cpu_cores": {
+                  "server": 1.96,
+                  "redis": 0.54,
+                  "load_generator": 0.11
+                },
+                "server_rss_mb": 277.1,
+                "server_peak_rss_mb": 277.1,
+                "redis_used_memory_mb": 150.57,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 128,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 7.31,
+                "throughput_rps": 2735.97,
+                "latency_ms": {
+                  "p50": 42.0,
+                  "p95": 70.97,
+                  "p99": 77.24,
+                  "max": 93.07
+                },
+                "cpu_cores": {
+                  "server": 1.92,
+                  "redis": 0.53,
+                  "load_generator": 0.11
+                },
+                "server_rss_mb": 283.65,
+                "server_peak_rss_mb": 283.65,
+                "redis_used_memory_mb": 150.56,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 128,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 7.45,
+                "throughput_rps": 2683.2,
+                "latency_ms": {
+                  "p50": 42.63,
+                  "p95": 72.41,
+                  "p99": 79.8,
+                  "max": 146.53
+                },
+                "cpu_cores": {
+                  "server": 1.92,
+                  "redis": 0.53,
+                  "load_generator": 0.12
+                },
+                "server_rss_mb": 268.3,
+                "server_peak_rss_mb": 268.3,
+                "redis_used_memory_mb": 150.57,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              }
+            ]
+          }
+        ],
+        "GET /api/v2/dashboard": [
+          {
+            "concurrency": 1,
+            "median": {
+              "throughput_rps": 1.63,
+              "p50": 609.45,
+              "p95": 714.74,
+              "p99": 759.42,
+              "max": 808.69,
+              "error_rate": 0.0,
+              "cpu_server": 0.97,
+              "cpu_redis": 0.03,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1775.73,
+              "server_peak_rss_mb": 1939.57,
+              "redis_used_memory_mb": 150.52
+            },
+            "throughput_by_repetition": [
+              1.7,
+              1.63,
+              1.57
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 1,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 117.94,
+                "throughput_rps": 1.7,
+                "latency_ms": {
+                  "p50": 588.68,
+                  "p95": 669.74,
+                  "p99": 716.21,
+                  "max": 786.03
+                },
+                "cpu_cores": {
+                  "server": 0.97,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2110.4,
+                "server_peak_rss_mb": 2166.96,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 1,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 122.47,
+                "throughput_rps": 1.63,
+                "latency_ms": {
+                  "p50": 609.45,
+                  "p95": 714.74,
+                  "p99": 759.42,
+                  "max": 808.69
+                },
+                "cpu_cores": {
+                  "server": 0.97,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1775.73,
+                "server_peak_rss_mb": 1939.57,
+                "redis_used_memory_mb": 150.51
+              },
+              {
+                "concurrency": 1,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 127.49,
+                "throughput_rps": 1.57,
+                "latency_ms": {
+                  "p50": 626.15,
+                  "p95": 749.39,
+                  "p99": 831.67,
+                  "max": 920.78
+                },
+                "cpu_cores": {
+                  "server": 0.97,
+                  "redis": 0.02,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1719.86,
+                "server_peak_rss_mb": 1881.26,
+                "redis_used_memory_mb": 150.52
+              }
+            ]
+          },
+          {
+            "concurrency": 8,
+            "median": {
+              "throughput_rps": 2.57,
+              "p50": 3103.17,
+              "p95": 3666.23,
+              "p99": 3937.64,
+              "max": 4561.95,
+              "error_rate": 0.0,
+              "cpu_server": 1.66,
+              "cpu_redis": 0.04,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 2059.84,
+              "server_peak_rss_mb": 2059.84,
+              "redis_used_memory_mb": 150.58
+            },
+            "throughput_by_repetition": [
+              2.67,
+              2.54,
+              2.57
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 8,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 74.83,
+                "throughput_rps": 2.67,
+                "latency_ms": {
+                  "p50": 2978.03,
+                  "p95": 3626.77,
+                  "p99": 3937.64,
+                  "max": 4911.59
+                },
+                "cpu_cores": {
+                  "server": 1.67,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2168.89,
+                "server_peak_rss_mb": 2168.89,
+                "redis_used_memory_mb": 150.58
+              },
+              {
+                "concurrency": 8,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 78.85,
+                "throughput_rps": 2.54,
+                "latency_ms": {
+                  "p50": 3152.51,
+                  "p95": 3666.23,
+                  "p99": 4087.84,
+                  "max": 4323.41
+                },
+                "cpu_cores": {
+                  "server": 1.66,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2059.84,
+                "server_peak_rss_mb": 2059.84,
+                "redis_used_memory_mb": 150.66
+              },
+              {
+                "concurrency": 8,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 77.81,
+                "throughput_rps": 2.57,
+                "latency_ms": {
+                  "p50": 3103.17,
+                  "p95": 3719.36,
+                  "p99": 3837.84,
+                  "max": 4561.95
+                },
+                "cpu_cores": {
+                  "server": 1.64,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1933.91,
+                "server_peak_rss_mb": 1959.97,
+                "redis_used_memory_mb": 150.58
+              }
+            ]
+          },
+          {
+            "concurrency": 32,
+            "median": {
+              "throughput_rps": 2.6,
+              "p50": 11988.55,
+              "p95": 14391.22,
+              "p99": 15777.36,
+              "max": 18014.57,
+              "error_rate": 0.0,
+              "cpu_server": 1.68,
+              "cpu_redis": 0.04,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 4048.68,
+              "server_peak_rss_mb": 4076.23,
+              "redis_used_memory_mb": 150.55
+            },
+            "throughput_by_repetition": [
+              2.65,
+              2.51,
+              2.6
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 32,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 75.39,
+                "throughput_rps": 2.65,
+                "latency_ms": {
+                  "p50": 11988.55,
+                  "p95": 14139.9,
+                  "p99": 15026.29,
+                  "max": 16177.96
+                },
+                "cpu_cores": {
+                  "server": 1.68,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 4057.54,
+                "server_peak_rss_mb": 4076.23,
+                "redis_used_memory_mb": 150.6
+              },
+              {
+                "concurrency": 32,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 79.82,
+                "throughput_rps": 2.51,
+                "latency_ms": {
+                  "p50": 12521.59,
+                  "p95": 14391.22,
+                  "p99": 16438.43,
+                  "max": 18014.57
+                },
+                "cpu_cores": {
+                  "server": 1.68,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 4018.73,
+                "server_peak_rss_mb": 4076.63,
+                "redis_used_memory_mb": 150.55
+              },
+              {
+                "concurrency": 32,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 76.94,
+                "throughput_rps": 2.6,
+                "latency_ms": {
+                  "p50": 11984.01,
+                  "p95": 14930.68,
+                  "p99": 15777.36,
+                  "max": 18141.21
+                },
+                "cpu_cores": {
+                  "server": 1.69,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 4048.68,
+                "server_peak_rss_mb": 4074.72,
+                "redis_used_memory_mb": 150.53
+              }
+            ]
+          },
+          {
+            "concurrency": 64,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 64,
+                "requests": 200,
+                "aborted": "server resident memory passed 6000 MB after 22.7 s with 1 responses; server killed by the harness"
+              },
+              {
+                "concurrency": 64,
+                "requests": 200,
+                "aborted": "server resident memory passed 6000 MB after 22.4 s with 1 responses; server killed by the harness"
+              },
+              {
+                "concurrency": 64,
+                "requests": 200,
+                "aborted": "server resident memory passed 6000 MB after 22.2 s with 1 responses; server killed by the harness"
+              }
+            ]
+          },
+          {
+            "concurrency": 128,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 128,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 128,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 128,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          }
+        ],
+        "GET /api/v2/transactions": [
+          {
+            "concurrency": 1,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 1,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 1,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 1,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          },
+          {
+            "concurrency": 8,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 8,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 8,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 8,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          },
+          {
+            "concurrency": 32,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 32,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 32,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 32,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          },
+          {
+            "concurrency": 64,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 64,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 64,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 64,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          },
+          {
+            "concurrency": 128,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 128,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 128,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 128,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          }
+        ],
+        "GET /api/v2/graph": [
+          {
+            "concurrency": 1,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 1,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 1,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 1,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          },
+          {
+            "concurrency": 8,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 8,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 8,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 8,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          },
+          {
+            "concurrency": 32,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 32,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 32,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 32,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          },
+          {
+            "concurrency": 64,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 64,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 64,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 64,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          },
+          {
+            "concurrency": 128,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 128,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 128,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 128,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          }
+        ],
+        "GET /api/v2/alerts": [
+          {
+            "concurrency": 1,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 1,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 1,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 1,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          },
+          {
+            "concurrency": 8,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 8,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 8,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 8,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          },
+          {
+            "concurrency": 32,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 32,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 32,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 32,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          },
+          {
+            "concurrency": 64,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 64,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 64,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 64,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          },
+          {
+            "concurrency": 128,
+            "median": null,
+            "completed_repetitions": 0,
+            "repetitions": [
+              {
+                "concurrency": 128,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 128,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              },
+              {
+                "concurrency": 128,
+                "skipped": "the server was killed at an earlier level of this repetition"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

@@ -296,6 +296,21 @@ where
     tokio::task::spawn_blocking(f).await.unwrap_or_else(|e| Err(ApiError::new(500, format!("internal error: {e}"))))
 }
 
+/// Reads that copy every stored alert (`live::all_alerts`: the dashboard, transactions, graph and alert list). Each one
+/// holds a full copy while it runs, so without a bound, concurrent reads multiplied that memory until the process was
+/// killed (docs/PERFORMANCE_REPORT.md). At most this many run at once; the rest wait their turn without holding memory.
+pub(crate) static HEAVY_READS: std::sync::LazyLock<tokio::sync::Semaphore> =
+    std::sync::LazyLock::new(|| tokio::sync::Semaphore::new(std::thread::available_parallelism().map_or(2, |n| n.get()).max(2)));
+
+/// `blocking` for a read that copies every stored alert, bounded by HEAVY_READS.
+pub(crate) async fn blocking_read<F>(f: F) -> ApiResult
+where
+    F: FnOnce() -> ApiResult + Send + 'static,
+{
+    let _permit = HEAVY_READS.acquire().await.map_err(|e| ApiError::new(500, format!("internal error: {e}")))?;
+    blocking(f).await
+}
+
 // ---------------------------------------------------------------- router
 
 pub fn build_app(app: AppRef) -> Router {
@@ -803,7 +818,7 @@ async fn v2_alerts(State(app): State<AppRef>, h: HeaderMap, Query(q): Query<Hash
     if text.chars().count() > 200 {
         return Err(ApiError::new(422, "q: at most 200 characters"));
     }
-    blocking(move || {
+    blocking_read(move || {
         let st = q.get("status");
         let mut al: Vec<Value> = live::all_alerts(&app)?.into_iter().filter(|a| st.map(|st| a["status"] == st.as_str()).unwrap_or(true)).collect();
         for a in &mut al {
@@ -1607,7 +1622,7 @@ pub fn description() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{auth_failure_line, client_key, read_json};
+    use super::{auth_failure_line, blocking_read, client_key, ok, read_json, HEAVY_READS};
 
     #[test]
     fn auth_failure_line_never_holds_the_key() {
@@ -1617,6 +1632,28 @@ mod tests {
         assert!(line.contains("401 POST /v2/payment client=1.2.3.4 key_sha256="), "{line}");
         assert_eq!(line, auth_failure_line(401, "POST", "/v2/payment", "1.2.3.4", Some(key)), "same key, same fingerprint");
         assert!(auth_failure_line(401, "GET", "/v2/alerts", "?", None).ends_with("key_sha256=none"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn reads_that_copy_every_alert_run_at_most_heavy_reads_at_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+        use std::sync::Arc;
+        let (now, most) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+        let calls = (0..64).map(|_| {
+            let (now, most) = (now.clone(), most.clone());
+            tokio::spawn(blocking_read(move || {
+                most.fetch_max(now.fetch_add(1, SeqCst) + 1, SeqCst);
+                std::thread::sleep(std::time::Duration::from_millis(5));
+                now.fetch_sub(1, SeqCst);
+                ok(serde_json::json!({}))
+            }))
+        }).collect::<Vec<_>>();
+        for c in calls {
+            assert!(c.await.unwrap().is_ok());
+        }
+        let bound = std::thread::available_parallelism().map_or(2, |n| n.get()).max(2);
+        assert_eq!(HEAVY_READS.available_permits(), bound);
+        assert!(most.load(SeqCst) <= bound && most.load(SeqCst) >= 1, "{} at once, bound {bound}", most.load(SeqCst));
     }
 
     #[test]
