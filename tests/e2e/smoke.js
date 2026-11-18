@@ -852,6 +852,34 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
     for (const href of ["/", "/console", "/investigate", "/report", "/docs", "/openapi.json", "/favicon.svg"]) assert((await page.request.get(BASE + href)).ok(), href);
   });
 
+  // S1: the four older pages run under their own CSP, with their scripts and styles in /assets/legacy. Each still works:
+  // its script draws the page, one action reaches the API, and no CSP violation or console error is raised.
+  await check("legacy pages: CSP set, no inline script, no violation or console error, behaviour kept", async () => {
+    const legacy = [
+      ["/", async () => { await page.waitForSelector("#bars .bar"); await page.waitForSelector(".scroll-progress", {state: "attached"}); }],
+      ["/console", async () => { await page.click("#msgSamples button.s"); await page.waitForFunction(() => /risk \d/.test(document.querySelector("#msgRes")?.textContent || ""), null, {timeout: 10000}); }],
+      ["/investigate", async () => { await page.waitForFunction(() => document.querySelectorAll("#who option").length > 1); await page.click("[data-preset]");
+        await page.click("#bAssess"); await page.waitForFunction(() => /^\d+$/.test(document.querySelector("#rScore")?.textContent.trim() || ""), null, {timeout: 10000}); }],
+      ["/report", async () => { await page.waitForSelector("#amlTable tbody tr"); }],
+    ];
+    const bad = [];
+    for (const [href, works] of legacy) {
+      errors.length = 0;
+      const r = await page.goto(BASE + href);
+      const csp = r.headers()["content-security-policy"] || "";
+      if (!/script-src 'self';/.test(csp) || /script-src[^;]*unsafe/.test(csp)) bad.push(`${href}: CSP ${csp || "missing"}`);
+      if (await page.locator("script:not([src])").count()) bad.push(`${href}: inline script`);
+      if (await page.locator("style").count()) bad.push(`${href}: inline <style>`);
+      await works().catch((e) => bad.push(`${href}: ${e.message.split("\n")[0]}`));
+      await page.waitForTimeout(300);
+      const v = await page.evaluate(() => window.__csp);
+      if (v.length) bad.push(`${href}: CSP violation ${v.join(", ")}`);
+      if (errors.length) bad.push(`${href}: console ${errors.join(" | ")}`);
+    }
+    errors.length = 0;
+    assert(bad.length === 0, bad.join(" || "));
+  });
+
   await check("audit: keyboard: skip link first, visible focus on every stop, drawer traps focus, dialog closes on Escape", async () => {
     await page.goto(BASE + "/app?kb=1#/alerts");
     await page.waitForSelector("#al-table tbody [data-open]");

@@ -54,6 +54,29 @@ async fn app_shell_and_assets() {
     for bad in ["/assets/nope.js", "/assets/../index.html", "/assets/%2e%2e/index.html", "/assets/js/../../../models/cascade_config.json", "/assets/"] {
         assert_eq!(get(&app, bad).await.0, StatusCode::NOT_FOUND, "{bad}");
     }
-    // the older pages keep inline code, so they must not get the app's policy
-    assert!(get(&app, "/console").await.1.get("content-security-policy").is_none());
+    // the four older pages carry their own policy and no inline script or <style>; every file they link is embedded
+    for page in ["/", "/console", "/investigate", "/report"] {
+        let (status, h, html) = get(&app, page).await;
+        assert_eq!(status, StatusCode::OK, "{page}");
+        assert_eq!(h["content-security-policy"], rusetect_server::LEGACY_CSP, "{page}");
+        assert!(!html.contains("<style") && !html.contains(" onclick=") && !html.contains("javascript:"), "{page}");
+        assert_eq!(html.matches("<script").count(), html.matches("<script src=\"/assets/").count()
+                   + html.matches("<script id=\"motion-js\" src=\"/assets/").count(), "{page}: inline script");
+        for link in html.split("=\"/assets/").skip(1) {
+            let name = link.split('"').next().unwrap();
+            assert!(assets.iter().any(|(p, _)| *p == name), "{page} links {name}, which is not embedded");
+        }
+    }
+    for csp in [rusetect_server::APP_CSP, rusetect_server::LEGACY_CSP, rusetect_server::DOCS_CSP] {
+        let script = csp.split(';').find(|d| d.trim().starts_with("script-src")).unwrap();
+        assert!(!script.contains("unsafe"), "{csp}");
+        assert!(csp.contains("object-src 'none'") && csp.contains("frame-ancestors 'none'") && csp.contains("base-uri 'none'"));
+    }
+    // /docs: Swagger UI pinned to one version with subresource integrity, started from an embedded file
+    let (status, h, html) = get(&app, "/docs").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(h["content-security-policy"], rusetect_server::DOCS_CSP);
+    assert!(!html.contains("swagger-ui-dist@5/") && html.matches("integrity=\"sha384-").count() == 2, "{html}");
+    assert!(html.contains("src=\"/assets/js/docs.js\"") && assets.iter().any(|(p, _)| *p == "js/docs.js"));
+    assert_eq!(html.matches("<script").count(), html.matches("<script src=").count());
 }

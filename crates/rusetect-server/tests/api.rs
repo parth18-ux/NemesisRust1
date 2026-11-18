@@ -477,7 +477,8 @@ fn engine_loads_all_live_models() {
 
 #[test]
 fn report_embeds_committed_benchmark_exactly() {
-    let html = std::fs::read_to_string(paths::static_dir().join("report.html")).unwrap();
+    // the report's data lives in its script file since the page moved its code out of the HTML (CSP)
+    let html = std::fs::read_to_string(paths::static_dir().join("assets/legacy/report.js")).unwrap();
     let start = html.find("const DATA = ").unwrap() + "const DATA = ".len();
     let end = start + html[start..].find(";\n").unwrap();
     let data: Value = serde_json::from_str(&html[start..end]).unwrap();
@@ -490,7 +491,7 @@ fn report_embeds_committed_benchmark_exactly() {
 
 #[test]
 fn landing_page_benchmark_numbers_match_committed_results() {
-    let html = std::fs::read_to_string(paths::static_dir().join("index.html")).unwrap();
+    let html = std::fs::read_to_string(paths::static_dir().join("assets/legacy/index.js")).unwrap();
     let bench: Value = serde_json::from_str(&std::fs::read_to_string(paths::models_dir().join("benchmark_results.json")).unwrap()).unwrap();
     let re = fancy_regex::Regex::new(r#"\["([^"]+)", ([0-9.]+)"#).unwrap();
     let shown: std::collections::HashMap<String, f64> = re.captures_iter(&html).filter_map(|c| c.ok())
