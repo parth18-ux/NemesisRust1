@@ -3678,5 +3678,607 @@
         ]
       }
     }
+  },
+  "profile": {
+    "what": "Where the Redis webhook spends its time at concurrency 32 and 128 (docs/SCALING.md 3d, profile step). Separate from the timed runs: a fresh server per experiment, perf attached.",
+    "perf": "perf version 6.8.12",
+    "fresh_levels": [
+      {
+        "concurrency": 32,
+        "store": "fresh server, 1,000 warm-up events",
+        "row": {
+          "concurrency": 32,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "error_rate": 0.0,
+          "wall_s": 4.99,
+          "throughput_rps": 4004.76,
+          "latency_ms": {
+            "p50": 7.76,
+            "p95": 10.81,
+            "p99": 13.22,
+            "max": 30.48
+          },
+          "cpu_cores": {
+            "server": 2.1,
+            "redis": 0.67,
+            "load_generator": 0.13
+          },
+          "server_rss_mb": 575.24,
+          "server_peak_rss_mb": 575.24,
+          "redis_used_memory_mb": 33.58
+        }
+      },
+      {
+        "concurrency": 128,
+        "store": "fresh server, 1,000 warm-up events",
+        "row": {
+          "concurrency": 128,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "error_rate": 0.0,
+          "wall_s": 5.15,
+          "throughput_rps": 3882.97,
+          "latency_ms": {
+            "p50": 32.47,
+            "p95": 41.05,
+            "p99": 49.92,
+            "max": 65.54
+          },
+          "cpu_cores": {
+            "server": 2.05,
+            "redis": 0.73,
+            "load_generator": 0.14
+          },
+          "server_rss_mb": 574.6,
+          "server_peak_rss_mb": 574.6,
+          "redis_used_memory_mb": 33.61
+        }
+      },
+      {
+        "concurrency": 32,
+        "store": "fresh server, 1,000 warm-up events",
+        "row": {
+          "concurrency": 32,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "error_rate": 0.0,
+          "wall_s": 4.97,
+          "throughput_rps": 4025.78,
+          "latency_ms": {
+            "p50": 7.81,
+            "p95": 10.31,
+            "p99": 11.89,
+            "max": 18.29
+          },
+          "cpu_cores": {
+            "server": 2.1,
+            "redis": 0.67,
+            "load_generator": 0.14
+          },
+          "server_rss_mb": 573.27,
+          "server_peak_rss_mb": 573.27,
+          "redis_used_memory_mb": 33.58
+        }
+      },
+      {
+        "concurrency": 128,
+        "store": "fresh server, 1,000 warm-up events",
+        "row": {
+          "concurrency": 128,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "error_rate": 0.0,
+          "wall_s": 4.82,
+          "throughput_rps": 4153.09,
+          "latency_ms": {
+            "p50": 30.14,
+            "p95": 37.56,
+            "p99": 40.79,
+            "max": 55.8
+          },
+          "cpu_cores": {
+            "server": 2.09,
+            "redis": 0.69,
+            "load_generator": 0.14
+          },
+          "server_rss_mb": 575.55,
+          "server_peak_rss_mb": 575.55,
+          "redis_used_memory_mb": 33.61
+        }
+      },
+      {
+        "concurrency": 32,
+        "store": "fresh server, 1,000 warm-up events",
+        "row": {
+          "concurrency": 32,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "error_rate": 0.0,
+          "wall_s": 4.91,
+          "throughput_rps": 4071.98,
+          "latency_ms": {
+            "p50": 7.66,
+            "p95": 10.53,
+            "p99": 12.46,
+            "max": 17.6
+          },
+          "cpu_cores": {
+            "server": 2.1,
+            "redis": 0.68,
+            "load_generator": 0.14
+          },
+          "server_rss_mb": 574.31,
+          "server_peak_rss_mb": 574.31,
+          "redis_used_memory_mb": 33.58
+        }
+      },
+      {
+        "concurrency": 128,
+        "store": "fresh server, 1,000 warm-up events",
+        "row": {
+          "concurrency": 128,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "error_rate": 0.0,
+          "wall_s": 5.07,
+          "throughput_rps": 3941.43,
+          "latency_ms": {
+            "p50": 31.92,
+            "p95": 39.73,
+            "p99": 44.85,
+            "max": 51.8
+          },
+          "cpu_cores": {
+            "server": 2.1,
+            "redis": 0.67,
+            "load_generator": 0.14
+          },
+          "server_rss_mb": 576.84,
+          "server_peak_rss_mb": 576.84,
+          "redis_used_memory_mb": 33.61
+        }
+      }
+    ],
+    "experiments": [
+      {
+        "concurrency": 32,
+        "binary": "release build; CPU samples, self time (perf record -F 499)",
+        "cpu_profile_run": {
+          "concurrency": 32,
+          "requests": 30000,
+          "ok": 30000,
+          "errors": 0,
+          "error_rate": 0.0,
+          "wall_s": 8.61,
+          "throughput_rps": 3485.2,
+          "latency_ms": {
+            "p50": 9.03,
+            "p95": 11.81,
+            "p99": 13.63,
+            "max": 19.32
+          },
+          "cpu_cores": {
+            "server": 2.28,
+            "redis": 0.62,
+            "load_generator": 0.13
+          },
+          "server_rss_mb": 700.44,
+          "server_peak_rss_mb": 700.44,
+          "redis_used_memory_mb": 48.27
+        },
+        "server_context_switches_per_request": 11.18,
+        "server_threads": 27,
+        "cpu_top_self": [
+          {
+            "percent": 16.09,
+            "dso": "rusetect-server",
+            "symbol": "_RNvMs_NtNtCs1jJNBREraDd_8rusetect6models3xgbNtB4_10XgbBooster6margin                                                                                           "
+          },
+          {
+            "percent": 13.35,
+            "dso": "[kernel.kallsyms]",
+            "symbol": "finish_task_switch.isra.0                                                                                                                                       "
+          },
+          {
+            "percent": 7.55,
+            "dso": "[kernel.kallsyms]",
+            "symbol": "_raw_spin_unlock_irqrestore                                                                                                                                     "
+          },
+          {
+            "percent": 5.84,
+            "dso": "rusetect-server",
+            "symbol": "_RNvMNtNtCs1jJNBREraDd_8rusetect6models4lgbmNtB2_11LiteBooster3raw                                                                                              "
+          },
+          {
+            "percent": 3.29,
+            "dso": "libc.so.6",
+            "symbol": "malloc                                                                                                                                                          "
+          },
+          {
+            "percent": 3.28,
+            "dso": "libc.so.6",
+            "symbol": "_int_malloc                                                                                                                                                     "
+          },
+          {
+            "percent": 2.65,
+            "dso": "libc.so.6",
+            "symbol": "__memmove_avx512_unaligned_erms                                                                                                                                 "
+          },
+          {
+            "percent": 2.61,
+            "dso": "[kernel.kallsyms]",
+            "symbol": "irqentry_exit_to_user_mode                                                                                                                                      "
+          },
+          {
+            "percent": 1.55,
+            "dso": "libc.so.6",
+            "symbol": "_int_free                                                                                                                                                       "
+          },
+          {
+            "percent": 1.47,
+            "dso": "libc.so.6",
+            "symbol": "cfree@GLIBC_2.2.5                                                                                                                                               "
+          },
+          {
+            "percent": 1.17,
+            "dso": "libc.so.6",
+            "symbol": "malloc_consolidate                                                                                                                                              "
+          },
+          {
+            "percent": 0.93,
+            "dso": "libc.so.6",
+            "symbol": "realloc                                                                                                                                                         "
+          },
+          {
+            "percent": 0.79,
+            "dso": "libc.so.6",
+            "symbol": "unlink_chunk.isra.0                                                                                                                                             "
+          },
+          {
+            "percent": 0.71,
+            "dso": "rusetect-server",
+            "symbol": "_RNvNtCs1jJNBREraDd_8rusetect5pyfmt9write_str                                                                                                                   "
+          }
+        ]
+      },
+      {
+        "concurrency": 128,
+        "binary": "release build; CPU samples, self time (perf record -F 499)",
+        "cpu_profile_run": {
+          "concurrency": 128,
+          "requests": 30000,
+          "ok": 30000,
+          "errors": 0,
+          "error_rate": 0.0,
+          "wall_s": 8.53,
+          "throughput_rps": 3518.18,
+          "latency_ms": {
+            "p50": 35.68,
+            "p95": 45.82,
+            "p99": 50.23,
+            "max": 64.6
+          },
+          "cpu_cores": {
+            "server": 2.26,
+            "redis": 0.63,
+            "load_generator": 0.13
+          },
+          "server_rss_mb": 593.04,
+          "server_peak_rss_mb": 593.04,
+          "redis_used_memory_mb": 48.38
+        },
+        "server_context_switches_per_request": 11.15,
+        "server_threads": 30,
+        "cpu_top_self": [
+          {
+            "percent": 15.75,
+            "dso": "rusetect-server",
+            "symbol": "_RNvMs_NtNtCs1jJNBREraDd_8rusetect6models3xgbNtB4_10XgbBooster6margin                                                                                           "
+          },
+          {
+            "percent": 13.11,
+            "dso": "[kernel.kallsyms]",
+            "symbol": "finish_task_switch.isra.0                                                                                                                                       "
+          },
+          {
+            "percent": 6.96,
+            "dso": "[kernel.kallsyms]",
+            "symbol": "_raw_spin_unlock_irqrestore                                                                                                                                     "
+          },
+          {
+            "percent": 6.29,
+            "dso": "rusetect-server",
+            "symbol": "_RNvMNtNtCs1jJNBREraDd_8rusetect6models4lgbmNtB2_11LiteBooster3raw                                                                                              "
+          },
+          {
+            "percent": 3.17,
+            "dso": "libc.so.6",
+            "symbol": "_int_malloc                                                                                                                                                     "
+          },
+          {
+            "percent": 3.06,
+            "dso": "libc.so.6",
+            "symbol": "malloc                                                                                                                                                          "
+          },
+          {
+            "percent": 2.57,
+            "dso": "libc.so.6",
+            "symbol": "__memmove_avx512_unaligned_erms                                                                                                                                 "
+          },
+          {
+            "percent": 2.39,
+            "dso": "[kernel.kallsyms]",
+            "symbol": "irqentry_exit_to_user_mode                                                                                                                                      "
+          },
+          {
+            "percent": 1.72,
+            "dso": "libc.so.6",
+            "symbol": "cfree@GLIBC_2.2.5                                                                                                                                               "
+          },
+          {
+            "percent": 1.49,
+            "dso": "libc.so.6",
+            "symbol": "_int_free                                                                                                                                                       "
+          },
+          {
+            "percent": 1.29,
+            "dso": "libc.so.6",
+            "symbol": "malloc_consolidate                                                                                                                                              "
+          },
+          {
+            "percent": 1.16,
+            "dso": "libc.so.6",
+            "symbol": "realloc                                                                                                                                                         "
+          },
+          {
+            "percent": 0.94,
+            "dso": "rusetect-server",
+            "symbol": "_RNvNtCs1jJNBREraDd_8rusetect5pyfmt9write_str                                                                                                                   "
+          }
+        ]
+      }
+    ],
+    "growth": {
+      "what": "Concurrency 32 throughout, one server, the store growing by 20,000 events a level (release build, no profiler except the last level)",
+      "levels": [
+        {
+          "concurrency": 32,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "error_rate": 0.0,
+          "wall_s": 5.07,
+          "throughput_rps": 3945.75,
+          "latency_ms": {
+            "p50": 7.93,
+            "p95": 10.77,
+            "p99": 12.54,
+            "max": 16.97
+          },
+          "cpu_cores": {
+            "server": 2.1,
+            "redis": 0.68,
+            "load_generator": 0.14
+          },
+          "server_rss_mb": 574.58,
+          "server_peak_rss_mb": 574.58,
+          "redis_used_memory_mb": 33.6,
+          "alerts_stored_before_level": 157,
+          "events_before_level": 1000
+        },
+        {
+          "concurrency": 32,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "error_rate": 0.0,
+          "wall_s": 4.79,
+          "throughput_rps": 4172.8,
+          "latency_ms": {
+            "p50": 7.5,
+            "p95": 10.01,
+            "p99": 11.65,
+            "max": 17.13
+          },
+          "cpu_cores": {
+            "server": 2.12,
+            "redis": 0.68,
+            "load_generator": 0.14
+          },
+          "server_rss_mb": 600.52,
+          "server_peak_rss_mb": 600.52,
+          "redis_used_memory_mb": 64.09,
+          "alerts_stored_before_level": 2516,
+          "events_before_level": 21000
+        },
+        {
+          "concurrency": 32,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "error_rate": 0.0,
+          "wall_s": 4.9,
+          "throughput_rps": 4083.38,
+          "latency_ms": {
+            "p50": 7.7,
+            "p95": 10.23,
+            "p99": 11.74,
+            "max": 17.08
+          },
+          "cpu_cores": {
+            "server": 2.11,
+            "redis": 0.71,
+            "load_generator": 0.13
+          },
+          "server_rss_mb": 616.33,
+          "server_peak_rss_mb": 616.33,
+          "redis_used_memory_mb": 92.84,
+          "alerts_stored_before_level": 5433,
+          "events_before_level": 41000
+        },
+        {
+          "concurrency": 32,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "error_rate": 0.0,
+          "wall_s": 5.41,
+          "throughput_rps": 3695.01,
+          "latency_ms": {
+            "p50": 8.35,
+            "p95": 12.42,
+            "p99": 17.21,
+            "max": 23.99
+          },
+          "cpu_cores": {
+            "server": 1.98,
+            "redis": 0.79,
+            "load_generator": 0.13
+          },
+          "server_rss_mb": 634.48,
+          "server_peak_rss_mb": 634.48,
+          "redis_used_memory_mb": 123.91,
+          "alerts_stored_before_level": 7201,
+          "events_before_level": 61000
+        },
+        {
+          "concurrency": 32,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "error_rate": 0.0,
+          "wall_s": 6.94,
+          "throughput_rps": 2882.24,
+          "latency_ms": {
+            "p50": 9.59,
+            "p95": 19.24,
+            "p99": 22.4,
+            "max": 35.26
+          },
+          "cpu_cores": {
+            "server": 1.96,
+            "redis": 0.61,
+            "load_generator": 0.11
+          },
+          "server_rss_mb": 644.53,
+          "server_peak_rss_mb": 644.53,
+          "redis_used_memory_mb": 152.05,
+          "alerts_stored_before_level": 9320,
+          "events_before_level": 81000
+        },
+        {
+          "concurrency": 32,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "error_rate": 0.0,
+          "wall_s": 9.21,
+          "throughput_rps": 2171.43,
+          "latency_ms": {
+            "p50": 15.0,
+            "p95": 21.81,
+            "p99": 24.28,
+            "max": 33.4
+          },
+          "cpu_cores": {
+            "server": 2.05,
+            "redis": 0.5,
+            "load_generator": 0.09
+          },
+          "server_rss_mb": 654.01,
+          "server_peak_rss_mb": 654.01,
+          "redis_used_memory_mb": 174.37,
+          "alerts_stored_before_level": 10909,
+          "events_before_level": 101000
+        }
+      ],
+      "last_level_cpu_top_self": [
+        {
+          "percent": 13.11,
+          "dso": "rusetect-server",
+          "symbol": "_RINvMs3_NtCsbvOqpefjCXS_8indexmap3mapINtB6_8IndexMapNtNtCs40k4W9msRzi_5alloc6string6StringNtNtCsC2GWExUOi3_10serde_json5value5ValueE12get_index_ofeEB1u_.llvm.1"
+        },
+        {
+          "percent": 11.14,
+          "dso": "rusetect-server",
+          "symbol": "_RNvMs_NtNtCs1jJNBREraDd_8rusetect6models3xgbNtB4_10XgbBooster6margin                                                                                           "
+        },
+        {
+          "percent": 9.52,
+          "dso": "[kernel.kallsyms]",
+          "symbol": "finish_task_switch.isra.0                                                                                                                                       "
+        },
+        {
+          "percent": 8.86,
+          "dso": "libc.so.6",
+          "symbol": "__memcmp_evex_movbe                                                                                                                                             "
+        },
+        {
+          "percent": 6.03,
+          "dso": "[kernel.kallsyms]",
+          "symbol": "_raw_spin_unlock_irqrestore                                                                                                                                     "
+        },
+        {
+          "percent": 4.43,
+          "dso": "rusetect-server",
+          "symbol": "_RNvMNtNtCs1jJNBREraDd_8rusetect6models4lgbmNtB2_11LiteBooster3raw                                                                                              "
+        },
+        {
+          "percent": 2.93,
+          "dso": "libc.so.6",
+          "symbol": "_int_malloc                                                                                                                                                     "
+        },
+        {
+          "percent": 2.66,
+          "dso": "libc.so.6",
+          "symbol": "__memmove_avx512_unaligned_erms                                                                                                                                 "
+        },
+        {
+          "percent": 2.53,
+          "dso": "libc.so.6",
+          "symbol": "malloc                                                                                                                                                          "
+        },
+        {
+          "percent": 2.03,
+          "dso": "[kernel.kallsyms]",
+          "symbol": "irqentry_exit_to_user_mode                                                                                                                                      "
+        },
+        {
+          "percent": 1.1,
+          "dso": "libc.so.6",
+          "symbol": "_int_free                                                                                                                                                       "
+        },
+        {
+          "percent": 0.95,
+          "dso": "libc.so.6",
+          "symbol": "malloc_consolidate                                                                                                                                              "
+        },
+        {
+          "percent": 0.9,
+          "dso": "libc.so.6",
+          "symbol": "cfree@GLIBC_2.2.5                                                                                                                                               "
+        },
+        {
+          "percent": 0.8,
+          "dso": "libc.so.6",
+          "symbol": "realloc                                                                                                                                                         "
+        }
+      ],
+      "hottest_symbol_of_ours": "16.35%  [.] _RINvMs3_NtCsbvOqpefjCXS_8indexmap3mapINtB6_8IndexMapNtNtCs40k4W9msRzi_5alloc6string6StringNtNtCsC2GWExUOi3_10serde_json5value5ValueE12get_index_ofeEB1u_.llvm.1673188359909069561                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   -      -",
+      "its_callers_caller_first": [
+        "_RINvNtNtNtCs7SEhubJpst5_5tokio7runtime4task3raw4pollINtNtNtB6_8blocking4task12BlockingTaskNCNCNvNtCs2CDkdsPBZG4_15rusetect_server4live14events_payment0s1_0ENtNtBT_8schedule16BlockingScheduleEB1y_",
+        "_RNvNtCs2CDkdsPBZG4_15rusetect_server4live12ingest_redis",
+        "_RNvNtCs2CDkdsPBZG4_15rusetect_server4live6decide",
+        "_RNvMNtCs1jJNBREraDd_8rusetect6reviewNtB2_10ReviewDesk13open_alert_as"
+      ]
+    },
+    "note": "fresh_levels and experiments: a fresh server per run. growth: one server, concurrency 32, the store growing. Profiles are separate from the timed runs."
   }
 }
