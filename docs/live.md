@@ -104,7 +104,11 @@ Every 5xx is safe to retry. When Redis fails before the commit, the claim on the
 is scored afresh, and it decides as a clean single send would: per-account totals are deduped by event (`seen:` keys,
 which also hold the features the payment was first scored with, so the retry is scored from those rather than from
 state that already holds its own write), and the 24 h pair window keeps one member per event (the retry replaces its
-own). The alert and desk-chain entries an attempt opened are taken back out when its commit did not land, so the retry
+own) and counts only payments up to the retried payment's own minute, so a newer payment to the same pair that landed
+between the attempts is not counted. Precisely: the retry gets the decision a clean single send would have got at its
+first attempt, provided its `seen:` record has not expired (26 h) and no other payment to the same pair with the same
+minute (or with an earlier minute, sent later) arrived in between; such a payment is counted, as it would be on a late
+clean send. The alert and desk-chain entries an attempt opened are taken back out when its commit did not land, so the retry
 leaves one alert, one ledger entry and one decision, and the stored `ev:` record, the alert, its evidence pack and the
 ledger agree. When the outcome of the commit is unknown, the claim expires after 60 s and the retry then gets either
 the stored result or a fresh scoring, never a second commit; on the instance that lost the outcome, the earlier

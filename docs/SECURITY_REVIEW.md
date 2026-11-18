@@ -105,7 +105,8 @@ static files, which need no key.
 * Static files: `/assets/{*path}` serves only names in the embedded list (`ASSETS` in `lib.rs`); `..`, encoded `..` and
   unknown names are `404` (`tests/assets.rs`). Nothing is read from disk by a request-chosen path.
 * State growth: accounts (`RUSETECT_MAX_ACCOUNTS`), typing profiles, the nonce cache, the rate limiter and the message
-  log are all bounded.
+  log are all bounded. Stored alerts are not (`live:alerts` has no expiry), and every dashboard, transaction search,
+  graph and alert-list request copies all of them (finding F5).
 
 ## 3. Secrets
 
@@ -158,7 +159,8 @@ client is the TCP peer, or the right-most `X-Forwarded-For` entry only behind a 
 or Vercel), so a caller cannot pick a fresh identity per request (unit test
 `client_key_takes_the_rightmost_forwarded_address_only_behind_a_trusted_proxy`). Residual: the counter is in memory per
 instance, so several instances each count separately and a distributed flood is not limited; no WAF rule is set. The
-webhook is not exempt, so a high-volume sender must raise the limit.
+webhook is not exempt, so a high-volume sender must raise the limit. The limit counts requests, not their cost: a
+few dozen concurrent reads were enough to exhaust memory before the F5 fix (`docs/PERFORMANCE_REPORT.md`).
 
 ## 8. Single tenant
 
@@ -228,8 +230,10 @@ anyone. A pilot runs the binary inside the bank with keys set and no demo mode (
 | F2 | Medium | `/`, `/console`, `/investigate`, `/report` ran inline script with no CSP on the origin that holds the analyst key | Fixed: code in `/assets/legacy`, `LEGACY_CSP` | `tests/assets.rs`, `smoke.js` |
 | F3 | Medium | `/docs` loaded a floating Swagger UI release without integrity on the same origin | Fixed: pinned, SRI, `DOCS_CSP`, no inline script | `tests/assets.rs` |
 | F4 | Low | This document's route table had drifted from the handler checks in the code (four routes' handler checks missing) | Fixed: the table is generated and checked by a test | `tests/routes.rs` |
+| F5 | Medium | The dashboard, transaction search, graph and alert list each build a full copy of every stored alert; with a large store, concurrent requests (by any reader, or anyone on the demo) grew the server until the kernel killed it (`results/perf_f1.json`, run `f1_before`) | Fixed: at most one such read per CPU runs at once (`HEAVY_READS` in `lib.rs`); the rest wait without holding memory. Each read still costs time in proportion to the stored alerts (residual) | `reads_that_copy_every_alert_run_at_most_heavy_reads_at_once` (`lib.rs`) and run `f1_after` |
 
-Residual risks, none fixed in this step: static keys without expiry or SSO (Medium for a pilot); per-instance rate limit
+Residual risks, none fixed in this step: read endpoints whose cost grows with every stored alert, so a large store
+makes them slow (Medium, `docs/PERFORMANCE_REPORT.md`); static keys without expiry or SSO (Medium for a pilot); per-instance rate limit
 and nonce cache (Low on one instance, Medium on several); CORS `*` by default (Low: keys are not cookies); unsigned audit
 chain (Medium against an insider with store access); webhook secret is symmetric with no mTLS (Low); `style-src-attr
 'unsafe-inline'` (Low); Redis error text in a `503` (Low); two unmaintained crates (Low); single tenant (section 8); the
