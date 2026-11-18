@@ -248,6 +248,10 @@ quotes only that file.
 * Scope, stated in the report: a shared 4-CPU container where the load generator, the server and Redis compete for the
   same cores; no network hop, TLS or cold start; not the Vercel deployment and **not a production capacity figure**.
 
+**Result:** `docs/PERFORMANCE_REPORT.md`, from `results/perf_f1.json`. The webhook's fall above concurrency 32 is the
+store growing across levels (the review desk's eviction scan once it holds 10,000 alerts), not concurrency; the read
+endpoints copy every stored alert per request.
+
 ## 4. From here to a bank
 
 1. **Throughput.** UPI runs at roughly 20 billion payments a month, about 7,000 to 8,000 a second on average with
