@@ -1195,6 +1195,2488 @@
           }
         ]
       }
+    },
+    "f1_after": {
+      "generated_at": "2026-11-18T16:11:37Z",
+      "git_head": "f9b36a2",
+      "machine": {
+        "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+        "logical_cpus": 4,
+        "os": "Linux 6.18.44-fc-v595",
+        "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+        "redis_server": "Redis server v=7.0.15 sha=00000000:0 malloc=jemalloc-5.3.0 bits=64 build=d064f9f48c901a92"
+      },
+      "rusetect_live_pool": null,
+      "design": {
+        "levels": [
+          1,
+          8,
+          32,
+          64,
+          128
+        ],
+        "repetitions": 3,
+        "webhook_requests_per_level": 20000,
+        "webhook_warmup": 1000,
+        "read_requests_per_level": 200,
+        "read_warmup": 20,
+        "server_port": 8210,
+        "redis_port": 8250,
+        "read_queries": {
+          "GET /api/v2/transactions": "limit=50, offset cycling 0..950 by 50",
+          "GET /api/v2/alerts": "limit=50, offset cycling 0..950 by 50",
+          "GET /api/v2/graph": "depth=2, account of the newest stored payment",
+          "GET /api/v2/dashboard": "no query"
+        },
+        "cpu": "CPU seconds over wall seconds from /proc/<pid>/stat; 1.0 is one of the 4 logical CPUs"
+      },
+      "results": {
+        "POST /api/v2/events/payment": [
+          {
+            "concurrency": 1,
+            "median": {
+              "throughput_rps": 982.65,
+              "p50": 0.93,
+              "p95": 1.56,
+              "p99": 2.07,
+              "max": 17.97,
+              "error_rate": 0.0,
+              "cpu_server": 0.61,
+              "cpu_redis": 0.24,
+              "cpu_load_generator": 0.06,
+              "server_rss_mb": 171.11,
+              "server_peak_rss_mb": 171.11,
+              "redis_used_memory_mb": 32.43
+            },
+            "throughput_by_repetition": [
+              814.98,
+              994.59,
+              982.65
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 1,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 24.54,
+                "throughput_rps": 814.98,
+                "latency_ms": {
+                  "p50": 1.14,
+                  "p95": 1.88,
+                  "p99": 2.45,
+                  "max": 18.84
+                },
+                "cpu_cores": {
+                  "server": 0.59,
+                  "redis": 0.25,
+                  "load_generator": 0.05
+                },
+                "server_rss_mb": 168.75,
+                "server_peak_rss_mb": 168.75,
+                "redis_used_memory_mb": 32.43,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 1,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 20.11,
+                "throughput_rps": 994.59,
+                "latency_ms": {
+                  "p50": 0.93,
+                  "p95": 1.53,
+                  "p99": 2.01,
+                  "max": 17.97
+                },
+                "cpu_cores": {
+                  "server": 0.61,
+                  "redis": 0.24,
+                  "load_generator": 0.06
+                },
+                "server_rss_mb": 171.16,
+                "server_peak_rss_mb": 171.16,
+                "redis_used_memory_mb": 32.43,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 1,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 20.35,
+                "throughput_rps": 982.65,
+                "latency_ms": {
+                  "p50": 0.93,
+                  "p95": 1.56,
+                  "p99": 2.07,
+                  "max": 16.74
+                },
+                "cpu_cores": {
+                  "server": 0.61,
+                  "redis": 0.24,
+                  "load_generator": 0.06
+                },
+                "server_rss_mb": 171.11,
+                "server_peak_rss_mb": 171.11,
+                "redis_used_memory_mb": 32.43,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              }
+            ]
+          },
+          {
+            "concurrency": 8,
+            "median": {
+              "throughput_rps": 3708.14,
+              "p50": 2.01,
+              "p95": 3.48,
+              "p99": 4.64,
+              "max": 20.6,
+              "error_rate": 0.0,
+              "cpu_server": 1.98,
+              "cpu_redis": 0.67,
+              "cpu_load_generator": 0.13,
+              "server_rss_mb": 207.09,
+              "server_peak_rss_mb": 207.09,
+              "redis_used_memory_mb": 63.3
+            },
+            "throughput_by_repetition": [
+              3598.95,
+              3777.82,
+              3708.14
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 8,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 5.56,
+                "throughput_rps": 3598.95,
+                "latency_ms": {
+                  "p50": 2.09,
+                  "p95": 3.58,
+                  "p99": 4.64,
+                  "max": 7.55
+                },
+                "cpu_cores": {
+                  "server": 1.98,
+                  "redis": 0.71,
+                  "load_generator": 0.13
+                },
+                "server_rss_mb": 204.69,
+                "server_peak_rss_mb": 204.69,
+                "redis_used_memory_mb": 63.29,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 8,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 5.29,
+                "throughput_rps": 3777.82,
+                "latency_ms": {
+                  "p50": 1.96,
+                  "p95": 3.39,
+                  "p99": 4.57,
+                  "max": 33.42
+                },
+                "cpu_cores": {
+                  "server": 1.97,
+                  "redis": 0.66,
+                  "load_generator": 0.13
+                },
+                "server_rss_mb": 207.78,
+                "server_peak_rss_mb": 207.78,
+                "redis_used_memory_mb": 63.3,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 8,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 5.39,
+                "throughput_rps": 3708.14,
+                "latency_ms": {
+                  "p50": 2.01,
+                  "p95": 3.48,
+                  "p99": 4.78,
+                  "max": 20.6
+                },
+                "cpu_cores": {
+                  "server": 1.99,
+                  "redis": 0.67,
+                  "load_generator": 0.14
+                },
+                "server_rss_mb": 207.09,
+                "server_peak_rss_mb": 207.09,
+                "redis_used_memory_mb": 63.3,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              }
+            ]
+          },
+          {
+            "concurrency": 32,
+            "median": {
+              "throughput_rps": 4297.53,
+              "p50": 7.3,
+              "p95": 9.63,
+              "p99": 10.99,
+              "max": 15.51,
+              "error_rate": 0.0,
+              "cpu_server": 2.14,
+              "cpu_redis": 0.7,
+              "cpu_load_generator": 0.14,
+              "server_rss_mb": 234.17,
+              "server_peak_rss_mb": 234.17,
+              "redis_used_memory_mb": 92.47
+            },
+            "throughput_by_repetition": [
+              4015.3,
+              4297.53,
+              4575.88
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 32,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 4.98,
+                "throughput_rps": 4015.3,
+                "latency_ms": {
+                  "p50": 7.76,
+                  "p95": 10.53,
+                  "p99": 12.43,
+                  "max": 17.48
+                },
+                "cpu_cores": {
+                  "server": 2.14,
+                  "redis": 0.73,
+                  "load_generator": 0.14
+                },
+                "server_rss_mb": 231.66,
+                "server_peak_rss_mb": 231.66,
+                "redis_used_memory_mb": 92.47,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 32,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 4.65,
+                "throughput_rps": 4297.53,
+                "latency_ms": {
+                  "p50": 7.3,
+                  "p95": 9.63,
+                  "p99": 10.99,
+                  "max": 13.87
+                },
+                "cpu_cores": {
+                  "server": 2.17,
+                  "redis": 0.69,
+                  "load_generator": 0.14
+                },
+                "server_rss_mb": 234.17,
+                "server_peak_rss_mb": 234.17,
+                "redis_used_memory_mb": 92.47,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 32,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 4.37,
+                "throughput_rps": 4575.88,
+                "latency_ms": {
+                  "p50": 6.79,
+                  "p95": 9.36,
+                  "p99": 10.79,
+                  "max": 15.51
+                },
+                "cpu_cores": {
+                  "server": 2.13,
+                  "redis": 0.7,
+                  "load_generator": 0.14
+                },
+                "server_rss_mb": 234.28,
+                "server_peak_rss_mb": 234.28,
+                "redis_used_memory_mb": 92.47,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              }
+            ]
+          },
+          {
+            "concurrency": 64,
+            "median": {
+              "throughput_rps": 3811.72,
+              "p50": 15.42,
+              "p95": 27.35,
+              "p99": 35.88,
+              "max": 46.51,
+              "error_rate": 0.0,
+              "cpu_server": 2.08,
+              "cpu_redis": 0.67,
+              "cpu_load_generator": 0.13,
+              "server_rss_mb": 256.56,
+              "server_peak_rss_mb": 256.56,
+              "redis_used_memory_mb": 123.57
+            },
+            "throughput_by_repetition": [
+              3394.24,
+              3811.72,
+              3882.07
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 64,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 5.89,
+                "throughput_rps": 3394.24,
+                "latency_ms": {
+                  "p50": 17.82,
+                  "p95": 27.35,
+                  "p99": 35.88,
+                  "max": 46.6
+                },
+                "cpu_cores": {
+                  "server": 2.08,
+                  "redis": 0.67,
+                  "load_generator": 0.13
+                },
+                "server_rss_mb": 255.64,
+                "server_peak_rss_mb": 255.64,
+                "redis_used_memory_mb": 123.57,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 64,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 5.25,
+                "throughput_rps": 3811.72,
+                "latency_ms": {
+                  "p50": 15.42,
+                  "p95": 29.83,
+                  "p99": 38.78,
+                  "max": 45.35
+                },
+                "cpu_cores": {
+                  "server": 2.09,
+                  "redis": 0.66,
+                  "load_generator": 0.14
+                },
+                "server_rss_mb": 256.56,
+                "server_peak_rss_mb": 256.56,
+                "redis_used_memory_mb": 123.57,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 64,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 5.15,
+                "throughput_rps": 3882.07,
+                "latency_ms": {
+                  "p50": 15.3,
+                  "p95": 26.15,
+                  "p99": 35.08,
+                  "max": 46.51
+                },
+                "cpu_cores": {
+                  "server": 2.05,
+                  "redis": 0.67,
+                  "load_generator": 0.13
+                },
+                "server_rss_mb": 256.85,
+                "server_peak_rss_mb": 256.85,
+                "redis_used_memory_mb": 123.57,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              }
+            ]
+          },
+          {
+            "concurrency": 128,
+            "median": {
+              "throughput_rps": 2861.29,
+              "p50": 40.49,
+              "p95": 68.83,
+              "p99": 73.3,
+              "max": 81.92,
+              "error_rate": 0.0,
+              "cpu_server": 1.94,
+              "cpu_redis": 0.53,
+              "cpu_load_generator": 0.11,
+              "server_rss_mb": 273.15,
+              "server_peak_rss_mb": 273.15,
+              "redis_used_memory_mb": 150.57
+            },
+            "throughput_by_repetition": [
+              2541.35,
+              2861.29,
+              3146.43
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 128,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 7.87,
+                "throughput_rps": 2541.35,
+                "latency_ms": {
+                  "p50": 46.29,
+                  "p95": 74.23,
+                  "p99": 80.04,
+                  "max": 91.99
+                },
+                "cpu_cores": {
+                  "server": 1.94,
+                  "redis": 0.57,
+                  "load_generator": 0.11
+                },
+                "server_rss_mb": 274.98,
+                "server_peak_rss_mb": 274.98,
+                "redis_used_memory_mb": 150.57,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 128,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 6.99,
+                "throughput_rps": 2861.29,
+                "latency_ms": {
+                  "p50": 40.49,
+                  "p95": 68.83,
+                  "p99": 73.3,
+                  "max": 81.92
+                },
+                "cpu_cores": {
+                  "server": 1.94,
+                  "redis": 0.53,
+                  "load_generator": 0.11
+                },
+                "server_rss_mb": 272.21,
+                "server_peak_rss_mb": 272.21,
+                "redis_used_memory_mb": 150.57,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              },
+              {
+                "concurrency": 128,
+                "requests": 20000,
+                "ok": 20000,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 6.36,
+                "throughput_rps": 3146.43,
+                "latency_ms": {
+                  "p50": 35.73,
+                  "p95": 63.94,
+                  "p99": 71.0,
+                  "max": 78.62
+                },
+                "cpu_cores": {
+                  "server": 1.96,
+                  "redis": 0.53,
+                  "load_generator": 0.11
+                },
+                "server_rss_mb": 273.15,
+                "server_peak_rss_mb": 273.15,
+                "redis_used_memory_mb": 150.57,
+                "check": {
+                  "green": true,
+                  "seq_advance": 20000
+                }
+              }
+            ]
+          }
+        ],
+        "GET /api/v2/dashboard": [
+          {
+            "concurrency": 1,
+            "median": {
+              "throughput_rps": 1.65,
+              "p50": 601.5,
+              "p95": 712.7,
+              "p99": 757.65,
+              "max": 831.34,
+              "error_rate": 0.0,
+              "cpu_server": 0.97,
+              "cpu_redis": 0.02,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1819.2,
+              "server_peak_rss_mb": 1997.87,
+              "redis_used_memory_mb": 150.52
+            },
+            "throughput_by_repetition": [
+              1.55,
+              1.67,
+              1.65
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 1,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 129.32,
+                "throughput_rps": 1.55,
+                "latency_ms": {
+                  "p50": 625.48,
+                  "p95": 814.25,
+                  "p99": 936.67,
+                  "max": 1011.86
+                },
+                "cpu_cores": {
+                  "server": 0.97,
+                  "redis": 0.02,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1470.04,
+                "server_peak_rss_mb": 1575.42,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 1,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 119.79,
+                "throughput_rps": 1.67,
+                "latency_ms": {
+                  "p50": 596.36,
+                  "p95": 698.1,
+                  "p99": 726.12,
+                  "max": 765.54
+                },
+                "cpu_cores": {
+                  "server": 0.97,
+                  "redis": 0.02,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1819.2,
+                "server_peak_rss_mb": 1997.87,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 1,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 121.46,
+                "throughput_rps": 1.65,
+                "latency_ms": {
+                  "p50": 601.5,
+                  "p95": 712.7,
+                  "p99": 757.65,
+                  "max": 831.34
+                },
+                "cpu_cores": {
+                  "server": 0.97,
+                  "redis": 0.02,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1939.38,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.52
+              }
+            ]
+          },
+          {
+            "concurrency": 8,
+            "median": {
+              "throughput_rps": 2.66,
+              "p50": 2995.22,
+              "p95": 3324.59,
+              "p99": 3455.75,
+              "max": 3547.7,
+              "error_rate": 0.0,
+              "cpu_server": 1.65,
+              "cpu_redis": 0.03,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1905.34,
+              "server_peak_rss_mb": 2070.78,
+              "redis_used_memory_mb": 150.58
+            },
+            "throughput_by_repetition": [
+              2.5,
+              2.66,
+              2.66
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 8,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 80.08,
+                "throughput_rps": 2.5,
+                "latency_ms": {
+                  "p50": 3108.33,
+                  "p95": 4181.07,
+                  "p99": 4671.35,
+                  "max": 4866.57
+                },
+                "cpu_cores": {
+                  "server": 1.72,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1871.71,
+                "server_peak_rss_mb": 1914.54,
+                "redis_used_memory_mb": 150.58
+              },
+              {
+                "concurrency": 8,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 75.19,
+                "throughput_rps": 2.66,
+                "latency_ms": {
+                  "p50": 2982.15,
+                  "p95": 3324.59,
+                  "p99": 3404.17,
+                  "max": 3530.69
+                },
+                "cpu_cores": {
+                  "server": 1.6,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1989.76,
+                "server_peak_rss_mb": 2070.78,
+                "redis_used_memory_mb": 150.59
+              },
+              {
+                "concurrency": 8,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 75.25,
+                "throughput_rps": 2.66,
+                "latency_ms": {
+                  "p50": 2995.22,
+                  "p95": 3311.36,
+                  "p99": 3455.75,
+                  "max": 3547.7
+                },
+                "cpu_cores": {
+                  "server": 1.65,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1905.34,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.58
+              }
+            ]
+          },
+          {
+            "concurrency": 32,
+            "median": {
+              "throughput_rps": 2.66,
+              "p50": 11968.44,
+              "p95": 12589.95,
+              "p99": 12800.51,
+              "max": 12839.14,
+              "error_rate": 0.0,
+              "cpu_server": 1.63,
+              "cpu_redis": 0.03,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1941.82,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.57
+            },
+            "throughput_by_repetition": [
+              2.61,
+              2.67,
+              2.66
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 32,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 76.67,
+                "throughput_rps": 2.61,
+                "latency_ms": {
+                  "p50": 12137.37,
+                  "p95": 13252.61,
+                  "p99": 13997.81,
+                  "max": 14254.39
+                },
+                "cpu_cores": {
+                  "server": 1.63,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1930.2,
+                "server_peak_rss_mb": 1930.2,
+                "redis_used_memory_mb": 150.57
+              },
+              {
+                "concurrency": 32,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 74.9,
+                "throughput_rps": 2.67,
+                "latency_ms": {
+                  "p50": 11894.07,
+                  "p95": 12491.39,
+                  "p99": 12691.51,
+                  "max": 12796.52
+                },
+                "cpu_cores": {
+                  "server": 1.59,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2049.36,
+                "server_peak_rss_mb": 2072.1,
+                "redis_used_memory_mb": 150.57
+              },
+              {
+                "concurrency": 32,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 75.16,
+                "throughput_rps": 2.66,
+                "latency_ms": {
+                  "p50": 11968.44,
+                  "p95": 12589.95,
+                  "p99": 12800.51,
+                  "max": 12839.14
+                },
+                "cpu_cores": {
+                  "server": 1.65,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1941.82,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.55
+              }
+            ]
+          },
+          {
+            "concurrency": 64,
+            "median": {
+              "throughput_rps": 2.53,
+              "p50": 24814.82,
+              "p95": 26308.86,
+              "p99": 26671.04,
+              "max": 26700.34,
+              "error_rate": 0.0,
+              "cpu_server": 1.64,
+              "cpu_redis": 0.03,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1942.06,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.58
+            },
+            "throughput_by_repetition": [
+              2.53,
+              2.7,
+              2.51
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 64,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 79.15,
+                "throughput_rps": 2.53,
+                "latency_ms": {
+                  "p50": 25089.11,
+                  "p95": 26481.21,
+                  "p99": 26689.69,
+                  "max": 27472.18
+                },
+                "cpu_cores": {
+                  "server": 1.7,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1931.02,
+                "server_peak_rss_mb": 1931.02,
+                "redis_used_memory_mb": 150.58
+              },
+              {
+                "concurrency": 64,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 74.12,
+                "throughput_rps": 2.7,
+                "latency_ms": {
+                  "p50": 23322.81,
+                  "p95": 24509.28,
+                  "p99": 24775.8,
+                  "max": 24845.36
+                },
+                "cpu_cores": {
+                  "server": 1.59,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2049.88,
+                "server_peak_rss_mb": 2072.68,
+                "redis_used_memory_mb": 150.58
+              },
+              {
+                "concurrency": 64,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 79.54,
+                "throughput_rps": 2.51,
+                "latency_ms": {
+                  "p50": 24814.82,
+                  "p95": 26308.86,
+                  "p99": 26671.04,
+                  "max": 26700.34
+                },
+                "cpu_cores": {
+                  "server": 1.64,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1942.06,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.59
+              }
+            ]
+          },
+          {
+            "concurrency": 128,
+            "median": {
+              "throughput_rps": 2.6,
+              "p50": 40574.04,
+              "p95": 49738.76,
+              "p99": 50353.02,
+              "max": 50888.9,
+              "error_rate": 0.0,
+              "cpu_server": 1.65,
+              "cpu_redis": 0.04,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1965.1,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.56
+            },
+            "throughput_by_repetition": [
+              2.6,
+              2.72,
+              2.4
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 128,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 76.94,
+                "throughput_rps": 2.6,
+                "latency_ms": {
+                  "p50": 40574.04,
+                  "p95": 49738.76,
+                  "p99": 50353.02,
+                  "max": 50888.9
+                },
+                "cpu_cores": {
+                  "server": 1.7,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1932.39,
+                "server_peak_rss_mb": 1932.39,
+                "redis_used_memory_mb": 150.56
+              },
+              {
+                "concurrency": 128,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 73.49,
+                "throughput_rps": 2.72,
+                "latency_ms": {
+                  "p50": 35679.1,
+                  "p95": 47681.76,
+                  "p99": 47775.99,
+                  "max": 47795.78
+                },
+                "cpu_cores": {
+                  "server": 1.6,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2050.19,
+                "server_peak_rss_mb": 2072.89,
+                "redis_used_memory_mb": 150.56
+              },
+              {
+                "concurrency": 128,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 83.42,
+                "throughput_rps": 2.4,
+                "latency_ms": {
+                  "p50": 42676.5,
+                  "p95": 54616.12,
+                  "p99": 54953.54,
+                  "max": 54975.74
+                },
+                "cpu_cores": {
+                  "server": 1.65,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1965.1,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.57
+              }
+            ]
+          }
+        ],
+        "GET /api/v2/transactions": [
+          {
+            "concurrency": 1,
+            "median": {
+              "throughput_rps": 1.86,
+              "p50": 539.92,
+              "p95": 610.14,
+              "p99": 665.95,
+              "max": 694.23,
+              "error_rate": 0.0,
+              "cpu_server": 0.97,
+              "cpu_redis": 0.03,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1965.53,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.52
+            },
+            "throughput_by_repetition": [
+              1.87,
+              1.86,
+              1.69
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 1,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 106.84,
+                "throughput_rps": 1.87,
+                "latency_ms": {
+                  "p50": 531.75,
+                  "p95": 610.14,
+                  "p99": 665.95,
+                  "max": 683.83
+                },
+                "cpu_cores": {
+                  "server": 0.97,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1932.4,
+                "server_peak_rss_mb": 1932.4,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 1,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 107.78,
+                "throughput_rps": 1.86,
+                "latency_ms": {
+                  "p50": 539.92,
+                  "p95": 602.13,
+                  "p99": 631.48,
+                  "max": 694.23
+                },
+                "cpu_cores": {
+                  "server": 0.96,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2072.98,
+                "server_peak_rss_mb": 2072.98,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 1,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 118.01,
+                "throughput_rps": 1.69,
+                "latency_ms": {
+                  "p50": 578.39,
+                  "p95": 704.79,
+                  "p99": 751.32,
+                  "max": 795.92
+                },
+                "cpu_cores": {
+                  "server": 0.97,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1965.53,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.51
+              }
+            ]
+          },
+          {
+            "concurrency": 8,
+            "median": {
+              "throughput_rps": 2.9,
+              "p50": 2736.31,
+              "p95": 2977.85,
+              "p99": 3195.12,
+              "max": 3235.59,
+              "error_rate": 0.0,
+              "cpu_server": 1.62,
+              "cpu_redis": 0.04,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1965.64,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.58
+            },
+            "throughput_by_repetition": [
+              2.86,
+              2.99,
+              2.9
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 8,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 69.91,
+                "throughput_rps": 2.86,
+                "latency_ms": {
+                  "p50": 2736.31,
+                  "p95": 3656.64,
+                  "p99": 4227.98,
+                  "max": 4601.71
+                },
+                "cpu_cores": {
+                  "server": 1.72,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1932.64,
+                "server_peak_rss_mb": 1932.64,
+                "redis_used_memory_mb": 150.59
+              },
+              {
+                "concurrency": 8,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 66.97,
+                "throughput_rps": 2.99,
+                "latency_ms": {
+                  "p50": 2649.65,
+                  "p95": 2944.94,
+                  "p99": 3195.12,
+                  "max": 3235.59
+                },
+                "cpu_cores": {
+                  "server": 1.57,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2073.07,
+                "server_peak_rss_mb": 2073.07,
+                "redis_used_memory_mb": 150.58
+              },
+              {
+                "concurrency": 8,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 69.06,
+                "throughput_rps": 2.9,
+                "latency_ms": {
+                  "p50": 2748.66,
+                  "p95": 2977.85,
+                  "p99": 3017.25,
+                  "max": 3146.15
+                },
+                "cpu_cores": {
+                  "server": 1.62,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1965.64,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.57
+              }
+            ]
+          },
+          {
+            "concurrency": 32,
+            "median": {
+              "throughput_rps": 2.89,
+              "p50": 10913.11,
+              "p95": 11418.79,
+              "p99": 11635.89,
+              "max": 11711.78,
+              "error_rate": 0.0,
+              "cpu_server": 1.6,
+              "cpu_redis": 0.04,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1965.73,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.59
+            },
+            "throughput_by_repetition": [
+              2.79,
+              2.89,
+              2.92
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 32,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 71.76,
+                "throughput_rps": 2.79,
+                "latency_ms": {
+                  "p50": 11290.42,
+                  "p95": 12308.42,
+                  "p99": 12651.95,
+                  "max": 13062.2
+                },
+                "cpu_cores": {
+                  "server": 1.7,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1932.9,
+                "server_peak_rss_mb": 1932.9,
+                "redis_used_memory_mb": 150.56
+              },
+              {
+                "concurrency": 32,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 69.25,
+                "throughput_rps": 2.89,
+                "latency_ms": {
+                  "p50": 10913.11,
+                  "p95": 11418.79,
+                  "p99": 11635.89,
+                  "max": 11692.18
+                },
+                "cpu_cores": {
+                  "server": 1.57,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2073.16,
+                "server_peak_rss_mb": 2073.16,
+                "redis_used_memory_mb": 150.59
+              },
+              {
+                "concurrency": 32,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 68.43,
+                "throughput_rps": 2.92,
+                "latency_ms": {
+                  "p50": 10794.69,
+                  "p95": 11416.66,
+                  "p99": 11618.79,
+                  "max": 11711.78
+                },
+                "cpu_cores": {
+                  "server": 1.6,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1965.73,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.6
+              }
+            ]
+          },
+          {
+            "concurrency": 64,
+            "median": {
+              "throughput_rps": 3.0,
+              "p50": 21234.2,
+              "p95": 21716.48,
+              "p99": 21851.58,
+              "max": 21893.0,
+              "error_rate": 0.0,
+              "cpu_server": 1.61,
+              "cpu_redis": 0.04,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1965.78,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.59
+            },
+            "throughput_by_repetition": [
+              2.87,
+              3.0,
+              3.06
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 64,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 69.79,
+                "throughput_rps": 2.87,
+                "latency_ms": {
+                  "p50": 21914.52,
+                  "p95": 22800.78,
+                  "p99": 23830.08,
+                  "max": 24020.9
+                },
+                "cpu_cores": {
+                  "server": 1.71,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1933.11,
+                "server_peak_rss_mb": 1933.11,
+                "redis_used_memory_mb": 150.55
+              },
+              {
+                "concurrency": 64,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 66.62,
+                "throughput_rps": 3.0,
+                "latency_ms": {
+                  "p50": 21234.2,
+                  "p95": 21716.48,
+                  "p99": 21805.56,
+                  "max": 21893.0
+                },
+                "cpu_cores": {
+                  "server": 1.58,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2073.19,
+                "server_peak_rss_mb": 2073.19,
+                "redis_used_memory_mb": 150.59
+              },
+              {
+                "concurrency": 64,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 65.35,
+                "throughput_rps": 3.06,
+                "latency_ms": {
+                  "p50": 20505.65,
+                  "p95": 21175.8,
+                  "p99": 21851.58,
+                  "max": 21863.45
+                },
+                "cpu_cores": {
+                  "server": 1.61,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1965.78,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.6
+              }
+            ]
+          },
+          {
+            "concurrency": 128,
+            "median": {
+              "throughput_rps": 2.99,
+              "p50": 34316.7,
+              "p95": 42981.78,
+              "p99": 43383.84,
+              "max": 43398.56,
+              "error_rate": 0.0,
+              "cpu_server": 1.6,
+              "cpu_redis": 0.04,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1965.87,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.6
+            },
+            "throughput_by_repetition": [
+              2.79,
+              2.99,
+              3.0
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 128,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 71.6,
+                "throughput_rps": 2.79,
+                "latency_ms": {
+                  "p50": 34907.69,
+                  "p95": 46262.53,
+                  "p99": 46464.87,
+                  "max": 46652.69
+                },
+                "cpu_cores": {
+                  "server": 1.73,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1935.21,
+                "server_peak_rss_mb": 1935.21,
+                "redis_used_memory_mb": 150.59
+              },
+              {
+                "concurrency": 128,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 66.95,
+                "throughput_rps": 2.99,
+                "latency_ms": {
+                  "p50": 34316.7,
+                  "p95": 42981.78,
+                  "p99": 43383.84,
+                  "max": 43398.56
+                },
+                "cpu_cores": {
+                  "server": 1.53,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2073.59,
+                "server_peak_rss_mb": 2073.59,
+                "redis_used_memory_mb": 150.6
+              },
+              {
+                "concurrency": 128,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 66.69,
+                "throughput_rps": 3.0,
+                "latency_ms": {
+                  "p50": 33165.72,
+                  "p95": 42641.57,
+                  "p99": 42769.65,
+                  "max": 42782.02
+                },
+                "cpu_cores": {
+                  "server": 1.6,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1965.87,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.61
+              }
+            ]
+          }
+        ],
+        "GET /api/v2/graph": [
+          {
+            "concurrency": 1,
+            "median": {
+              "throughput_rps": 1.79,
+              "p50": 557.01,
+              "p95": 655.8,
+              "p99": 733.69,
+              "max": 756.46,
+              "error_rate": 0.0,
+              "cpu_server": 0.97,
+              "cpu_redis": 0.03,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1967.09,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.52
+            },
+            "throughput_by_repetition": [
+              1.75,
+              1.85,
+              1.79
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 1,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 114.03,
+                "throughput_rps": 1.75,
+                "latency_ms": {
+                  "p50": 557.25,
+                  "p95": 691.95,
+                  "p99": 753.04,
+                  "max": 988.74
+                },
+                "cpu_cores": {
+                  "server": 0.97,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1935.66,
+                "server_peak_rss_mb": 1935.66,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 1,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 108.29,
+                "throughput_rps": 1.85,
+                "latency_ms": {
+                  "p50": 542.74,
+                  "p95": 621.62,
+                  "p99": 683.13,
+                  "max": 702.28
+                },
+                "cpu_cores": {
+                  "server": 0.97,
+                  "redis": 0.02,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2074.76,
+                "server_peak_rss_mb": 2074.76,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 1,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 111.79,
+                "throughput_rps": 1.79,
+                "latency_ms": {
+                  "p50": 557.01,
+                  "p95": 655.8,
+                  "p99": 733.69,
+                  "max": 756.46
+                },
+                "cpu_cores": {
+                  "server": 0.97,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1967.09,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.52
+              }
+            ]
+          },
+          {
+            "concurrency": 8,
+            "median": {
+              "throughput_rps": 2.82,
+              "p50": 2846.69,
+              "p95": 3118.79,
+              "p99": 3491.87,
+              "max": 3704.75,
+              "error_rate": 0.0,
+              "cpu_server": 1.6,
+              "cpu_redis": 0.04,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1969.44,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.59
+            },
+            "throughput_by_repetition": [
+              2.69,
+              2.94,
+              2.82
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 8,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 74.22,
+                "throughput_rps": 2.69,
+                "latency_ms": {
+                  "p50": 2921.45,
+                  "p95": 3775.66,
+                  "p99": 4039.51,
+                  "max": 4411.64
+                },
+                "cpu_cores": {
+                  "server": 1.67,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1936.9,
+                "server_peak_rss_mb": 1936.9,
+                "redis_used_memory_mb": 150.59
+              },
+              {
+                "concurrency": 8,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 67.97,
+                "throughput_rps": 2.94,
+                "latency_ms": {
+                  "p50": 2716.48,
+                  "p95": 3068.47,
+                  "p99": 3310.87,
+                  "max": 3610.01
+                },
+                "cpu_cores": {
+                  "server": 1.56,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2079.75,
+                "server_peak_rss_mb": 2079.75,
+                "redis_used_memory_mb": 150.58
+              },
+              {
+                "concurrency": 8,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 70.87,
+                "throughput_rps": 2.82,
+                "latency_ms": {
+                  "p50": 2846.69,
+                  "p95": 3118.79,
+                  "p99": 3491.87,
+                  "max": 3704.75
+                },
+                "cpu_cores": {
+                  "server": 1.6,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1969.44,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.59
+              }
+            ]
+          },
+          {
+            "concurrency": 32,
+            "median": {
+              "throughput_rps": 2.81,
+              "p50": 11312.0,
+              "p95": 11907.38,
+              "p99": 12033.8,
+              "max": 12036.52,
+              "error_rate": 0.0,
+              "cpu_server": 1.59,
+              "cpu_redis": 0.04,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1971.41,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.57
+            },
+            "throughput_by_repetition": [
+              2.69,
+              2.9,
+              2.81
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 32,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 74.44,
+                "throughput_rps": 2.69,
+                "latency_ms": {
+                  "p50": 11591.12,
+                  "p95": 12740.94,
+                  "p99": 13184.11,
+                  "max": 13524.42
+                },
+                "cpu_cores": {
+                  "server": 1.66,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1937.98,
+                "server_peak_rss_mb": 1937.98,
+                "redis_used_memory_mb": 150.59
+              },
+              {
+                "concurrency": 32,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 68.93,
+                "throughput_rps": 2.9,
+                "latency_ms": {
+                  "p50": 10982.56,
+                  "p95": 11545.16,
+                  "p99": 11746.84,
+                  "max": 11927.41
+                },
+                "cpu_cores": {
+                  "server": 1.56,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2080.81,
+                "server_peak_rss_mb": 2080.81,
+                "redis_used_memory_mb": 150.57
+              },
+              {
+                "concurrency": 32,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 71.2,
+                "throughput_rps": 2.81,
+                "latency_ms": {
+                  "p50": 11312.0,
+                  "p95": 11907.38,
+                  "p99": 12033.8,
+                  "max": 12036.52
+                },
+                "cpu_cores": {
+                  "server": 1.59,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1971.41,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.56
+              }
+            ]
+          },
+          {
+            "concurrency": 64,
+            "median": {
+              "throughput_rps": 2.73,
+              "p50": 22626.8,
+              "p95": 24286.66,
+              "p99": 24449.76,
+              "max": 24499.39,
+              "error_rate": 0.0,
+              "cpu_server": 1.6,
+              "cpu_redis": 0.04,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1973.1,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.56
+            },
+            "throughput_by_repetition": [
+              2.73,
+              2.73,
+              2.84
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 64,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 73.28,
+                "throughput_rps": 2.73,
+                "latency_ms": {
+                  "p50": 22626.8,
+                  "p95": 24345.24,
+                  "p99": 25032.54,
+                  "max": 25438.72
+                },
+                "cpu_cores": {
+                  "server": 1.67,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1939.88,
+                "server_peak_rss_mb": 1939.88,
+                "redis_used_memory_mb": 150.57
+              },
+              {
+                "concurrency": 64,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 73.18,
+                "throughput_rps": 2.73,
+                "latency_ms": {
+                  "p50": 23469.75,
+                  "p95": 24286.66,
+                  "p99": 24449.76,
+                  "max": 24499.39
+                },
+                "cpu_cores": {
+                  "server": 1.54,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2081.14,
+                "server_peak_rss_mb": 2081.14,
+                "redis_used_memory_mb": 150.56
+              },
+              {
+                "concurrency": 64,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 70.35,
+                "throughput_rps": 2.84,
+                "latency_ms": {
+                  "p50": 22066.3,
+                  "p95": 22992.07,
+                  "p99": 23446.9,
+                  "max": 23592.59
+                },
+                "cpu_cores": {
+                  "server": 1.6,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1973.1,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.55
+              }
+            ]
+          },
+          {
+            "concurrency": 128,
+            "median": {
+              "throughput_rps": 2.84,
+              "p50": 36186.19,
+              "p95": 45839.04,
+              "p99": 46103.83,
+              "max": 46414.39,
+              "error_rate": 0.0,
+              "cpu_server": 1.6,
+              "cpu_redis": 0.04,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1973.84,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.57
+            },
+            "throughput_by_repetition": [
+              2.84,
+              2.8,
+              2.88
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 128,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 70.51,
+                "throughput_rps": 2.84,
+                "latency_ms": {
+                  "p50": 35924.91,
+                  "p95": 45839.04,
+                  "p99": 46103.83,
+                  "max": 46414.39
+                },
+                "cpu_cores": {
+                  "server": 1.64,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1941.63,
+                "server_peak_rss_mb": 1941.63,
+                "redis_used_memory_mb": 150.57
+              },
+              {
+                "concurrency": 128,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 71.38,
+                "throughput_rps": 2.8,
+                "latency_ms": {
+                  "p50": 36186.19,
+                  "p95": 46282.78,
+                  "p99": 46415.37,
+                  "max": 46416.17
+                },
+                "cpu_cores": {
+                  "server": 1.57,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2082.53,
+                "server_peak_rss_mb": 2082.53,
+                "redis_used_memory_mb": 150.56
+              },
+              {
+                "concurrency": 128,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 69.54,
+                "throughput_rps": 2.88,
+                "latency_ms": {
+                  "p50": 36672.74,
+                  "p95": 44912.41,
+                  "p99": 45460.59,
+                  "max": 45570.59
+                },
+                "cpu_cores": {
+                  "server": 1.6,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1973.84,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.58
+              }
+            ]
+          }
+        ],
+        "GET /api/v2/alerts": [
+          {
+            "concurrency": 1,
+            "median": {
+              "throughput_rps": 2.03,
+              "p50": 483.48,
+              "p95": 599.21,
+              "p99": 655.24,
+              "max": 740.24,
+              "error_rate": 0.0,
+              "cpu_server": 0.97,
+              "cpu_redis": 0.03,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1973.85,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.52
+            },
+            "throughput_by_repetition": [
+              2.03,
+              2.03,
+              2.05
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 1,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 98.72,
+                "throughput_rps": 2.03,
+                "latency_ms": {
+                  "p50": 485.08,
+                  "p95": 595.07,
+                  "p99": 638.37,
+                  "max": 668.24
+                },
+                "cpu_cores": {
+                  "server": 0.97,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1941.63,
+                "server_peak_rss_mb": 1941.63,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 1,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 98.71,
+                "throughput_rps": 2.03,
+                "latency_ms": {
+                  "p50": 483.48,
+                  "p95": 618.14,
+                  "p99": 658.04,
+                  "max": 740.24
+                },
+                "cpu_cores": {
+                  "server": 0.97,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2082.53,
+                "server_peak_rss_mb": 2082.53,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 1,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 97.64,
+                "throughput_rps": 2.05,
+                "latency_ms": {
+                  "p50": 477.46,
+                  "p95": 599.21,
+                  "p99": 655.24,
+                  "max": 760.76
+                },
+                "cpu_cores": {
+                  "server": 0.97,
+                  "redis": 0.03,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1973.85,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.52
+              }
+            ]
+          },
+          {
+            "concurrency": 8,
+            "median": {
+              "throughput_rps": 3.26,
+              "p50": 2430.75,
+              "p95": 2810.59,
+              "p99": 3087.78,
+              "max": 3458.65,
+              "error_rate": 0.0,
+              "cpu_server": 1.53,
+              "cpu_redis": 0.04,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1973.85,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.52
+            },
+            "throughput_by_repetition": [
+              3.34,
+              3.26,
+              3.13
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 8,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 59.92,
+                "throughput_rps": 3.34,
+                "latency_ms": {
+                  "p50": 2349.5,
+                  "p95": 2632.08,
+                  "p99": 3000.05,
+                  "max": 3503.02
+                },
+                "cpu_cores": {
+                  "server": 1.55,
+                  "redis": 0.05,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1941.63,
+                "server_peak_rss_mb": 1941.63,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 8,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 61.31,
+                "throughput_rps": 3.26,
+                "latency_ms": {
+                  "p50": 2430.75,
+                  "p95": 2810.59,
+                  "p99": 3087.78,
+                  "max": 3250.97
+                },
+                "cpu_cores": {
+                  "server": 1.53,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2082.54,
+                "server_peak_rss_mb": 2082.54,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 8,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 63.87,
+                "throughput_rps": 3.13,
+                "latency_ms": {
+                  "p50": 2511.51,
+                  "p95": 3014.2,
+                  "p99": 3356.47,
+                  "max": 3458.65
+                },
+                "cpu_cores": {
+                  "server": 1.53,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1973.85,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.53
+              }
+            ]
+          },
+          {
+            "concurrency": 32,
+            "median": {
+              "throughput_rps": 3.17,
+              "p50": 9883.54,
+              "p95": 10934.53,
+              "p99": 11085.73,
+              "max": 11152.12,
+              "error_rate": 0.0,
+              "cpu_server": 1.52,
+              "cpu_redis": 0.04,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1973.85,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.52
+            },
+            "throughput_by_repetition": [
+              3.17,
+              3.28,
+              3.06
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 32,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 63.09,
+                "throughput_rps": 3.17,
+                "latency_ms": {
+                  "p50": 9883.54,
+                  "p95": 10934.53,
+                  "p99": 11085.73,
+                  "max": 11135.91
+                },
+                "cpu_cores": {
+                  "server": 1.53,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1941.63,
+                "server_peak_rss_mb": 1941.63,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 32,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 60.93,
+                "throughput_rps": 3.28,
+                "latency_ms": {
+                  "p50": 9377.26,
+                  "p95": 10691.21,
+                  "p99": 10944.77,
+                  "max": 11152.12
+                },
+                "cpu_cores": {
+                  "server": 1.52,
+                  "redis": 0.05,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2082.59,
+                "server_peak_rss_mb": 2082.59,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 32,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 65.26,
+                "throughput_rps": 3.06,
+                "latency_ms": {
+                  "p50": 10119.64,
+                  "p95": 11260.87,
+                  "p99": 11521.25,
+                  "max": 11773.86
+                },
+                "cpu_cores": {
+                  "server": 1.51,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1973.85,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.52
+              }
+            ]
+          },
+          {
+            "concurrency": 64,
+            "median": {
+              "throughput_rps": 3.28,
+              "p50": 19406.34,
+              "p95": 19768.57,
+              "p99": 19851.4,
+              "max": 20046.72,
+              "error_rate": 0.0,
+              "cpu_server": 1.54,
+              "cpu_redis": 0.04,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1973.86,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.52
+            },
+            "throughput_by_repetition": [
+              3.28,
+              3.46,
+              3.23
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 64,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 61.05,
+                "throughput_rps": 3.28,
+                "latency_ms": {
+                  "p50": 19406.34,
+                  "p95": 19768.57,
+                  "p99": 19851.4,
+                  "max": 20046.72
+                },
+                "cpu_cores": {
+                  "server": 1.56,
+                  "redis": 0.05,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1941.63,
+                "server_peak_rss_mb": 1941.63,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 64,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 57.76,
+                "throughput_rps": 3.46,
+                "latency_ms": {
+                  "p50": 18054.97,
+                  "p95": 19056.37,
+                  "p99": 19098.78,
+                  "max": 19173.49
+                },
+                "cpu_cores": {
+                  "server": 1.54,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2082.59,
+                "server_peak_rss_mb": 2082.59,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 64,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 61.89,
+                "throughput_rps": 3.23,
+                "latency_ms": {
+                  "p50": 19430.6,
+                  "p95": 20197.64,
+                  "p99": 20269.25,
+                  "max": 20347.95
+                },
+                "cpu_cores": {
+                  "server": 1.54,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1973.86,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.52
+              }
+            ]
+          },
+          {
+            "concurrency": 128,
+            "median": {
+              "throughput_rps": 3.31,
+              "p50": 30799.64,
+              "p95": 38697.96,
+              "p99": 38976.65,
+              "max": 39379.81,
+              "error_rate": 0.0,
+              "cpu_server": 1.54,
+              "cpu_redis": 0.04,
+              "cpu_load_generator": 0.0,
+              "server_rss_mb": 1974.25,
+              "server_peak_rss_mb": 2071.25,
+              "redis_used_memory_mb": 150.52
+            },
+            "throughput_by_repetition": [
+              3.31,
+              3.31,
+              3.21
+            ],
+            "check_green": true,
+            "completed_repetitions": 3,
+            "repetitions": [
+              {
+                "concurrency": 128,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 60.39,
+                "throughput_rps": 3.31,
+                "latency_ms": {
+                  "p50": 31008.01,
+                  "p95": 38519.72,
+                  "p99": 38757.24,
+                  "max": 38989.34
+                },
+                "cpu_cores": {
+                  "server": 1.54,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1941.68,
+                "server_peak_rss_mb": 1941.68,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 128,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 60.47,
+                "throughput_rps": 3.31,
+                "latency_ms": {
+                  "p50": 29603.64,
+                  "p95": 38697.96,
+                  "p99": 38976.65,
+                  "max": 39379.81
+                },
+                "cpu_cores": {
+                  "server": 1.5,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 2082.64,
+                "server_peak_rss_mb": 2082.64,
+                "redis_used_memory_mb": 150.52
+              },
+              {
+                "concurrency": 128,
+                "requests": 200,
+                "ok": 200,
+                "errors": 0,
+                "error_rate": 0.0,
+                "wall_s": 62.29,
+                "throughput_rps": 3.21,
+                "latency_ms": {
+                  "p50": 30799.64,
+                  "p95": 39958.41,
+                  "p99": 40298.69,
+                  "max": 40410.42
+                },
+                "cpu_cores": {
+                  "server": 1.54,
+                  "redis": 0.04,
+                  "load_generator": 0.0
+                },
+                "server_rss_mb": 1974.25,
+                "server_peak_rss_mb": 2071.25,
+                "redis_used_memory_mb": 150.52
+              }
+            ]
+          }
+        ]
+      }
     }
   }
 }
