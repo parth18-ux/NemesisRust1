@@ -538,3 +538,166 @@ async fn concurrent_outage_fails_closed() {
     drop(r);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A second 9000 ACH payment on one pair inside 24 h: the pair window raises it above allow, so it opens an alert.
+fn pair_events(acct: &str) -> (Value, Value) {
+    let mut b = event(&format!("{acct}-2"), acct);
+    b["timestamp"] = json!("2022-09-09 10:05");
+    (event(&format!("{acct}-1"), acct), b)
+}
+
+/// One process's view of one event: (live alerts for it, live:ledger entries for it, desk alerts for it, desk
+/// live_decision entries for it not voided). Checks the desk chain and that record, alert, evidence pack and ledger agree.
+fn one_decision(shared: &rusetect_server::AppRef, con: &mut redis::Connection, px: &str, rec: &Value) -> (usize, usize, usize, usize) {
+    let id = rec["event_id"].as_str().unwrap();
+    let alerts: Vec<(String, String)> = redis::cmd("HGETALL").arg(format!("{px}live:alerts")).query(con).unwrap();
+    let alerts: Vec<Value> = alerts.iter().map(|x| serde_json::from_str::<Value>(&x.1).unwrap()).filter(|a| a["event_id"] == id).collect();
+    let ledger: Vec<String> = redis::cmd("LRANGE").arg(format!("{px}live:ledger")).arg(0).arg(-1).query(con).unwrap();
+    let ledger: Vec<Value> = ledger.iter().map(|x| serde_json::from_str::<Value>(x).unwrap()).filter(|e| e["event_id"] == id).collect();
+    let stored: String = redis::cmd("GET").arg(format!("{px}live:ev:{id}")).query(con).unwrap();
+    assert_eq!(serde_json::from_str::<Value>(&stored).unwrap(), *rec, "ev: record is the answer");
+    for e in &ledger {
+        assert_eq!((&e["final_decision"], &e["alert_id"], &e["hash"]), (&rec["final_decision"], &rec["alert_id"], &rec["ledger"]["hash"]));
+    }
+    let st = shared.state.lock().unwrap();
+    assert!(st.desk.verify_chain());
+    let voided: Vec<&Value> = st.desk.log.iter().filter(|e| e["type"] == "live_decision_void").flat_map(|e| e["voids"].as_array().unwrap()).collect();
+    let desk_alerts = st.desk.alerts.values().filter(|a| a["event_id"] == id).count();
+    let entries: Vec<&Value> = st.desk.log.iter().filter(|e| e["type"] == "live_decision" && e["event_id"] == id && !voided.contains(&&e["hash"])).collect();
+    for e in &entries {
+        assert_eq!((&e["final_decision"], &e["hash"]), (&rec["final_decision"], &rec["ledger"]["hash"]));
+    }
+    if let Some(aid) = rec["alert_id"].as_str() {
+        assert_eq!(alerts.iter().map(|a| a["alert_id"].as_str().unwrap()).collect::<Vec<_>>(), [aid]);
+        let pack = st.desk.evidence(aid).expect("evidence pack");
+        assert_eq!(pack["alert"]["event_id"], id);
+        assert_eq!(pack["alert"]["assessed"]["final_decision"], rec["final_decision"]);
+        let decided: Vec<&Value> = pack["audit_entries"].as_array().unwrap().iter().filter(|e| e["type"] == "live_decision").collect();
+        assert_eq!(decided.len(), 1, "{pack}");
+        assert_eq!(decided[0]["hash"], rec["ledger"]["hash"]);
+    }
+    (alerts.len(), ledger.len(), desk_alerts, entries.len())
+}
+
+fn redis_instance(r: &Redis, px: &str) -> (axum::Router, rusetect_server::AppRef, std::sync::Arc<rusetect_server::live::Durable>) {
+    let (app, shared) = app();
+    let live = rusetect_server::live::Live::redis(&r.1, px).unwrap();
+    let du = live.redis.clone().unwrap();
+    shared.state.lock().unwrap().live = live;
+    (app, shared, du)
+}
+
+/// The commit fails after decide opened the alert and chained the entries: the attempt is taken out of the desk, the
+/// claim released, and the retry (scored again from the features the payment was first scored with, its own pair-window
+/// member replaced) gives exactly what a clean single send gives: one alert, one ledger entry, one decision.
+#[tokio::test]
+async fn a_commit_failure_then_a_retry_leaves_one_alert_one_entry_and_the_clean_decision() {
+    let Some(r) = redis_server() else { return };
+    let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
+    let (a, b) = pair_events("CF1");
+    // clean single send, in its own namespace
+    let (clean_app, _, _) = redis_instance(&r, "c:");
+    assert_eq!(send(&clean_app, &a, now(), None).await.0, StatusCode::OK);
+    let (s, clean, _) = send(&clean_app, &b, now(), None).await;
+    assert_eq!(s, StatusCode::OK, "{clean}");
+    assert_ne!(clean["action"], "allow", "the pair window raises the second payment: {clean}");
+    // the same two payments, the second one's commit failing once
+    let (app, shared, du) = redis_instance(&r, "k:");
+    assert_eq!(send(&app, &a, now(), None).await.0, StatusCode::OK);
+    let chain = shared.state.lock().unwrap().desk.log.len();
+    du.fail_next_commit(1);
+    assert_eq!(send(&app, &b, now(), None).await.0, StatusCode::SERVICE_UNAVAILABLE);
+    {
+        let st = shared.state.lock().unwrap();
+        assert_eq!(st.desk.log.len(), chain, "the attempt's chain entries are gone");
+        assert!(!st.desk.alerts.values().any(|x| x["event_id"] == "CF1-2"), "no orphan alert");
+    }
+    assert_eq!(redis::cmd("GET").arg("k:live:ev:CF1-2").query::<Option<String>>(&mut con).unwrap(), None, "claim released");
+    let (s, rec, replayed) = send(&app, &b, now(), None).await;
+    assert_eq!((s, replayed), (StatusCode::OK, false), "{rec}");
+    assert_eq!(one_decision(&shared, &mut con, "k:", &rec), (1, 1, 1, 1));
+    for k in ["action", "final_decision", "payment_decision", "risk", "context_band"] {
+        assert_eq!(rec[k], clean[k], "{k}: the retry decides as a clean single send");
+    }
+    // the pair window holds each payment once, with the same risks as the clean send
+    let window = |px: &str, con: &mut redis::Connection| {
+        let keys: Vec<String> = redis::cmd("KEYS").arg(format!("{px}pr:*")).query(con).unwrap();
+        assert_eq!(keys.len(), 1);
+        redis::cmd("ZRANGE").arg(&keys[0]).arg(0).arg(-1).query::<Vec<String>>(con).unwrap()
+    };
+    let w = window("k:", &mut con);
+    assert_eq!(w.len(), 2, "{w:?}");
+    assert_eq!(w, window("c:", &mut con));
+    // and a further retry is a replay
+    let (s, again, replayed) = send(&app, &b, now(), None).await;
+    assert_eq!((s, replayed, &again), (StatusCode::OK, true, &rec));
+    assert_eq!(one_decision(&shared, &mut con, "k:", &rec), (1, 1, 1, 1));
+}
+
+/// The commit is applied but its reply is lost: the request finds its own result and answers with it; the alert and the
+/// ledger entry it opened stand, once; a retry is a replay.
+#[tokio::test]
+async fn a_lost_commit_reply_gives_one_decision() {
+    let Some(r) = redis_server() else { return };
+    let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
+    let (app, shared, du) = redis_instance(&r, "lr:");
+    let mut e = event("LR-1", "LR1");
+    e["amount_paid"] = json!(950000);
+    e["timestamp"] = json!("2022-09-09 03:00");
+    du.fail_next_commit(2);
+    let (s, rec, replayed) = send(&app, &e, now(), None).await;
+    assert_eq!((s, replayed), (StatusCode::OK, false), "{rec}");
+    assert!(rec["alert_id"].is_string(), "{rec}");
+    assert_eq!(one_decision(&shared, &mut con, "lr:", &rec), (1, 1, 1, 1));
+    let (s, again, replayed) = send(&app, &e, now(), None).await;
+    assert_eq!((s, replayed, &again), (StatusCode::OK, true, &rec));
+    assert_eq!(one_decision(&shared, &mut con, "lr:", &rec), (1, 1, 1, 1));
+}
+
+/// The commit fails and the store cannot say whether it landed: the desk drops its copy of the alert and keeps the chain
+/// entries (live:ledger may hold them). When the claim has expired and the retry finds the event uncommitted, those
+/// entries are voided before the retry decides: one alert, one live decision, one ledger entry, the chain still valid.
+#[tokio::test]
+async fn an_unknown_commit_outcome_is_settled_by_the_retry() {
+    let Some(r) = redis_server() else { return };
+    let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
+    let (app, shared, du) = redis_instance(&r, "uk:");
+    let (a, b) = pair_events("UK1");
+    assert_eq!(send(&app, &a, now(), None).await.0, StatusCode::OK);
+    du.fail_next_commit(3);
+    assert_eq!(send(&app, &b, now(), None).await.0, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(!shared.state.lock().unwrap().desk.alerts.values().any(|x| x["event_id"] == "UK1-2"));
+    let claim: Option<String> = redis::cmd("GET").arg("uk:live:ev:UK1-2").query(&mut con).unwrap();
+    assert!(claim.unwrap().starts_with("pending:"), "outcome unknown: the claim is left to expire");
+    redis::cmd("DEL").arg("uk:live:ev:UK1-2").query::<()>(&mut con).unwrap(); // CLAIM_TTL_S passes
+    let (s, rec, replayed) = send(&app, &b, now(), None).await;
+    assert_eq!((s, replayed), (StatusCode::OK, false), "{rec}");
+    assert_eq!(one_decision(&shared, &mut con, "uk:", &rec), (1, 1, 1, 1));
+    let st = shared.state.lock().unwrap();
+    let void = st.desk.log.iter().find(|e| e["type"] == "live_decision_void").expect("the earlier attempt is voided");
+    assert_eq!((void["event_id"].as_str(), void["voids"].as_array().unwrap().len()), (Some("UK1-2"), 2), "{void}");
+}
+
+/// Memory mode decides and commits in one locked call, so there is no partial failure; a retry is a replay and record,
+/// alert, evidence pack and ledger agree on the one decision.
+#[tokio::test]
+async fn memory_mode_retry_keeps_one_decision() {
+    let (app, shared) = app();
+    let (a, b) = pair_events("MM1");
+    assert_eq!(send(&app, &a, now(), None).await.0, StatusCode::OK);
+    let (s, rec, _) = send(&app, &b, now(), None).await;
+    assert_eq!(s, StatusCode::OK);
+    let (s, again, replayed) = send(&app, &b, now(), None).await;
+    assert_eq!((s, replayed, &again), (StatusCode::OK, true, &rec));
+    let st = shared.state.lock().unwrap();
+    let entries: Vec<&Value> = st.desk.log.iter().filter(|e| e["type"] == "live_decision" && e["event_id"] == "MM1-2").collect();
+    assert_eq!(entries.len(), 1);
+    assert_eq!((&entries[0]["final_decision"], &entries[0]["hash"]), (&rec["final_decision"], &rec["ledger"]["hash"]));
+    assert_eq!(st.desk.alerts.values().filter(|x| x["event_id"] == "MM1-2").count(), rec["alert_id"].is_string() as usize);
+    if let Some(aid) = rec["alert_id"].as_str() {
+        let pack = st.desk.evidence(aid).unwrap();
+        assert_eq!(pack["alert"]["event_id"], "MM1-2");
+        assert_eq!(pack["audit_entries"].as_array().unwrap().iter().filter(|e| e["type"] == "live_decision").count(), 1);
+    }
+    assert_eq!(st.engine.as_ref().unwrap().n_seen, 2, "account state written once per payment");
+}

@@ -602,6 +602,21 @@ was not repeated to clear it. The S1 code stays served (the webhook path met its
 review fenced the idempotency claim with a per-request token and added the payee to the scoring stripes, which this
 measurement predates.
 
+**8ai. Recovery from a partially saved payment: one outcome per event.** Two known limits of the Redis webhook, also
+raised by an external reviewer, are fixed on top of the fenced claim and commit (`pending:<seq>` tokens, the Lua
+compare-and-commit). (1) A commit that failed after `decide` left its alert and desk-chain entries in that instance's
+desk, so the retry opened a second alert. Now an attempt whose commit did not land is taken back out: its alert is
+removed and its chain entries are truncated while they are still the chain's tail (the ledger lock is held from before
+`decide` through the commit, so other live decisions cannot chain after them), or voided by a `live_decision_void`
+entry otherwise. When the outcome is unknown (the store was unreachable for the commit and the check), the entries
+stay, since `live:ledger` may hold them, and are voided by the next attempt on that instance that finds the event
+uncommitted. Deterministic alert ids were considered; they would not have removed the orphan chain entries. (2) The
+pair window's member was `eid|risk`, so a rescored retry added a second member and read its own earlier one as a prior
+payment. The window is now updated by one script that drops the event's own member before adding it, and `seen:{eid}`
+stores the features of the first scoring, so a retry is scored from them, not from state holding its own write: in
+the failure-injection test the retry's decision, risk and pair-window members equal a clean single send's. Tests
+inject a failed commit, a lost reply and an unknown outcome through a test hook (`Durable::fail_next_commit`).
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

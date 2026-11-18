@@ -112,6 +112,13 @@ fn redis_pair_window_matches_engine_window() {
         payment_currency: "US Dollar".into(), receiving_currency: "US Dollar".into(), payment_format: "ACH".into(), tmin: t, eid: Some(99_999) };
     assert_eq!(rs.pair_window(&p, "d", 0.5).unwrap().0, 1);
     assert_eq!(rs.pair_window(&p, "d", 0.5).unwrap().0, 1);
+    // nor when it is rescored with another risk: its own member is replaced, never read as a prior payment
+    assert_eq!(rs.pair_window(&p, "d", 0.25).unwrap(), (1, 0.25));
+    let q = Payment { eid: Some(99_998), ..p.clone() };
+    let (n, nor) = rs.pair_window(&q, "d", 0.5).unwrap();
+    assert_eq!(n, 2);
+    assert!((nor - (1.0 - 0.75 * 0.5)).abs() < 1e-12);
+    assert_eq!(rs.pair_window(&p, "d", 0.1).unwrap().0, 2);
 }
 
 #[test]
@@ -152,8 +159,10 @@ fn redelivered_payment_counts_once() {
     let a = rows(1)[0].clone();
     let b = Payment { to_account: format!("{}x", a.to_account), tmin: a.tmin + 5, eid: Some(1_000_000), ..a.clone() };
     let (mut dup, mut once) = (rs("dup:"), rs("once:"));
-    dup.features(&a).unwrap();
-    dup.features(&a).unwrap();
+    let first = dup.features(&a).unwrap();
+    // the redelivery is scored from the features it was first scored with, not from state that holds its own write
+    let again = dup.features(&a).unwrap();
+    assert!(first.0.iter().zip(again.0.iter()).all(|(x, y)| x == y || (x.is_nan() && y.is_nan())));
     once.features(&a).unwrap();
     let (x, y) = (dup.features(&b).unwrap(), once.features(&b).unwrap());
     for k in 0..31 {
