@@ -29,6 +29,14 @@ impl Scorer {
 /// One payment through the cascade with account state in Redis: same structuring window and format hardening as
 /// Engine::finish_risk (the window applies with or without the hardening file, as there), then the context layer.
 pub fn score_one(eng: &Engine, state: &mut RedisState, p: &Payment) -> redis::RedisResult<Value> {
+    score_payment(eng, state, p, None)
+}
+
+pub(crate) fn score_live(eng: &Engine, state: &mut RedisState, p: &Payment) -> redis::RedisResult<Value> {
+    score_payment(eng, state, p, p.eid)
+}
+
+fn score_payment(eng: &Engine, state: &mut RedisState, p: &Payment, live_eid: Option<i64>) -> redis::RedisResult<Value> {
     let m = eng.models.as_ref().unwrap();
     let cfg = &eng.cfg;
     let (f, write) = state.features_read(p)?;
@@ -42,9 +50,15 @@ pub fn score_one(eng: &Engine, state: &mut RedisState, p: &Payment) -> redis::Re
     // one round trip: the account-state write script, then the pair window (different keys, so the order is free)
     let mut pl = redis::pipe();
     pl.add_command(write);
-    state.pair_window_cmds(&mut pl, p, &payee, risk);
-    let (_, members): (i64, Vec<String>) = pl.query(&mut state.con)?;
-    let (n, pair) = RedisState::pair_window_of(&members);
+    let (n, pair) = if let Some(eid) = live_eid {
+        state.live_pair_score_cmds(&mut pl, p, &payee, risk, eid);
+        let (_, pair): (i64, (usize, f64)) = pl.query(&mut state.con)?;
+        pair
+    } else {
+        state.pair_window_cmds(&mut pl, p, &payee, risk);
+        let (_, members): (i64, Vec<String>) = pl.query(&mut state.con)?;
+        RedisState::pair_window_of(&members)
+    };
 
     let raised = if n > 1 { pair.max(risk) } else { risk };
     if let Some(h) = m.hardening.as_ref() {
