@@ -638,6 +638,32 @@ async fn a_commit_failure_then_a_retry_leaves_one_alert_one_entry_and_the_clean_
     assert_eq!(one_decision(&shared, &mut con, "k:", &rec), (1, 1, 1, 1));
 }
 
+/// A retry after a newer payment to the same pair has landed: the newer payment is already in the pair window, but the
+/// retry counts only payments up to its own minute, so its risk and decision equal a clean single send of it.
+#[tokio::test]
+async fn a_retry_after_a_newer_payment_on_the_pair_scores_as_a_clean_single_send() {
+    let Some(r) = redis_server() else { return };
+    let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
+    let (a, b) = pair_events("NR1");
+    let (clean_app, _, _) = redis_instance(&r, "nc:");
+    let (s, clean, _) = send(&clean_app, &a, now(), None).await;
+    assert_eq!(s, StatusCode::OK, "{clean}");
+    // A's commit fails once; newer B on the same pair lands; then A is retried
+    let (app, shared, du) = redis_instance(&r, "nr:");
+    du.fail_next_commit(1);
+    assert_eq!(send(&app, &a, now(), None).await.0, StatusCode::SERVICE_UNAVAILABLE);
+    let (s, newer, _) = send(&app, &b, now(), None).await;
+    assert_eq!(s, StatusCode::OK, "{newer}");
+    let keys: Vec<String> = redis::cmd("KEYS").arg("nr:pr:*").query(&mut con).unwrap();
+    assert_eq!(redis::cmd("ZCARD").arg(&keys[0]).query::<usize>(&mut con).unwrap(), 2, "B is in the window before A's retry");
+    let (s, rec, replayed) = send(&app, &a, now(), None).await;
+    assert_eq!((s, replayed), (StatusCode::OK, false), "{rec}");
+    for k in ["action", "final_decision", "payment_decision", "risk", "context_band"] {
+        assert_eq!(rec[k], clean[k], "{k}: the retry decides as a clean single send of A");
+    }
+    assert_eq!(one_decision(&shared, &mut con, "nr:", &rec).1, 1);
+}
+
 /// The commit is applied but its reply is lost: the request finds its own result and answers with it; the alert and the
 /// ledger entry it opened stand, once; a retry is a replay.
 #[tokio::test]

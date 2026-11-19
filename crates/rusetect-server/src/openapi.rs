@@ -164,20 +164,23 @@ pub fn spec() -> Value {
            "paths": paths, "components": {"schemas": schemas()}})
 }
 
+/// Swagger UI from jsDelivr, pinned to one release with subresource integrity, so a changed file on the CDN is refused
+/// by the browser instead of running on this origin (where the app keeps the analyst key). To upgrade, change the
+/// version and both hashes together (`openssl dgst -sha384 -binary FILE | base64` over the npm package's files).
 pub const DOCS_HTML: &str = r#"<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+<meta charset="utf-8">
+<link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.0/swagger-ui.css"
+ integrity="sha384-3nuX7df3EaAoiqLBeyS1Ola0Gpg9ryJKVtarubwfnA1cOH8AWHUdbPSIvEqPZ9VH" crossorigin="anonymous">
 <link rel="shortcut icon" href="/favicon.svg">
 <title>RuseTect API - Swagger UI</title>
 </head>
 <body>
 <div id="swagger-ui"></div>
-<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-<script>
-const ui = SwaggerUIBundle({url: '/openapi.json', dom_id: '#swagger-ui', layout: 'BaseLayout', deepLinking: true, showExtensions: true,
-  showCommonExtensions: true, presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset]})
-</script>
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.0/swagger-ui-bundle.js"
+ integrity="sha384-7xcoc6ZKDFF7Ek627QTC3Bg/K+5Y36NJ8MWAE43D2m6+3Sh9XO3tdsfHhrS8gNIQ" crossorigin="anonymous"></script>
+<script src="/assets/js/docs.js"></script>
 </body>
 </html>
 "#;

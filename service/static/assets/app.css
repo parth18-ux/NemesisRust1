@@ -155,6 +155,7 @@ textarea{width:100%;resize:vertical;min-height:64px}
 .split span{display:block;min-width:3px}
 .checks{display:grid;gap:7px;margin:0;padding:0;list-style:none;font-size:13px}
 .checks li{display:flex;align-items:center;gap:8px}
+.checks li>span:not(.pill){min-width:0;overflow-wrap:anywhere}
 .checks li b{margin-left:auto;font:500 12px var(--mono);color:var(--ink-2)}
 .tip{position:fixed;z-index:60;pointer-events:none;background:var(--ink);color:var(--surface);padding:7px 9px;border-radius:7px;font:400 12px/1.4 var(--mono);box-shadow:var(--shadow-lg);max-width:240px}
 

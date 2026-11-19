@@ -73,7 +73,8 @@ impl RedisState {
     /// The structuring window of Engine::finish_risk (engine::PairWindow) kept in Redis, so a restarted or rebalanced
     /// worker keeps it: 24 h noisy-OR of the cascade risks of this payer's payments to `payee` (all payees when `payee`
     /// is empty), current one included. A redelivered payment (same eid) is counted once, with its latest risk, and never
-    /// reads its own earlier member as a prior payment. Returns (payments, noisy-OR).
+    /// reads its own earlier member as a prior payment; payments with a later minute than this one are not counted (they
+    /// can be stored already when this one is rescored). Returns (payments, noisy-OR).
     pub fn pair_window(&mut self, p: &Payment, payee: &str, risk: f64) -> redis::RedisResult<(usize, f64)> {
         let mut pl = redis::pipe();
         self.pair_window_cmds(&mut pl, p, payee, risk);
@@ -86,10 +87,13 @@ impl RedisState {
     pub fn pair_window_cmds(&self, pl: &mut redis::Pipeline, p: &Payment, payee: &str, risk: f64) {
         let key = format!("{}>{}", self.k("pr", &format!("{}|{}", p.from_bank, p.from_account)), payee);
         let eid = p.eid.map(|e| e.to_string()).unwrap_or_else(|| format!("{}.{}", p.tmin, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
-        // trim, drop this eid's own member (a rescore), add it with this risk, return the window
+        // trim, drop this eid's own member (a rescore), add it with this risk, return the window up to this payment's
+        // minute: a rescore (a retry) must not count payments to the pair that arrived later with later timestamps, so it
+        // sees what a clean single send saw. Payments in the same minute count, whatever order they arrived in.
         const PAIR: &str = "redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1]) \
             for _, m in ipairs(redis.call('ZRANGE', KEYS[1], 0, -1)) do if string.sub(m, 1, #ARGV[3]) == ARGV[3] then redis.call('ZREM', KEYS[1], m) end end \
-            redis.call('ZADD', KEYS[1], ARGV[2], ARGV[3] .. ARGV[4]) redis.call('EXPIRE', KEYS[1], ARGV[5]) return redis.call('ZRANGE', KEYS[1], 0, -1)";
+            redis.call('ZADD', KEYS[1], ARGV[2], ARGV[3] .. ARGV[4]) redis.call('EXPIRE', KEYS[1], ARGV[5]) \
+            return redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[2])";
         pl.cmd("EVAL").arg(PAIR).arg(1).arg(&key).arg(p.tmin - MIN24).arg(p.tmin).arg(format!("{eid}|")).arg(risk.to_string()).arg(MIN24 * 60 + 3600);
     }
 

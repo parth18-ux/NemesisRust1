@@ -15,7 +15,7 @@
 //!
 //! Bounds: at most SCAN live decisions are read per request (with Redis the feed's 200), pages are at most 200 rows,
 //! and a graph at most 300 accounts and 1,000 payments.
-use crate::{blocking, int_query, live, ok, require_reader, ApiError, ApiResult, AppRef, Shared};
+use crate::{blocking_read, int_query, live, ok, require_reader, ApiError, ApiResult, AppRef, Shared};
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use rusetect::branding::VERSION;
@@ -232,7 +232,7 @@ pub async fn v2_transactions(State(app): State<AppRef>, h: HeaderMap, Query(q): 
     let f = Filter::parse(&q)?;
     let limit = int_query(&q.get("limit").cloned(), "limit", 50)?.clamp(1, PAGE_MAX) as usize;
     let offset = int_query(&q.get("offset").cloned(), "offset", 0)?.clamp(0, SCAN as i64 * 2) as usize;
-    blocking(move || {
+    blocking_read(move || {
         let c = corpus(&app)?;
         let hits: Vec<&Value> = c.txns.iter().filter(|(t, v)| f.keep(*t, v)).map(|x| &x.1).collect();
         ok(json!({"total": hits.len(), "offset": offset, "limit": limit, "data": c.data_kind(),
@@ -260,7 +260,7 @@ pub async fn v2_transaction(State(app): State<AppRef>, h: HeaderMap, Path(id): P
     if id.is_empty() || id.chars().count() > 128 {
         return Err(ApiError::new(422, "transaction id: 1 to 128 characters"));
     }
-    blocking(move || {
+    blocking_read(move || {
         let c = corpus(&app)?;
         let t = match c.txns.iter().find(|x| x.1["id"] == id.as_str()) {
             Some(x) => x.1.clone(),
@@ -331,7 +331,7 @@ pub async fn v2_graph(State(app): State<AppRef>, h: HeaderMap, Query(q): Query<Q
         return Err(ApiError::new(422, "depth: 1 to 3"));
     }
     let limit = int_query(&q.get("limit").cloned(), "limit", 100)?.clamp(1, GRAPH_NODES_MAX) as usize;
-    blocking(move || {
+    blocking_read(move || {
         let c = corpus(&app)?;
         let pays: Vec<(&Value, String, String)> = c.txns.iter().filter(|(t, _)| f.in_time(*t)).map(|(_, v)| (v, key_of(v, "from"), key_of(v, "to"))).collect();
         let mut near: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -445,7 +445,7 @@ fn top(counts: HashMap<String, usize>, n: usize) -> Vec<Value> {
 pub async fn v2_dashboard(State(app): State<AppRef>, h: HeaderMap, Query(q): Query<Q>) -> ApiResult {
     require_reader(&h)?;
     let bucket = if q_one_of(&q, "bucket", &["hour", "day"])?.as_deref() == Some("day") { 1440 } else { 60 };
-    blocking(move || {
+    blocking_read(move || {
         let c = corpus(&app)?;
         let cases = live::all_cases(&app)?;
         let m = |value: Value, source: &str| json!({"value": value, "source": source});

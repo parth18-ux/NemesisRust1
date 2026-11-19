@@ -192,6 +192,66 @@ built). It also needs a measurement made under a rule written first.
 High-volume senders must raise `RUSETECT_RATE_LIMIT` (requests per 10 s per client): at its default the per-client
 limit sits far below these rates. The webhook is deliberately not exempt from the limiter (`docs/RUNBOOK.md` section 8).
 
+## 3d. F1/F2: webhook and read endpoints after step 1 (pre-registered)
+
+Step 1 changed the Redis webhook's commit path (a retry after a partial failure leaves one outcome; a success never hides
+a missing feed, ledger or alert record), so the S1 figures above describe older code. F1 re-measures the Redis webhook;
+F2 measures the read endpoints behind the workspace for the first time. Both are run by `e2e_bench f1`
+(`crates/rusetect-server/examples/e2e_bench.rs`) and written to `results/perf_f1.json`; `docs/PERFORMANCE_REPORT.md`
+quotes only that file.
+
+**Protocol, written and committed before any F1 or F2 measurement:**
+
+* Build: release binaries of the commit under test (`cargo build --release -p rusetect-server --bins --examples`). The
+  git head is recorded; the binaries must be built from it.
+* Processes: one `rusetect-server` (demo mode, webhook secret set, rate limit raised so it never refuses) and one
+  `redis-server` (no persistence), both on fixed non-default loopback ports in 8200 to 8299, and the load generator, all
+  on the same shared 4-CPU container. Fresh processes for every repetition.
+* Load: closed loop, keep-alive HTTP/1.1, concurrency 1, 8, 32, 64 and 128.
+  * F1, `POST /api/v2/events/payment` (Redis store): 1,000 warm-up then 20,000 signed, unique events per level. Same
+    workload as S1 (400 payers, 300 payees).
+  * F2, after the F1 levels on the same server (so the store holds 105,000 events and their alerts): `GET
+    /api/v2/dashboard`; `GET /api/v2/transactions?limit=50&offset=k` with `k` cycling over 0, 50, ... 950; `GET
+    /api/v2/graph?account=A&depth=2` for an account taken from the newest stored payment; `GET
+    /api/v2/alerts?limit=50&offset=k` with `k` cycling the same way. 200 warm-up then 3,000 requests per endpoint
+    and level (cut by amendment 1 below).
+* Repetitions: 3. The table reports the median of the three for every figure, with the three throughputs next to it.
+* Per level: throughput (successful responses per wall second); latency p50, p95, p99 and max of successful requests;
+  error rate (non-200 responses and connection errors over requests); CPU of the server, of `redis-server` and of the
+  load generator (CPU seconds over wall seconds, from `/proc/<pid>/stat`, so 1.0 is one core of the 4); server resident
+  memory after the level and its peak (`VmRSS`, `VmHWM`), and Redis `used_memory`.
+* F1 correctness check at every level (as in S1): no errors, `live:seq` advanced by exactly the events sent. A level
+  that fails it is reported as failed, not dropped.
+* Profile: separately from the timed runs (perf sampling slows the server), one webhook run at concurrency 32 and one
+  at 128, each with `perf record` (CPU-clock sampling, no call graphs) on the server for a fixed window, plus the CPU
+  split above and the server's context switches. The report names the bottleneck these measurements show for the drop
+  in throughput above concurrency 32; if they do not show one, it says so.
+* Fix rule: a fix is made only if the profile names a cause that is cheap and safe to change (no change to what is
+  stored or decided, all tests green). If one is made, F1 is run again in full (3 repetitions) on the fixed code and
+  both runs are kept in `results/perf_f1.json` and reported side by side. No target is set in advance: F1 and F2
+  are measurements, not a pass or fail test.
+* **Amendment 1, made before any read result was recorded.** The first run was stopped during its first read level:
+  with the store as F1 leaves it, one `GET /api/v2/dashboard` took close to a second, so 3,000 requests per endpoint
+  and level (60,000 per repetition) would have run for many hours. The read load is cut to 20 warm-up and 200
+  requests per endpoint and level; everything else stands. The webhook figures of that stopped run were not kept;
+  the full protocol, webhook included, was run again from the start.
+* **Amendment 2, made before any figure of the second run was kept.** In the second run the dashboard level at
+  concurrency 128 grew the server past the container's memory limit and the kernel killed it. The container is shared
+  with other sessions, so the harness now kills the server itself once it holds more than 6,000 MB resident, marks
+  that level aborted and skips the rest of that repetition's read levels; medians are taken over completed
+  repetitions only, and the count is reported. The code as it was is measured under this rule as run `f1_before`.
+  The memory growth is a defect (any reader can exhaust the server's memory), so it falls under the fix rule: if it is
+  fixed, the full protocol runs again on the fixed code as `f1_after`, and both are reported.
+* **Amendment 3.** The first `f1_after` run completed, but its results file was cut short when the disk filled while
+  the profile was being added to it, so no figure of it is used. `f1_after` was run again in full on a later commit,
+  which also carries the pair-window change for retries (`docs/live.md`); the profile is written to the file after it.
+* Scope, stated in the report: a shared 4-CPU container where the load generator, the server and Redis compete for the
+  same cores; no network hop, TLS or cold start; not the Vercel deployment and **not a production capacity figure**.
+
+**Result:** `docs/PERFORMANCE_REPORT.md`, from `results/perf_f1.json`. The webhook's fall above concurrency 32 is the
+store growing across levels (the review desk's eviction scan once it holds 10,000 alerts), not concurrency; the read
+endpoints copy every stored alert per request.
+
 ## 4. From here to a bank
 
 1. **Throughput.** UPI runs at roughly 20 billion payments a month, about 7,000 to 8,000 a second on average with

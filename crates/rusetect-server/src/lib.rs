@@ -296,6 +296,21 @@ where
     tokio::task::spawn_blocking(f).await.unwrap_or_else(|e| Err(ApiError::new(500, format!("internal error: {e}"))))
 }
 
+/// Reads that copy every stored alert (`live::all_alerts`: the dashboard, transactions, graph and alert list). Each one
+/// holds a full copy while it runs, so without a bound, concurrent reads multiplied that memory until the process was
+/// killed (docs/PERFORMANCE_REPORT.md). At most this many run at once; the rest wait their turn without holding memory.
+pub(crate) static HEAVY_READS: std::sync::LazyLock<tokio::sync::Semaphore> =
+    std::sync::LazyLock::new(|| tokio::sync::Semaphore::new(std::thread::available_parallelism().map_or(2, |n| n.get()).max(2)));
+
+/// `blocking` for a read that copies every stored alert, bounded by HEAVY_READS.
+pub(crate) async fn blocking_read<F>(f: F) -> ApiResult
+where
+    F: FnOnce() -> ApiResult + Send + 'static,
+{
+    let _permit = HEAVY_READS.acquire().await.map_err(|e| ApiError::new(500, format!("internal error: {e}")))?;
+    blocking(f).await
+}
+
 // ---------------------------------------------------------------- router
 
 pub fn build_app(app: AppRef) -> Router {
@@ -365,11 +380,11 @@ pub fn build_app(app: AppRef) -> Router {
         .route("/console", get(|s| page(s, "console.html")))
         .route("/investigate", get(|s| page(s, "investigate.html")))
         .route("/report", get(|s| page(s, "report.html")))
-        .route("/app", get(app_page))
+        .route("/app", get(|s| page(s, "app.html")))
         .route("/assets/{*path}", get(asset))
         .route("/favicon.svg", get(favicon))
         .route("/openapi.json", get(|| async { PyJson(StatusCode::OK, openapi::spec()) }))
-        .route("/docs", get(|| async { axum::response::Html(openapi::DOCS_HTML) }))
+        .route("/docs", get(|| async { ([("content-security-policy", DOCS_CSP)], axum::response::Html(openapi::DOCS_HTML)) }))
         .nest("/api", api)
         .fallback(|| async { ApiError::new(404, "Not Found") })
         .method_not_allowed_fallback(|| async { ApiError::new(405, "Method Not Allowed") })
@@ -401,7 +416,11 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/static/assets/js/network.js", "service/static/assets/js/transactions.js", "service/static/assets/js/investigations.js",
     "service/static/assets/js/assistant.js", "service/static/assets/js/reports.js",
     "service/static/assets/js/scam.js", "service/static/assets/js/behaviour.js",
-    "service/static/assets/js/evidence.js", "service/static/assets/vendor/cytoscape.esm.min.js", "service/static/assets/vendor/cytoscape.LICENSE.txt",
+    "service/static/assets/js/evidence.js", "service/static/assets/js/docs.js",
+    "service/static/assets/legacy/index.css", "service/static/assets/legacy/index.js", "service/static/assets/legacy/console.css",
+    "service/static/assets/legacy/console.js", "service/static/assets/legacy/investigate.css", "service/static/assets/legacy/investigate.js",
+    "service/static/assets/legacy/report.css", "service/static/assets/legacy/report.js", "service/static/assets/legacy/motion.css",
+    "service/static/assets/legacy/motion.js", "service/static/assets/vendor/cytoscape.esm.min.js", "service/static/assets/vendor/cytoscape.LICENSE.txt",
     "service/static/favicon.svg", "fixtures/mule_replay.json", "results/message_model_eval.json",
 ];
 
@@ -528,26 +547,36 @@ async fn rate_limit(State(app): State<AppRef>, req: Request, next: Next) -> Resp
 
 // ---------------------------------------------------------------- pages
 
+/// A page from `service/static`, served with its content security policy.
 async fn page(State(app): State<AppRef>, name: &'static str) -> Response {
     let root = app.root.clone();
     match tokio::fs::read_to_string(root.join("service/static").join(name)).await {
-        Ok(html) => axum::response::Html(html).into_response(),
+        Ok(html) => {
+            let csp = if name == "app.html" { APP_CSP } else { LEGACY_CSP };
+            ([("content-security-policy", csp)], axum::response::Html(html)).into_response()
+        }
         Err(_) => ApiError::new(404, "Not Found").into_response(),
     }
 }
 
 /// Policy for the app shell (`/app`). Its scripts and styles are files under `/assets`, so nothing inline is allowed;
-/// the three font families come from Google Fonts, as on the other pages. The older pages keep inline code and are
-/// served without this header.
+/// the three font families come from Google Fonts, as on the other pages.
 pub const APP_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; \
 font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; \
 frame-ancestors 'none'; form-action 'self'";
 
-async fn app_page(s: State<AppRef>) -> Response {
-    let mut r = page(s, "app.html").await;
-    r.headers_mut().insert("content-security-policy", HeaderValue::from_static(APP_CSP));
-    r
-}
+/// Policy for the four older pages (`/`, `/console`, `/investigate`, `/report`). Their scripts and style sheets are
+/// files under `/assets/legacy`, so no inline script runs; they still carry `style="..."` attributes (some built in
+/// their templates), which `style-src-attr` allows. Scripts stay limited to this origin.
+pub const LEGACY_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; \
+style-src-attr 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; \
+object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
+
+/// Policy for `/docs` (Swagger UI): its two files come from jsDelivr, pinned to one version with subresource
+/// integrity (`openapi::DOCS_HTML`); the start-up script is `/assets/js/docs.js`.
+pub const DOCS_CSP: &str = "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; \
+style-src 'self' https://cdn.jsdelivr.net; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; \
+object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 
 /// The app's embedded files under `service/static/assets/`, as (path below `/assets/`, content type).
 pub fn app_assets() -> impl Iterator<Item = (&'static str, &'static str)> {
@@ -789,7 +818,7 @@ async fn v2_alerts(State(app): State<AppRef>, h: HeaderMap, Query(q): Query<Hash
     if text.chars().count() > 200 {
         return Err(ApiError::new(422, "q: at most 200 characters"));
     }
-    blocking(move || {
+    blocking_read(move || {
         let st = q.get("status");
         let mut al: Vec<Value> = live::all_alerts(&app)?.into_iter().filter(|a| st.map(|st| a["status"] == st.as_str()).unwrap_or(true)).collect();
         for a in &mut al {
@@ -1167,9 +1196,15 @@ async fn v2_demo_analysts() -> ApiResult {
     ok(Value::Array(KEYS.keys.iter().map(|(k, a)| json!({"key": k, "analyst": a.analyst, "role": a.role})).collect()))
 }
 
+/// A JSON file under the repository root. A failure is logged with the path; the caller gets only the file name, so a
+/// 500 never shows where the server is installed.
 fn read_json(path: PathBuf) -> Result<Value, ApiError> {
-    let t = std::fs::read_to_string(&path).map_err(|e| ApiError::new(500, format!("{}: {e}", path.display())))?;
-    serde_json::from_str(&t).map_err(|e| ApiError::new(500, format!("{}: {e}", path.display())))
+    let fail = |e: String| {
+        eprintln!("{NAME} read {}: {e}", path.display());
+        ApiError::new(500, format!("{} unavailable", path.file_name().map(|f| f.to_string_lossy()).unwrap_or_default()))
+    };
+    let t = std::fs::read_to_string(&path).map_err(|e| fail(e.to_string()))?;
+    serde_json::from_str(&t).map_err(|e| fail(e.to_string()))
 }
 
 /// The fictional mule replay fixture used by the investigator demo.
@@ -1587,7 +1622,7 @@ pub fn description() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{auth_failure_line, client_key};
+    use super::{auth_failure_line, blocking_read, client_key, ok, read_json, HEAVY_READS};
 
     #[test]
     fn auth_failure_line_never_holds_the_key() {
@@ -1597,6 +1632,42 @@ mod tests {
         assert!(line.contains("401 POST /v2/payment client=1.2.3.4 key_sha256="), "{line}");
         assert_eq!(line, auth_failure_line(401, "POST", "/v2/payment", "1.2.3.4", Some(key)), "same key, same fingerprint");
         assert!(auth_failure_line(401, "GET", "/v2/alerts", "?", None).ends_with("key_sha256=none"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn reads_that_copy_every_alert_run_at_most_heavy_reads_at_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+        use std::sync::Arc;
+        let (now, most) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+        let calls = (0..64).map(|_| {
+            let (now, most) = (now.clone(), most.clone());
+            tokio::spawn(blocking_read(move || {
+                most.fetch_max(now.fetch_add(1, SeqCst) + 1, SeqCst);
+                std::thread::sleep(std::time::Duration::from_millis(5));
+                now.fetch_sub(1, SeqCst);
+                ok(serde_json::json!({}))
+            }))
+        }).collect::<Vec<_>>();
+        for c in calls {
+            assert!(c.await.unwrap().is_ok());
+        }
+        let bound = std::thread::available_parallelism().map_or(2, |n| n.get()).max(2);
+        assert_eq!(HEAVY_READS.available_permits(), bound);
+        assert!(most.load(SeqCst) <= bound && most.load(SeqCst) >= 1, "{} at once, bound {bound}", most.load(SeqCst));
+    }
+
+    #[test]
+    fn read_json_failure_does_not_show_the_server_path() {
+        let dir = std::env::temp_dir().join("rusetect-secret-install-dir");
+        for name in ["missing.json", "bad.json"] {
+            if name == "bad.json" {
+                std::fs::create_dir_all(&dir).unwrap();
+                std::fs::write(dir.join(name), "{not json").unwrap();
+            }
+            let e = read_json(dir.join(name)).unwrap_err();
+            assert_eq!((e.status, e.detail.as_str().unwrap()), (500, format!("{name} unavailable").as_str()));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
