@@ -10,6 +10,7 @@
 //!               one member per eid (a rescored payment replaces its own member)
 //!   seen:{eid}  string  set once per payment eid (26 h), holding the features it was first scored with: a redelivered
 //!               payment does not write account state twice and is scored again from the same features
+//!   pair-score:{eid}  string  first live scoring attempt's pair count and noisy-OR (26 h)
 //! Per payment: one pipelined read round trip, features computed exactly as Engine::features, then one Lua script that
 //! claims seen:{eid} and applies the writes atomically (a crash cannot leave the claim without the writes). score_one
 //! sends that script and the pair window in one round trip.
@@ -22,6 +23,7 @@ use std::collections::HashSet;
 
 const A_S: [&str; 9] = ["out_n", "out_usd", "last_out_t", "first_out_t", "in_n", "in_usd", "last_in_t", "last_in_usd", "uniq_dst"];
 const A_D: [&str; 5] = ["in_n", "last_in_t", "uniq_src", "out_n", "in_usd"];
+const SEEN_TTL_S: i64 = 26 * 3600;
 
 fn int(v: &Option<String>) -> Option<i64> {
     v.as_deref().and_then(|s| s.parse::<i64>().ok().or_else(|| s.parse::<f64>().ok().map(|f| f as i64)))
@@ -85,16 +87,49 @@ impl RedisState {
     /// Append the pair window's commands to `pl`: one reply that is not ignored, the window's members (current payment
     /// included), for `pair_window_of`.
     pub fn pair_window_cmds(&self, pl: &mut redis::Pipeline, p: &Payment, payee: &str, risk: f64) {
+        self.append_pair_window(pl, p, payee, risk, None);
+    }
+
+    /// Append a pair window update that returns the first live scoring attempt's (count, noisy-OR).
+    pub(crate) fn live_pair_score_cmds(&self, pl: &mut redis::Pipeline, p: &Payment, payee: &str, risk: f64, eid: i64) {
+        self.append_pair_window(pl, p, payee, risk, Some(self.k("pair-score", &eid.to_string())));
+    }
+
+    fn append_pair_window(&self, pl: &mut redis::Pipeline, p: &Payment, payee: &str, risk: f64, snapshot: Option<String>) {
         let key = format!("{}>{}", self.k("pr", &format!("{}|{}", p.from_bank, p.from_account)), payee);
         let eid = p.eid.map(|e| e.to_string()).unwrap_or_else(|| format!("{}.{}", p.tmin, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
-        // trim, drop this eid's own member (a rescore), add it with this risk, return the window up to this payment's
-        // minute: a rescore (a retry) must not count payments to the pair that arrived later with later timestamps, so it
-        // sees what a clean single send saw. Payments in the same minute count, whatever order they arrived in.
-        const PAIR: &str = "redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1]) \
-            for _, m in ipairs(redis.call('ZRANGE', KEYS[1], 0, -1)) do if string.sub(m, 1, #ARGV[3]) == ARGV[3] then redis.call('ZREM', KEYS[1], m) end end \
-            redis.call('ZADD', KEYS[1], ARGV[2], ARGV[3] .. ARGV[4]) redis.call('EXPIRE', KEYS[1], ARGV[5]) \
-            return redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[2])";
-        pl.cmd("EVAL").arg(PAIR).arg(1).arg(&key).arg(p.tmin - MIN24).arg(p.tmin).arg(format!("{eid}|")).arg(risk.to_string()).arg(MIN24 * 60 + 3600);
+        // Save the aggregate in the same script as the first pair update. A retry can then avoid touching the
+        // rolling window, even after a later payment prunes it. Keep the highest risk per eid, in first-seen
+        // order, as pair_window_of does for legacy members. Redis rounds Lua numeric replies to integers.
+        const PAIR: &str = r#"
+            if KEYS[2] then
+                local score = redis.call('GET', KEYS[2])
+                if score then return {string.match(score, '^(%d+) (.+)$')} end
+            end
+            redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
+            for _, m in ipairs(redis.call('ZRANGE', KEYS[1], 0, -1)) do
+                if string.sub(m, 1, #ARGV[3]) == ARGV[3] then redis.call('ZREM', KEYS[1], m) end
+            end
+            redis.call('ZADD', KEYS[1], ARGV[2], ARGV[3] .. ARGV[4])
+            redis.call('EXPIRE', KEYS[1], ARGV[5])
+            local members = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[2])
+            if not KEYS[2] then return members end
+            local order, risks = {}, {}
+            for _, member in ipairs(members) do
+                local event, raw = string.match(member, '^(.*)|([^|]*)$')
+                event = event or member
+                local value = tonumber(raw) or 0
+                if risks[event] == nil then table.insert(order, event) end
+                risks[event] = math.max(risks[event] or value, value)
+            end
+            local product = 1
+            for _, event in ipairs(order) do product = product * (1 - risks[event]) end
+            local count, score = tostring(#order), string.format('%.17g', 1 - product)
+            redis.call('SET', KEYS[2], count .. ' ' .. score, 'EX', ARGV[6])
+            return {count, score}
+        "#;
+        pl.cmd("EVAL").arg(PAIR).arg(1 + usize::from(snapshot.is_some())).arg(&key).arg(&snapshot)
+            .arg(p.tmin - MIN24).arg(p.tmin).arg(format!("{eid}|")).arg(risk.to_string()).arg(MIN24 * 60 + 3600).arg(SEEN_TTL_S);
     }
 
     /// (payments, noisy-OR) of the window's members. Members written before the window kept one per eid may repeat an
@@ -220,7 +255,7 @@ impl RedisState {
         }
         let seen_key = p.eid.map(|_| seen_key);
         let mut c = redis::cmd("EVAL");
-        c.arg(CLAIM_AND_WRITE).arg(seen_key.is_some() as i32).arg(&seen_key).arg(26 * 3600).arg(&stored);
+        c.arg(CLAIM_AND_WRITE).arg(seen_key.is_some() as i32).arg(&seen_key).arg(SEEN_TTL_S).arg(&stored);
         for x in &w {
             c.arg(x.len()).arg(x);
         }

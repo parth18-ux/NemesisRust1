@@ -100,15 +100,12 @@ the request. A known `event_id` returns the stored result unchanged, with header
 not scored or written again. With Redis this holds across all function instances for 7 days; in memory it holds for the
 life of one instance.
 
-Every 5xx is safe to retry. When Redis fails before the commit, the claim on the `event_id` is released, so the retry
-is scored afresh, and it decides as a clean single send would: per-account totals are deduped by event (`seen:` keys,
-which also hold the features the payment was first scored with, so the retry is scored from those rather than from
-state that already holds its own write), and the 24 h pair window keeps one member per event (the retry replaces its
-own) and counts only payments up to the retried payment's own minute, so a newer payment to the same pair that landed
-between the attempts is not counted. Precisely: the retry gets the decision a clean single send would have got at its
-first attempt, provided its `seen:` record has not expired (26 h) and no other payment to the same pair with the same
-minute (or with an earlier minute, sent later) arrived in between; such a payment is counted, as it would be on a late
-clean send. The alert and desk-chain entries an attempt opened are taken back out when its commit did not land, so the retry
+Every 5xx is safe to retry. When Redis confirms that the commit did not land, the claim on the `event_id` is released
+and the retry is scored again. The account write saves the original account features and deduplicates per-account
+totals (`seen:`). The first pair-window update saves the count and combined risk through the payment's own minute
+(`pair-score:`). Both records expire after 26 h. With these records present, the retry uses the same payment-cascade
+inputs even if another payment added to or pruned the pair window. With an expired or missing record, scoring uses
+the available history for that input. The alert and desk-chain entries an attempt opened are taken back out when its commit did not land, so the retry
 leaves one alert, one ledger entry and one decision, and the stored `ev:` record, the alert, its evidence pack and the
 ledger agree. When the outcome of the commit is unknown, the claim expires after 60 s and the retry then gets either
 the stored result or a fresh scoring, never a second commit; on the instance that lost the outcome, the earlier

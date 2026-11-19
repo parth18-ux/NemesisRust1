@@ -19,7 +19,7 @@
 //! A commit that did not land takes its alert and desk-chain entries back out of the desk (Attempt::unwind), so the
 //! retry leaves one alert and one decision; when the outcome is unknown, the entries are voided by the next attempt that
 //! finds the event uncommitted. The retry is scored from the features stored with the payment's first account write
-//! (seen:{eid}), and its pair-window member replaces the earlier one, so it decides as a clean single send would.
+//! (seen:{eid}) and the pair-window score saved by the first live scoring attempt (pair-score:{eid}).
 //! A success means the decision and its feed, ledger and alert records are all written: a record the commit could not
 //! write stays listed in repair:{id}, the answer is a 503, and every replay completes the list before answering.
 //!
@@ -31,7 +31,7 @@
 //! order. Lock order: ledger_order, then state; alert_io, then state. Per event: four Redis round trips (claim and seq,
 //! account-state read, account-state write with pair window, commit). Memory mode stays one locked call.
 use crate::inputs::AssessIn;
-use crate::scale::{redis_state::RedisState, worker::score_one};
+use crate::scale::{redis_state::RedisState, worker::score_live};
 use crate::{assess, check_auth_request, header, parse_obj, payment_of, require_reader, AppRef, AppState, ApiError, PyJson};
 use axum::body::Bytes;
 use axum::extract::State;
@@ -506,7 +506,7 @@ fn ingest_redis(app: &crate::Shared, du: &Durable, ev: &Event, ready: Result<(),
     p.eid = Some(eid_of(&ev.id));
     let scored = {
         let _accounts = du.account_stripes(&d);
-        du.run(true, |st| score_one(&eng, st, &p))
+        du.run(true, |st| score_live(&eng, st, &p))
     };
     let r = match scored {
         Ok(r) => r,
