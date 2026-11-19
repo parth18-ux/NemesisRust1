@@ -298,3 +298,9 @@ It makes no production capacity or latency commitment.
 Build the same release example once, place it in an `examples/` folder next to each server executable, set
 `RUSETECT_ROOT` to the checkout containing `service/` and set `RUSETECT_BENCH_SERVER_REVISION` to the revision of
 that server. Run `taskset -c 0-3 ./examples/e2e_bench f1 mixed` and capture its JSON stdout.
+
+**Amendment before the comparison.** A setup run used a symlink for the example executable. Its resolved path
+selected the same sibling server for both variants, so those outputs are discarded. Copy the example into each
+layout and check the nominated server and harness SHA-256 before every run. To shorten repetitions on the shared
+host, use 105,000 prefill requests and 10,000 measured webhook requests. The starting-alert gate and all other
+checks, order and reporting stay as specified above.

@@ -615,7 +615,8 @@ mod f1 {
     }
 
     async fn mixed() {
-        const PREFILL: usize = 121_000;
+        const PREFILL: usize = 105_000;
+        const PAYMENTS: usize = 10_000;
         const CONCURRENCY: usize = 32;
         const DESK_CAPACITY: usize = 10_000;
 
@@ -640,7 +641,7 @@ mod f1 {
         let readers: Vec<_> = READS.into_iter().map(|endpoint| {
             (endpoint, tokio::spawn(mixed_reads(port, endpoint, "B0000".into(), receiver.clone())))
         }).collect();
-        let mut writes = run(port, CONCURRENCY, N_WEBHOOK, webhook(port, "mixed".into(), PREFILL), (&sp, &rp), &mut con).await;
+        let mut writes = run(port, CONCURRENCY, PAYMENTS, webhook(port, "mixed".into(), PREFILL), (&sp, &rp), &mut con).await;
         finish.send(true).unwrap();
         let mut reads = serde_json::Map::new();
         for (endpoint, task) in readers {
@@ -649,7 +650,7 @@ mod f1 {
 
         let after = seq(&mut con);
         let read_ok = reads.values().all(|row| row["errors"] == 0 && row["ok"].as_u64().unwrap_or(0) > 0);
-        let write_ok = writes["ok"] == N_WEBHOOK && after == before + N_WEBHOOK;
+        let write_ok = writes["ok"] == PAYMENTS && after == before + PAYMENTS;
         writes["seq_advance"] = json!(after - before);
         println!("{}", json!({
             "server_revision": std::env::var("RUSETECT_BENCH_SERVER_REVISION").ok(),
