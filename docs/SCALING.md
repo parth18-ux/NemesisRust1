@@ -276,3 +276,25 @@ endpoints copy every stored alert per request.
 * The ctx-1.3 mule signature, tuned on HI-Small validation weeks, does not transfer to LI-Small (no true positives).
 * Scale out numbers come from a 2 core container where Redis, the producer and the workers share the cores; they
   show the design works and give a floor, not a production capacity figure.
+
+### 3e. Concurrent webhook and analyst reads on a populated desk
+
+The comparison uses the same F1 release harness against main at `015bd0e` and the standalone candidate at
+`b710db4`. These candidate commits include the retry/permit fixes and the indexed ReviewDesk eviction.
+Each run starts fresh loopback Redis and server processes. Prefill with 121,000 synthetic signed payments.
+The measured stage must start above 10,000 durable alerts and sends 20,000 more payments through 32 persistent
+connections. At the same time, four independent clients call dashboard, transactions, graph and alerts. Each
+client waits 200 ms after completing its previous request. The transactions and alerts clients cycle through
+pages of 50 rows, with offsets 0 through 950. The graph reads the fixture account B0000 at depth 2.
+
+Run three pairs in main/candidate, candidate/main, main/candidate order. Client, server and Redis share four
+logical CPUs. Redis persistence is disabled for this benchmark. Record webhook throughput and p99, per-endpoint
+read counts and p50/p95/p99, server CPU and memory, and durable alert counts. Report medians of the run-level
+metrics and keep the raw samples. The shorter runs may have too few read samples for a stable p99. The correctness
+gate requires all writes to return 200, Redis sequence growth to match the write count, and every reader to
+receive at least one successful JSON response with zero errors. This run characterizes mixed-load behavior.
+It makes no production capacity or latency commitment.
+
+Build the same release example once, place it in an `examples/` folder next to each server executable, set
+`RUSETECT_ROOT` to the checkout containing `service/` and set `RUSETECT_BENCH_SERVER_REVISION` to the revision of
+that server. Run `taskset -c 0-3 ./examples/e2e_bench f1 mixed` and capture its JSON stdout.
