@@ -656,6 +656,21 @@ in `docs/PILOT.md`. Preserve the frozen policy, export fingerprints and run conf
 Keep payment-level exports and private identifiers in the pilot environment. Log the outcome even if the served score
 loses and use a new holdout for any subsequent tuning.
 
+**8aj. ReviewDesk indexed eviction growth comparison (pre-registered).** Compare main `015bd0e` with the isolated
+candidate `c211043` using the existing signed F1 webhook generator and timing in `e2e_bench f1 growth`. Keep the
+same release toolchain, Redis version and four logical CPUs for both. Run the same load-generator binary against
+each server, on loopback, with fresh Redis and server processes per repetition. Run three pairs, in baseline–candidate,
+candidate–baseline, baseline–candidate order. Warm up with 1,000 events at concurrency 4, then send seven successive
+stages of 20,000 unique synthetic payments at concurrency 32, with continuous payment indices and no analyst traffic.
+
+Record successful events per second, p99, errors and durable alert counts before and after each stage. Require zero
+request errors including warm-up, and the expected Redis live sequence before and after every stage. Report all
+stages with their median throughput and p99. Compare the early stages that finish below 10,000 durable alerts for
+both variants and use the last stage as the primary full-desk comparison only if it starts at or above 10,000 durable
+alerts in every repetition. Pair stages by event count and report differences in actual durable alert counts.
+The durable alert count is an indicator of time spent above the desk's 10,000-alert eviction threshold. The
+processes share four logical CPUs, so the comparison characterizes the local workload.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
