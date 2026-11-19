@@ -304,3 +304,13 @@ selected the same sibling server for both variants, so those outputs are discard
 layout and check the nominated server and harness SHA-256 before every run. To shorten repetitions on the shared
 host, use 105,000 prefill requests and 10,000 measured webhook requests. The starting-alert gate and all other
 checks, order and reporting stay as specified above.
+
+
+**Results.** All 60,000 measured payments and
+766 analyst reads succeeded across the six runs.
+Median webhook throughput increased from 152.76 to
+350.04 events/s and median p99 fell from 1179.88
+to 915.23 ms. Mixed-load reads still take seconds for some operations on this
+host. Read percentiles vary with sample count and the candidate runs collect fewer samples because the
+webhook finishes sooner. Raw samples, build checksums and per-endpoint statistics are in
+[results/standalone_mixed.json](../results/standalone_mixed.json).
