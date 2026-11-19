@@ -671,6 +671,13 @@ alerts in every repetition. Pair stages by event count and report differences in
 The durable alert count is an indicator of time spent above the desk's 10,000-alert eviction threshold. The
 processes share four logical CPUs, so the comparison characterizes the local workload.
 
+**8aj-result. ReviewDesk eviction growth comparison.** All six runs passed the per-stage sequence gate with zero
+errors across 846,000 synthetic requests. The final stage began at 13,644–13,645 durable alerts on main and 13,644 on
+the candidate. Median throughput rose from 2,539.81 to 4,300.90 events/s (+69.34%) and the median of the run-level
+p99 latencies fell from 30.90 to 13.32 ms (−56.89%). Every stage that started above capacity improved throughput by
+65.59–69.34%. The three stages that finished below capacity ranged from −8.19% to +7.77% in throughput. Median p99
+fell at all seven stages. See `results/reviewdesk_growth.json` for each run, store size, and binary checksum.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
