@@ -1,0 +1,13 @@
+{
+  "exact_result_match": true,
+  "tx_log_sha256": "01b11d74c401ee414eb08140e142eb4c993025ddd82a8ccea18b54350eb72b8b",
+  "rows_total": 200689,
+  "test_rows": 28848,
+  "test_positives": 84,
+  "pr_auc": {
+    "served": 0.0024,
+    "cascade": 0.0255,
+    "baseline_amount": 0.0036
+  },
+  "verdict": "does not transfer"
+}

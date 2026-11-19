@@ -55,9 +55,27 @@ packs reflect the current server process. Regenerating a pack after a restart ca
 
 - [Scaling protocol](SCALING.md#3e-concurrent-webhook-and-analyst-reads-on-a-populated-desk) describes the loopback
   mixed workload. Throughput and latency depend on alert volume and simultaneous desk reads.
-- [Model card](MODEL_CARD.md) and [AMLSim holdout protocol](HOLDOUT_PREREG.md) describe the historical research
-  and its inputs. The [archived holdout result](../research/out/holdout_amlsim.json) records failed transfer to
-  AMLSim. The raw holdout transaction log is an external input to `research/holdout_amlsim.py`. The bundled fixture
-  is appropriate for exercising the workflow. Evidence for real payment accuracy requires separately labelled data.
+- [Model card](MODEL_CARD.md) and [AMLSim holdout protocol](HOLDOUT_PREREG.md) describe the historical research.
+  The [archived holdout result](../research/out/holdout_amlsim.json) records failed transfer to AMLSim. The bundled
+  fixture exercises the workflow. Evidence for real payment accuracy requires separately labelled data.
 - [Pilot protocol](PILOT.md#compare-chronological-review-queues) shows how to freeze queue thresholds on an earlier
   interval and measure case coverage under the same analyst capacity on a later interval.
+
+
+## Reproduce the archived AMLSim holdout
+
+This command uses Java 21, Python 3.12 and internet access to fetch the pinned generator and dependencies.
+It regenerates the transaction log, checks its SHA-256 before scoring, and compares every result field
+with the archived report. The generator, transaction data and scoring scratch files stay in a temporary
+directory for the run. The repository's archived report stays intact.
+
+```sh
+cargo +1.97.0 build --locked --release -p rusetect --example research_dump
+python3.12 -m venv /tmp/rusetect-holdout-venv
+/tmp/rusetect-holdout-venv/bin/pip install numpy==2.3.5 pandas==2.2.3 scipy==1.17.0 \
+  scikit-learn==1.8.0 xgboost-cpu==3.1.3
+/tmp/rusetect-holdout-venv/bin/python -I research/reproduce_amlsim.py
+```
+
+See the [reproduction result](../results/standalone_amlsim.json) for the input hash, comparison metrics
+and verdict. This repeat uses the same historical simulator and sample. Generalization requires a new holdout.
