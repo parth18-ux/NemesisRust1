@@ -1,5 +1,7 @@
 # RuseTect
 
+[Standalone installation and verification](docs/STANDALONE.md)
+
 RuseTect detects scam payments and money mule activity in digital banking. It follows a scam from the first message a
 victim receives to the accounts that launder the money, and it answers with the lightest intervention that fits the
 evidence: a question to the customer, a short pause, an analyst review, or a block approved by two analysts.
