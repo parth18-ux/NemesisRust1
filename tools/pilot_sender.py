@@ -88,6 +88,8 @@ def send(url, secret, event, attempts=8, base=1.0, cap=60.0, timeout=15.0, sleep
         if status == 200 and isinstance(resp, dict):
             out.update(action=resp.get("action"), final_decision=resp.get("final_decision"), alert_id=resp.get("alert_id"),
                        latency_ms=resp.get("latency_ms"), replayed=headers.get("Idempotent-Replayed") == "true")
+            payment = resp.get("payment")
+            out.update(timestamp=payment.get("timestamp") if isinstance(payment, dict) else None, risk=resp.get("risk"))
             out.pop("error", None)
             return out
         if status == 200:
@@ -159,7 +161,9 @@ def self_test():
                 return self.reply(422, {"detail": "amount_paid must be a number"})
             hdr = {"Idempotent-Replayed": "true"} if ev["event_id"] in seen else {}
             seen.setdefault(ev["event_id"], "hold" if ev["amount_paid"] > 5000 else "allow")
-            self.reply(200, {"action": seen[ev["event_id"]], "final_decision": "x", "alert_id": None, "latency_ms": 1.0}, hdr)
+            action = seen[ev["event_id"]]
+            self.reply(200, {"action": action, "final_decision": "x", "alert_id": None, "latency_ms": 1.0,
+                             "payment": {"timestamp": ev["timestamp"]}, "risk": 0.8 if action == "hold" else None}, hdr)
 
         def reply(self, code, obj, hdr=None):  # obj None: the body is "null"
             raw = json.dumps(obj).encode()
@@ -186,7 +190,12 @@ def self_test():
             w = csv.DictWriter(f, ["event_id", *rec, "amount_paid", "receiving_currency"])
             w.writeheader()
             w.writerow({**rec, "event_id": "c1", "amount_paid": "250", "receiving_currency": ""})
-        a = run(jl, url, secret, rate=0, attempts=3, base=0.01)
+        log = os.path.join(d, "replay.jsonl")
+        a = run(jl, url, secret, rate=0, attempts=3, log=log, base=0.01)
+        with open(log, encoding="utf-8") as f:
+            logged = [json.loads(line) for line in f]
+        assert [row["timestamp"] for row in logged] == [rec["timestamp"]] * 3, logged
+        assert [row["risk"] for row in logged] == [None, 0.8, None], logged
         b = run(cv, url, b"wrong-secret-0000000000000000", rate=0, attempts=3, base=0.01)
         c = run(cv, url, secret, rate=0, attempts=3, base=0.01)
     waits = []

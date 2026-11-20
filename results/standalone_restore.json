@@ -1,0 +1,24 @@
+{
+  "pass": true,
+  "fixture_payments": 2000,
+  "durable_records": {
+    "sequence": 2000,
+    "ledger": 2000,
+    "alerts": 46
+  },
+  "snapshot_sha256": "103e533f4bde14c20f15c6f49a79f50e7101674c08d6122a111655bd7b5dc9d9",
+  "store": "Redis server v=7.2.11 sha=00000000:0 malloc=libc bits=64 build=7aff70a03388e2dc",
+  "replayed": 2000,
+  "authorization": {
+    "anonymous_evidence": 401,
+    "viewer_review": 403
+  },
+  "signing_identity_preserved": true,
+  "original_and_restored_signatures_verify": true,
+  "alert_and_analyst_action_preserved": true,
+  "app_audit_entries_before": 93,
+  "app_audit_entries_after": 0,
+  "evidence_audit_entries_before": 3,
+  "evidence_audit_entries_after": 0,
+  "regenerated_pack_hash_unchanged": false
+}

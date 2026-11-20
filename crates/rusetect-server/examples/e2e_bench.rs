@@ -578,6 +578,89 @@ mod f1 {
         (redis, srv, con, sp, rp)
     }
 
+    async fn mixed_reads(port: u16, endpoint: &str, account: String, mut stop: tokio::sync::watch::Receiver<bool>) -> Value {
+        let make = read(port, endpoint, account);
+        let mut latencies = vec![];
+        let mut errors = 0;
+        let mut connection = None;
+        while !*stop.borrow() {
+            let start = Instant::now();
+            let response = tokio::time::timeout(Duration::from_secs(10), async {
+                if connection.is_none() {
+                    let socket = TcpStream::connect(("127.0.0.1", port)).await?;
+                    socket.set_nodelay(true)?;
+                    connection = Some(BufReader::new(socket));
+                }
+                exchange(connection.as_mut().unwrap(), &make(latencies.len() + errors)).await
+            }).await;
+            match response {
+                Ok(Ok((200, _, body))) if serde_json::from_slice::<Value>(&body).is_ok() => {
+                    latencies.push(start.elapsed().as_secs_f64() * 1000.0);
+                }
+                _ => {
+                    errors += 1;
+                    connection = None;
+                }
+            }
+            tokio::select! {
+                _ = stop.changed() => break,
+                _ = tokio::time::sleep(Duration::from_millis(200)) => {}
+            }
+        }
+        latencies.sort_by(f64::total_cmp);
+        let percentile = |p: usize| latencies.get((p * latencies.len()).div_ceil(100).saturating_sub(1));
+        json!({"ok": latencies.len(), "errors": errors,
+               "latency_ms": {"p50": percentile(50), "p95": percentile(95), "p99": percentile(99)},
+               "samples_ms": latencies})
+    }
+
+    async fn mixed() {
+        const PREFILL: usize = 105_000;
+        const PAYMENTS: usize = 10_000;
+        const CONCURRENCY: usize = 32;
+        const DESK_CAPACITY: usize = 10_000;
+
+        let (_redis, _srv, mut con, sp, rp) = start().await;
+        let port = SERVER_PORT;
+        let mut prefill_ok = 0;
+        for offset in (0..PREFILL).step_by(N_WEBHOOK) {
+            let count = (PREFILL - offset).min(N_WEBHOOK);
+            let row = run(port, CONCURRENCY, count, webhook(port, "mixed".into(), offset), (&sp, &rp), &mut con).await;
+            let accepted = row["ok"].as_u64().unwrap_or(0) as usize;
+            assert_eq!(accepted, count, "prefill: {row}");
+            prefill_ok += accepted;
+        }
+        let seq = |con: &mut redis::Connection| redis::cmd("GET").arg("bench:live:seq").query::<usize>(con).unwrap();
+        let alerts = |con: &mut redis::Connection| redis::cmd("HLEN").arg("bench:live:alerts").query::<usize>(con).unwrap();
+        let before = seq(&mut con);
+        let alerts_before = alerts(&mut con);
+        assert_eq!(before, PREFILL);
+        assert!(alerts_before > DESK_CAPACITY, "fixture produced only {alerts_before} alerts");
+
+        let (finish, receiver) = tokio::sync::watch::channel(false);
+        let readers: Vec<_> = READS.into_iter().map(|endpoint| {
+            (endpoint, tokio::spawn(mixed_reads(port, endpoint, "B0000".into(), receiver.clone())))
+        }).collect();
+        let mut writes = run(port, CONCURRENCY, PAYMENTS, webhook(port, "mixed".into(), PREFILL), (&sp, &rp), &mut con).await;
+        finish.send(true).unwrap();
+        let mut reads = serde_json::Map::new();
+        for (endpoint, task) in readers {
+            reads.insert(endpoint.into(), task.await.unwrap());
+        }
+
+        let after = seq(&mut con);
+        let read_ok = reads.values().all(|row| row["errors"] == 0 && row["ok"].as_u64().unwrap_or(0) > 0);
+        let write_ok = writes["ok"] == PAYMENTS && after == before + PAYMENTS;
+        writes["seq_advance"] = json!(after - before);
+        println!("{}", json!({
+            "server_revision": std::env::var("RUSETECT_BENCH_SERVER_REVISION").ok(),
+            "machine": machine(), "prefill_accepted": prefill_ok,
+            "durable_alerts_before": alerts_before, "durable_alerts_after": alerts(&mut con),
+            "writes": writes, "reads": reads, "check": write_ok && read_ok,
+        }));
+        assert!(write_ok && read_ok, "mixed-load correctness gate failed");
+    }
+
     async fn rep(rep: usize) -> (Vec<Value>, Vec<(&'static str, Vec<Value>)>) {
         let (_redis, _srv, mut con, sp, rp) = start().await;
         let port = SERVER_PORT;
@@ -650,6 +733,9 @@ mod f1 {
     }
 
     pub async fn main(arg: Option<&str>) {
+        if arg == Some("mixed") {
+            return mixed().await;
+        }
         if arg == Some("hold") {
             let secs: u64 = std::env::args().nth(3).and_then(|a| a.parse().ok()).unwrap_or(600);
             let (_redis, _srv, _con, sp, rp) = start().await;

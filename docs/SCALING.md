@@ -276,3 +276,41 @@ endpoints copy every stored alert per request.
 * The ctx-1.3 mule signature, tuned on HI-Small validation weeks, does not transfer to LI-Small (no true positives).
 * Scale out numbers come from a 2 core container where Redis, the producer and the workers share the cores; they
   show the design works and give a floor, not a production capacity figure.
+
+### 3e. Concurrent webhook and analyst reads on a populated desk
+
+The comparison uses the same F1 release harness against main at `015bd0e` and the standalone candidate at
+`b710db4`. These candidate commits include the retry/permit fixes and the indexed ReviewDesk eviction.
+Each run starts fresh loopback Redis and server processes. Prefill with 121,000 synthetic signed payments.
+The measured stage must start above 10,000 durable alerts and sends 20,000 more payments through 32 persistent
+connections. At the same time, four independent clients call dashboard, transactions, graph and alerts. Each
+client waits 200 ms after completing its previous request. The transactions and alerts clients cycle through
+pages of 50 rows, with offsets 0 through 950. The graph reads the fixture account B0000 at depth 2.
+
+Run three pairs in main/candidate, candidate/main, main/candidate order. Client, server and Redis share four
+logical CPUs. Redis persistence is disabled for this benchmark. Record webhook throughput and p99, per-endpoint
+read counts and p50/p95/p99, server CPU and memory, and durable alert counts. Report medians of the run-level
+metrics and keep the raw samples. The shorter runs may have too few read samples for a stable p99. The correctness
+gate requires all writes to return 200, Redis sequence growth to match the write count, and every reader to
+receive at least one successful JSON response with zero errors. This run characterizes mixed-load behavior.
+It makes no production capacity or latency commitment.
+
+Build the same release example once, place it in an `examples/` folder next to each server executable, set
+`RUSETECT_ROOT` to the checkout containing `service/` and set `RUSETECT_BENCH_SERVER_REVISION` to the revision of
+that server. Run `taskset -c 0-3 ./examples/e2e_bench f1 mixed` and capture its JSON stdout.
+
+**Amendment before the comparison.** A setup run used a symlink for the example executable. Its resolved path
+selected the same sibling server for both variants, so those outputs are discarded. Copy the example into each
+layout and check the nominated server and harness SHA-256 before every run. To shorten repetitions on the shared
+host, use 105,000 prefill requests and 10,000 measured webhook requests. The starting-alert gate and all other
+checks, order and reporting stay as specified above.
+
+
+**Results.** All 60,000 measured payments and
+766 analyst reads succeeded across the six runs.
+Median webhook throughput increased from 152.76 to
+350.04 events/s and median p99 fell from 1179.88
+to 915.23 ms. Mixed-load reads still take seconds for some operations on this
+host. Read percentiles vary with sample count and the candidate runs collect fewer samples because the
+webhook finishes sooner. Raw samples, build checksums and per-endpoint statistics are in
+[results/standalone_mixed.json](../results/standalone_mixed.json).

@@ -1,0 +1,41 @@
+{
+  "rust_tests_passed": 158,
+  "redis_tests_ran": true,
+  "clippy_warnings_denied": "passed",
+  "pilot_sender_self_test": "passed",
+  "website_credential_pattern_scan": "passed",
+  "browser_demo_smoke": {
+    "desktop": {
+      "passed": 55,
+      "failed": 0,
+      "width": 1440,
+      "height": 900
+    },
+    "tablet": {
+      "passed": 55,
+      "failed": 0,
+      "width": 834,
+      "height": 1112
+    },
+    "phone": {
+      "passed": 55,
+      "failed": 0,
+      "width": 390,
+      "height": 844
+    }
+  },
+  "standalone_restore_packaged_layout": true,
+  "standalone_fixed_budget_cli": {
+    "pass": true,
+    "scope": "Handwritten synthetic CLI checks, no model performance inference.",
+    "checks": [
+      "validation-only threshold fit",
+      "chronological queue",
+      "day cap",
+      "mature label snapshot",
+      "baseline case comparison",
+      "overlap rejection",
+      "budget change rejection"
+    ]
+  }
+}
