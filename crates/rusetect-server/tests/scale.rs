@@ -139,7 +139,7 @@ fn a_redelivered_payment_keeps_its_pair_score_after_history_is_pruned() {
         payment_format: "ACH".into(), tmin, eid: Some(eid) };
     let (prior, target, later) = (pay(1, t("2022-09-09 10:00")), pay(2, t("2022-09-09 10:05")), pay(3, t("2022-09-10 10:01")));
     let first = sc.score(&[prior, target.clone(), later]).unwrap()[1].clone();
-    assert_ne!(first["payment_decision"], "allow", "{first}");
+    assert_ne!(first["payment_decision"], rusetect::engine::DECISIONS[0], "the fixture must not be approved: {first}");
     let again = sc.score(&[target]).unwrap().remove(0);
     for k in ["payment_decision", "risk", "final_decision"] {
         assert_eq!(again[k], first[k], "{k}: the redelivery uses the first delivery's pair history");
