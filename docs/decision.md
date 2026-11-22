@@ -628,6 +628,14 @@ instead was not possible: Lua scripts in Redis have no rollback. A ledger entry 
 entries committed in the meantime; it keeps its own `seq` and hash. One test per record (feed, ledger, alert) covers
 both paths. The pair window also counts members written before this change (`eid|risk` repeated for one eid) once, at
 their highest risk.
+A second Codex review of PR #40 found two more gaps. (1) Capping the retry's pair window at its own minute kept later
+payments out, but a later payment also trims the pair key, so a retry could lose an earlier payment its first attempt
+had counted. The first live scoring now saves the window's count and noisy-OR in `pair-score:{eid}`, in the same script
+that updates the window, and a retry reuses it: with `seen:` and `pair-score:` present (both 26 h), a retry is scored
+from exactly the first attempt's inputs. The batch workers (`scale::worker::score_one`) keep recomputing the window. (2)
+The `HEAVY_READS` permit was held by the async handler, so a client that disconnected released it while the blocking
+read ran on; the permit now moves into the blocking closure and is released only when the read ends. Each fix has a
+test that fails without it.
 
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
