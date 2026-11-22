@@ -66,6 +66,41 @@ and recall are measured against outcomes confirmed by the snapshot. Unconfirmed 
 This is a retrospective ranking comparison. It uses the full day's scores to choose that day's reviews. Measure
 time to alert, queueing, and threshold behaviour separately in the live shadow run.
 
+## Compare chronological review queues
+
+Use this comparison to estimate how a fixed daily analyst capacity affects review timing. Each method sees a payment
+at its timestamp, admits it if its frozen threshold is met and capacity remains, and reviews a group at most once
+during the holdout. UTC midnight resets capacity. Equal timestamps are ordered by event ID.
+
+Prepare a payments CSV with `event_id,timestamp,review_group,served,cascade,amount_usd,velocity`. Export the
+served and cascade scores available at payment time, use a USD amount known at that time, and define a trailing
+velocity feature and review group before looking at outcomes. Use the same event universe for each method. The
+review group should come from payment-time data, such as an account identifier available to the analyst.
+The separate outcomes CSV has the same format as in the replay comparison above.
+
+Choose each method's threshold using a preceding validation interval and record the interval, feature definitions,
+daily capacity, and model revisions before scoring the holdout. Save the exclusive validation end and five thresholds
+in the policy JSON. The following values are examples.
+
+```json
+{
+  "validation_end_utc_exclusive": "2026-08-01",
+  "random_seed": 41,
+  "thresholds": {"served": 0.5, "cascade": 0.5, "amount_usd": 5000, "velocity": 10, "random": 0.99}
+}
+```
+
+```bash
+python3 tools/pilot_queue.py payments.csv outcomes.csv policy.json \
+    --start 2026-08-01 --end 2026-09-01 --as-of 2026-10-01T00:00:00Z \
+    --reviews-per-day 50 > chronological-comparison.json
+```
+
+The report includes reviews per payment day, confirmed-case recall, and median minutes from a case's first linked
+holdout payment to the first reviewed payment linked to that case. Cases count once. The outcome snapshot determines
+which links count, and queue selection uses payment-time inputs alone. The seeded baseline scores each event
+deterministically and uses the same admission rules. A reported delay covers found cases with a link confirmed by the snapshot.
+
 ## What the pilot will not show
 
 - Performance at another bank, or on another rail, without measuring there.
