@@ -80,7 +80,20 @@ The separate outcomes CSV has the same format as in the replay comparison above.
 
 Choose each method's threshold using a preceding validation interval and record the interval, feature definitions,
 daily capacity, and model revisions before scoring the holdout. Save the exclusive validation end and five thresholds
-in the policy JSON. The following values are examples.
+in the policy JSON. To generate a policy without outcome labels, run:
+
+```bash
+python3 tools/pilot_freeze_policy.py validation-payments.csv \
+    --start 2026-07-01 --end 2026-08-01 --reviews-per-day 50 --random-seed 41 > policy.json
+```
+
+The command ranks each group's peak validation score and chooses the threshold at the planned review volume
+(daily capacity times the calendar days in validation, limited to the number of groups). It then replays the
+validation queue to report how many reviews the chronological rule actually admits. Ties may put extra groups
+at the threshold, and historical payments may cluster, so the daily cap still applies and actual utilization may
+fall short of capacity. Freeze the generated file before evaluating the holdout and use the same daily budget.
+
+A hand-authored policy can also use this format. The following values are examples.
 
 ```json
 {

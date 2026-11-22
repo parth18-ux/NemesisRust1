@@ -11,6 +11,7 @@ from pilot_evaluate import finite_score, parse_outcome, read_csv, timestamp
 
 SCORE_COLUMNS = ("served", "cascade", "amount_usd", "velocity")
 METHODS = (*SCORE_COLUMNS, "random")
+PAYMENT_COLUMNS = ("event_id", "timestamp", "review_group", *SCORE_COLUMNS)
 
 
 def payment(row):
@@ -25,13 +26,26 @@ def random_score(seed, event_id):
     return (int.from_bytes(hashlib.sha256(key).digest()[:8], "big") >> 11) / (1 << 53)
 
 
+def load_events(path, start, end):
+    payments = read_csv(path, PAYMENT_COLUMNS, payment)
+    return sorted(
+        ((event_id, record) for event_id, record in payments.items()
+         if start <= record[0].date() < end),
+        key=lambda item: (item[1][0], item[0]),
+    )
+
+
+def scores_for(event_id, scores, seed):
+    return zip(METHODS, (*scores, random_score(seed, event_id)))
+
+
 def select(events, thresholds, budget, seed):
     queues = {name: {} for name in METHODS}
     groups = {name: set() for name in METHODS}
     usage = {name: {} for name in METHODS}
     for event_id, (paid_at, group, scores) in events:
         day = paid_at.date().isoformat()
-        for name, score in zip(METHODS, (*scores, random_score(seed, event_id))):
+        for name, score in scores_for(event_id, scores, seed):
             used = usage[name].setdefault(day, 0)
             if used >= budget or group in groups[name] or score < thresholds[name]:
                 continue
@@ -102,7 +116,10 @@ def read_policy(path):
     seed = config["random_seed"]
     if type(seed) is not int or not 0 <= thresholds["random"] <= 1:
         raise ValueError("require an integer random_seed and a random threshold between 0 and 1")
-    return validation_end, thresholds, seed
+    budget = config.get("reviews_per_utc_day")
+    if "reviews_per_utc_day" in config and (type(budget) is not int or budget < 1):
+        raise ValueError("require a positive integer reviews_per_utc_day")
+    return validation_end, thresholds, seed, budget
 
 
 def main():
@@ -119,16 +136,12 @@ def main():
         parser.error("require start < end, a label snapshot at or after end, and a positive review budget")
 
     try:
-        validation_end, thresholds, seed = read_policy(args.policy)
+        validation_end, thresholds, seed, frozen_budget = read_policy(args.policy)
         if validation_end > args.start:
             raise ValueError("validation overlaps holdout")
-        columns = ("event_id", "timestamp", "review_group", *SCORE_COLUMNS)
-        payments = read_csv(args.payments, columns, payment)
-        events = sorted(
-            ((event_id, record) for event_id, record in payments.items()
-             if args.start <= record[0].date() < args.end),
-            key=lambda item: (item[1][0], item[0]),
-        )
+        if frozen_budget is not None and frozen_budget != args.reviews_per_day:
+            raise ValueError("review budget differs from the frozen policy")
+        events = load_events(args.payments, args.start, args.end)
         if not events:
             raise ValueError("no payments in the holdout")
         queues, usage = select(events, thresholds, args.reviews_per_day, seed)
