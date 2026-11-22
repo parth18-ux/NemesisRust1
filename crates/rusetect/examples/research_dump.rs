@@ -22,13 +22,24 @@ use std::io::Write;
 ///   hour_dev                  circular distance in hours from the sender's usual hour (needs 3 payments)
 ///   payee_age_min             minutes since the payee was first seen in any role (new collection accounts)
 ///   s_new_payees_24h          payments to never-seen payees by this sender in the last 24 hours
-pub const EXTRA: [&str; 13] = ["s_cnt_1h", "s_usd_1h", "d_cnt_1h", "d_fanin_1h", "d_usd_24h", "pair_cnt_24h", "pair_usd_24h",
-    "amt_z", "amt_to_max", "just_below_round", "hour_dev", "payee_age_min", "s_new_payees_24h"];
+/// The inputs of the arms of docs/decision.md 8al and 8am (research/evasion_fix.py); windows are (t - 72 h, t]:
+///   s_cnt_72h, s_usd_72h      payer outflow count and log1p USD, current payment included (arm T)
+///   d_cnt_72h, d_fanin_72h    payee inflow count and distinct senders, current payment included (arm T)
+///   payee_fresh               1 if the payee has not appeared in any role before this payment (arm N)
+///   s_fresh_payees_72h        the payer's payments, current included, to a payee that was fresh at the time (arm N)
+///   s_in_usd_72h              log1p USD the payer received, current payment excluded (arm T2)
+///   s_out_over_in_72h         this payment's USD over the payer's USD received; NaN when that is zero (arm T2)
+pub const EXTRA: [&str; 21] = ["s_cnt_1h", "s_usd_1h", "d_cnt_1h", "d_fanin_1h", "d_usd_24h", "pair_cnt_24h", "pair_usd_24h",
+    "amt_z", "amt_to_max", "just_below_round", "hour_dev", "payee_age_min", "s_new_payees_24h",
+    "s_cnt_72h", "s_usd_72h", "d_cnt_72h", "d_fanin_72h", "payee_fresh", "s_fresh_payees_72h", "s_in_usd_72h", "s_out_over_in_72h"];
+const MIN72: i64 = 4320;
 
 #[derive(Default)]
 struct Acc {
     out: VecDeque<(i64, f64, bool)>, // (t, usd, was a new payee) for 24 h
     inn: VecDeque<(i64, f64, u32)>,  // (t, usd, sender) for 24 h
+    out72: VecDeque<(i64, f64, bool)>, // (t, usd, payee was fresh) for 72 h
+    inn72: VecDeque<(i64, f64, u32)>,  // (t, usd, sender) for 72 h
     n: f64, mean: f64, m2: f64, max: f64,
     hs: f64, hc: f64, hn: f64, // circular hour sums
     first: Option<i64>,
@@ -51,7 +62,7 @@ impl Extra {
         i
     }
 
-    fn row(&mut self, p: &Payment, usd: f64) -> [f64; 13] {
+    fn row(&mut self, p: &Payment, usd: f64) -> [f64; 21] {
         let (s, d) = (self.id(&p.from_bank, &p.from_account), self.id(&p.to_bank, &p.to_account));
         let t = p.tmin;
         let nan = f64::NAN;
@@ -59,7 +70,29 @@ impl Extra {
         let new_pair = !self.seen_pair.contains(&key);
         let lu = usd.max(0.0).ln_1p();
         let hour = ((t.rem_euclid(1440)) as f64) / 60.0;
-        let mut o = [nan; 13];
+        let mut o = [nan; 21];
+        let fresh = self.acc[d as usize].first.is_none();
+        {
+            // payer side first: a self-loop's own receipt is not counted as received before it
+            let a = &mut self.acc[s as usize];
+            while a.inn72.front().map(|x| x.0 <= t - MIN72).unwrap_or(false) { a.inn72.pop_front(); }
+            let rin: f64 = a.inn72.iter().map(|x| x.1).sum();
+            o[19] = rin.ln_1p();
+            o[20] = if rin > 0.0 { usd / rin } else { nan };
+            while a.out72.front().map(|x| x.0 <= t - MIN72).unwrap_or(false) { a.out72.pop_front(); }
+            a.out72.push_back((t, usd, fresh));
+            o[13] = a.out72.len() as f64;
+            o[14] = a.out72.iter().map(|x| x.1).sum::<f64>().ln_1p();
+            o[18] = a.out72.iter().filter(|x| x.2).count() as f64;
+            o[17] = fresh as i64 as f64;
+        }
+        {
+            let b = &mut self.acc[d as usize];
+            while b.inn72.front().map(|x| x.0 <= t - MIN72).unwrap_or(false) { b.inn72.pop_front(); }
+            b.inn72.push_back((t, usd, s));
+            o[15] = b.inn72.len() as f64;
+            o[16] = b.inn72.iter().map(|x| x.2).collect::<HashSet<u32>>().len() as f64;
+        }
         {
             let a = &mut self.acc[s as usize];
             while a.out.front().map(|x| x.0 <= t - 1440).unwrap_or(false) { a.out.pop_front(); }
@@ -189,5 +222,21 @@ mod tests {
         assert_eq!(b[11], 10.0);
         let c = x.row(&pay(2000, "B", 2500.0), 2500.0);
         assert_eq!((c[0], c[5]), (0.0, 0.0), "windows forget payments older than 24 h");
+    }
+
+    #[test]
+    fn evasion_fix_inputs_are_causal() {
+        let mut x = Extra::default();
+        let a = x.row(&pay(0, "B", 100.0), 100.0);
+        assert_eq!((a[13], a[15], a[16], a[17], a[18]), (1.0, 1.0, 1.0, 1.0, 1.0), "current payment counted, payee fresh");
+        assert!(a[20].is_nan() && a[19] == 0.0, "nothing received yet");
+        // B forwards to C: B received 100 two days earlier
+        let b = x.row(&Payment { from_account: "B".into(), to_account: "C".into(), from_bank: "2".into(), ..pay(2880, "C", 50.0) }, 50.0);
+        assert_eq!(b[20], 0.5);
+        assert_eq!(b[19], 100f64.ln_1p());
+        let c = x.row(&pay(2900, "B", 10.0), 10.0);
+        assert_eq!((c[13], c[17], c[18]), (2.0, 0.0, 1.0), "B was paid before; the first payment to B was fresh");
+        let d = x.row(&pay(2900 + 4320, "D", 10.0), 10.0);
+        assert_eq!((d[13], d[18]), (1.0, 1.0), "72 h windows forget older payments");
     }
 }
