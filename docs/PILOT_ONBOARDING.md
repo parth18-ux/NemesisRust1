@@ -1,7 +1,10 @@
 # Pilot onboarding: integration guide for the bank's engineer
 
-This guide takes a bank engineer from an empty host to a running shadow pilot. It links to the reference documents
-rather than repeating them: [live.md](live.md) (webhook reference), [RUNBOOK.md](RUNBOOK.md) (operations),
+This guide takes a bank engineer from an empty host to a running shadow pilot on one payment channel. In short, the
+partner sends a signed copy of each payment (sections 3, 4 and 7), replays its history first (section 4), and gets back
+a decision log, an alert queue, a pilot-health view and a fixed-budget comparison with its current system (section 11),
+over eight weeks (section 12). Accuracy on real bank payments is not yet measured: every result so far is on synthetic
+or public data, which is what the pilot is for. It links to the reference documents rather than repeating them: [live.md](live.md) (webhook reference), [RUNBOOK.md](RUNBOOK.md) (operations),
 [THREAT_MODEL.md](THREAT_MODEL.md) (security review),
 [PILOT.md](PILOT.md) (evaluation protocol) and [PILOT_PROPOSAL.md](PILOT_PROPOSAL.md) (scope and timeline).
 
@@ -49,8 +52,8 @@ Steps (Linux host, or the container in `deploy/`):
 6. Rebuild the drift reference from your own data (section 9) before reading drift status.
 7. Replay your history (at least three months, [PILOT.md](PILOT.md) step 1) through the same webhook in time order with
    the pilot sender (section 4), then switch the sender to the live copy of the stream. For the replay raise
-   `RUSETECT_RATE_LIMIT` (requests per 10 s per client) above the sender's `--rate`, and size `RUSETECT_MAX_ACCOUNTS`
-   for your account count ([live.md](live.md), limits).
+   `RUSETECT_RATE_LIMIT` (requests per 10 s per client) above the sender's `--rate`, size `RUSETECT_MAX_ACCOUNTS`
+   for your account count and, in memory mode, `RUSETECT_MAX_EVENTS` above the number of events (section 3) ([live.md](live.md), limits).
 
 Have your security team review [THREAT_MODEL.md](THREAT_MODEL.md) first; its open gaps are listed there.
 
@@ -93,7 +96,9 @@ def send(event: dict, url: str) -> dict:
 
 **Idempotency.** The `event_id` (1 to 128 characters) is the idempotency key. Re-sending a known `event_id` returns the
 stored result unchanged with header `Idempotent-Replayed: true`; it is not scored or logged again. Always retry with
-the same body and `event_id`. In memory mode this holds for the life of the process; with Redis, for 7 days.
+the same body and `event_id`. In memory mode this holds for the life of the process, for up to `RUSETECT_MAX_EVENTS`
+event ids (default 100,000); once that many are stored a new `event_id` is refused with `503` and nothing is committed,
+so size it above your replay plus the pilot's live volume, or use Redis. With Redis it holds for 7 days.
 
 **Retries and `Retry-After`.** Retry network errors, `409` (the same `event_id` is still in flight), `429` (rate
 limit, `RUSETECT_RATE_LIMIT` requests per 10 s per client) and any `5xx`. A `503` (secret not set, account state full,
@@ -115,8 +120,15 @@ python3 -I tools/pilot_sender.py history.jsonl --url https://rusetect.internal.e
 ```
 
 It prints a JSON summary (`sent`, `accepted`, `replayed`, `failed`, `retried`, counts by action and by failure code).
-`sent.jsonl` has one line per event: `event_id`, HTTP status, attempts, action, band, alert id and latency. A re-run of
+`sent.jsonl` has one line per event: `event_id`, HTTP status, attempts, action, band, risk, payment timestamp, alert id and latency. A re-run of
 the same file is safe: every event already committed comes back as `replayed`.
+
+**Replaying history in shadow mode.** Export at least three months before the pilot window as one file sorted by
+`timestamp`, start a fresh server (a fresh Redis database if you use one) with the build and model version you will
+pilot, and send the file with `--log replay.jsonl`; then point the sender at the live copy of the stream. Keep the
+replay log: it is the input of the fixed-budget comparison in [PILOT.md](PILOT.md) ("Compare rankings on a historical
+replay"), together with your incumbent scores and confirmed outcomes. The replay is the engine's account history; no
+label is read during it.
 
 ## 5. Secret rotation
 
@@ -182,7 +194,10 @@ pilot so the same account always gets the same hash.
 | `GET /api/v2/drift` | `X-Analyst-Key` | `status`, `warming_up`, `reasons` (which check fired), `window.size`, score and input PSI, band rates against the reference |
 | `GET /api/v2/alerts`, `/api/v2/audit` | `X-Analyst-Key` | the review queue; the hash-chained decision ledger and `chain_valid` |
 
-The console at `/console` shows the live feed and drift status (it polls every 5 s). What to do on each signal is in
+The workspace view **Pilot health** (`/app#/pilot`) puts the three daily checks on one page, from the endpoints above:
+drift (score and per-input PSI, band rates against the reference), flagged decisions per UTC day (to compare with the
+agreed review budget) and server latency over the latest 50 live decisions. The console at `/console` shows the live
+feed and drift status (it polls every 5 s). What to do on each signal is in
 [RUNBOOK.md](RUNBOOK.md) sections 0 and 7.
 
 ## 9. Rebuild the drift reference from your own validation period
@@ -202,31 +217,38 @@ thresholds are fitted on the earlier labelled months only).
 
 ## 10. Rehearsal
 
-The whole path above was rehearsed locally by `tools/pilot_rehearsal.py`: the server in memory mode with analyst keys
-and throwaway secrets generated for the run, a fixture stream sent through the pilot sender, then sent again. The
-table is generated from [results/pilot_rehearsal.json](../results/pilot_rehearsal.json); rerun with
-`cargo build --release -p rusetect-server --bin rusetect-server && python3 -I tools/pilot_rehearsal.py`.
+The whole path above, and the fixed-budget evaluators of [PILOT.md](PILOT.md), were rehearsed locally on synthetic
+data by `tools/pilot_rehearsal.py`. What was measured, what worked and what broke is in
+[PILOT_REHEARSAL.md](PILOT_REHEARSAL.md), generated from [results/pilot_rehearsal.json](../results/pilot_rehearsal.json).
 
-<!-- rehearsal:begin (generated by tools/pilot_rehearsal.py from results/pilot_rehearsal.json; do not edit) -->
-| | measured |
-|---|---|
-| fixture | first 2000 payments of service/models/demo_stream.csv.gz (IBM AMLworld HI-Small, synthetic), time order, engine started with no account history |
-| first pass | 2000 sent, 2000 accepted, 0 replayed, 0 failed, 0 retried |
-| decisions by action | allow 1954, block 1, hold 4, verify 41 |
-| decisions by band | Approve 1954, Block + STR draft 1, Hold for analyst 4, Step-up verification 41 |
-| alerts opened, ledger entries | 46 alerts; 2000 ledger entries, chain valid: true |
-| `/api/v2/live` | 50 events shown (the latest 50), durable: false; without `X-Analyst-Key`: HTTP 401 |
-| `/api/v2/drift` | HTTP 200, status `alert`, window 2000; reasons: score PSI 1.003 >= 0.25; verify rate 2.04x the reference |
-| re-send of every event | 2000 sent, 2000 replayed, 0 scored again, 2000 with the same action and alert; alerts 46 → 46, ledger 2000 → 2000 |
-| latency (ms) | server p50 0.3, p95 0.71; round trip p50 1.13, p95 1.75 (one machine, sender and server on loopback, one event at a time; not a capacity figure) |
-<!-- rehearsal:end -->
+## 11. What you get back
 
-How to read it: the engine starts with no account history, so the decision mix is that of a fresh install before
-history replay, not of a warmed pilot. The fixture comes from the same synthetic generator as the drift reference, so
-the input checks stay quiet, yet drift still fires on the score: with no account history the score distribution is not
-that of validation. Expect the same on your first days, and more (inputs as well) against the shipped reference until you
-rebuild it (section 9). The 503 / `Retry-After` path is covered by the sender's `--self-test`, not by this run. Latency is
-one machine on loopback, not a capacity figure (`results/e2e_bench.json` has the throughput runs).
+| what | where | when |
+|---|---|---|
+| A decision per payment: `action`, band, `risk`, reasons, alert id, ledger sequence and hash | the webhook response (logged by the sender), `GET /api/v2/live` | at once |
+| An alert queue for anything above `allow`, with evidence packs and STR drafts (recommendations only) | `/app#/alerts`, `GET /api/v2/alerts`; [API.md](API.md) | at once |
+| A hash-chained, signed decision ledger | `GET /api/v2/audit` (`chain_valid`) | at once |
+| Pilot health: drift, flagged decisions per day, latency | `/app#/pilot` (section 8) | daily |
+| Fixed-budget comparison with your current system: confirmed-case recall and yield at the same daily review budget, cases found by one side only, minutes to first review | `tools/pilot_evaluate.py`, `tools/pilot_queue.py` ([PILOT.md](PILOT.md)) | weekly as labels arrive, and at the read-out |
+| The read-out: adopt, retrain on your data under the same rule, or stop | [PILOT_PROPOSAL.md](PILOT_PROPOSAL.md) | week 9 |
+
+None of it changes a payment. The comparison is only as good as the outcome labels and their dates; unconfirmed
+payments never count as hits.
+
+## 12. Week by week
+
+The phases are those of [PILOT_PROPOSAL.md](PILOT_PROPOSAL.md) (timeline) and [PILOT.md](PILOT.md) (steps); this is
+the engineer's checklist for each week.
+
+| week | partner | RuseTect | done when |
+|---|---|---|---|
+| 0 | NDA and data terms; security review of [THREAT_MODEL.md](THREAT_MODEL.md); pick the channel and agree the rail and currency mapping (section 7) | answer the review; write down the mapping | mapping and review signed off |
+| 1 | host, secrets and keys (sections 2 and 6); export history; rebuild the drift reference (section 9) | build check, one signed test event (section 3) | `/api/health` ready with `configured keys`; test event in `/api/v2/live` |
+| 2 | replay history with `--log replay.jsonl` (section 4); fix the daily review budget, holdout dates and label snapshot | freeze the success rule and the queue policy (`tools/pilot_freeze_policy.py`) before any label is joined | replay `failed` is 0; policy file and rule frozen and signed |
+| 3 | switch the sender to the live copy of the channel | watch pilot health daily (section 8); runbook on any signal ([RUNBOOK.md](RUNBOOK.md)) | a full UTC day scored with no sender failures |
+| 4 to 7 | send confirmed outcomes weekly with the date each was known | run the fixed-budget comparison on the frozen holdout; report alerts per day against the budget | weekly report shared; nothing retuned on live data |
+| 8 | final outcome snapshot | final comparison, latency on your hardware ([SCALING.md](SCALING.md)) | report frozen |
+| 9 | joint read-out | | decision recorded with the signed audit log |
 
 ## Where to go next
 
@@ -234,4 +256,5 @@ one machine on loopback, not a capacity figure (`results/e2e_bench.json` has the
 - [PILOT_PROPOSAL.md](PILOT_PROPOSAL.md): scope, timeline and success metrics.
 - [RUNBOOK.md](RUNBOOK.md): incidents, rotation, rollback, drift.
 - [THREAT_MODEL.md](THREAT_MODEL.md): trust boundaries and open gaps.
-- [DEMO_SCRIPT.md](DEMO_SCRIPT.md): the 5-minute walkthrough, with the known limits.
+- [DEMO_SCRIPT.md](DEMO_SCRIPT.md): the 10-minute walkthrough, with the known limits.
+- [PILOT_REHEARSAL.md](PILOT_REHEARSAL.md): the local rehearsal of this guide on synthetic data.

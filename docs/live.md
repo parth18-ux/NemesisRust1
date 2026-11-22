@@ -98,7 +98,8 @@ Retry on any network error, `409`, `429` or 5xx with the same body and `event_id
 signature (a retry signed with the first attempt's timestamp is refused after 5 minutes). Do not retry other 4xx: fix
 the request. A known `event_id` returns the stored result unchanged, with header `Idempotent-Replayed: true`, and is
 not scored or written again. With Redis this holds across all function instances for 7 days; in memory it holds for the
-life of one instance.
+life of one instance, for up to `RUSETECT_MAX_EVENTS` event ids (default 100,000), after which a new `event_id` is
+refused with `503` and nothing is committed (an id is never forgotten and scored twice).
 
 Every 5xx is safe to retry. When Redis confirms that the commit did not land, the claim on the `event_id` is released
 and the retry is scored again. The account write saves the original account features and deduplicates per-account

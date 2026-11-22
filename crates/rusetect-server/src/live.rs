@@ -56,8 +56,11 @@ use std::time::{Duration, Instant};
 pub const TOLERANCE_S: i64 = 300;
 /// Live decisions kept for the console feed.
 const FEED: usize = 200;
-/// Event ids remembered for idempotency in memory mode (oldest dropped first).
-const MEM_EVENTS: usize = 100_000;
+/// Event ids remembered for idempotency in memory mode. When full, a new event id is refused (503) rather than an old
+/// one forgotten: a forgotten id would be scored again on a re-send, writing its payment into account history twice.
+/// RUSETECT_MAX_EVENTS overrides the default.
+pub static MEM_EVENTS: std::sync::LazyLock<usize> =
+    std::sync::LazyLock::new(|| std::env::var("RUSETECT_MAX_EVENTS").ok().and_then(|v| v.parse().ok()).unwrap_or(100_000));
 /// How long Redis keeps an event's result for idempotency, and how long an unfinished claim blocks a retry.
 const EVENT_TTL_S: u64 = 7 * 86_400;
 pub const CLAIM_TTL_S: u64 = 60;
@@ -331,6 +334,8 @@ pub struct Live {
     events: IndexMap<String, Value>,
     feed: VecDeque<Value>,
     seq: u64,
+    /// memory mode: overrides MEM_EVENTS (tests)
+    pub max_events: Option<usize>,
     /// Redis mode: attempts whose commit outcome was unknown (store unreachable), by event id, with the void entry that
     /// settles their desk-chain entries if a later attempt finds the event uncommitted (`settle_unknown`)
     unsettled: IndexMap<String, Value>,
@@ -473,15 +478,15 @@ fn ingest(s: &mut AppState, ev: &Event) -> Result<(Value, bool), ApiError> {
     if let Some(r) = s.live.events.get(&ev.id) {
         return Ok((r.clone(), true));
     }
+    if s.live.events.len() >= s.live.max_events.unwrap_or(*MEM_EVENTS) {
+        return Err(ApiError::new(503, "memory-mode idempotency store is full; nothing was committed. Use Redis (REDIS_URL) or raise RUSETECT_MAX_EVENTS and restart"));
+    }
     s.live.seq += 1;
     let seq = s.live.seq;
     let (mut rec, _, _) = decide(s, ev, &d, seq, None)?;
     rec["latency_ms"] = jf(py_round(t0.elapsed().as_secs_f64() * 1000.0, 2));
     // 5. commit
     s.live.events.insert(ev.id.clone(), rec.clone());
-    if s.live.events.len() > MEM_EVENTS {
-        s.live.events.shift_remove_index(0);
-    }
     s.live.feed.push_front(rec.clone());
     s.live.feed.truncate(FEED);
     Ok((rec, false))
@@ -752,7 +757,7 @@ pub(crate) fn recent(app: &crate::Shared, n: usize) -> Result<(Vec<Value>, u64, 
         let mut s = lock(&app.state);
         match store_of(&mut s)? {
             Some(d) => d,
-            None => return Ok((s.live.events.values().rev().take(n).cloned().collect(), s.live.seq, MEM_EVENTS)),
+            None => return Ok((s.live.events.values().rev().take(n).cloned().collect(), s.live.seq, s.live.max_events.unwrap_or(*MEM_EVENTS))),
         }
     };
     let k = du.key("seq");

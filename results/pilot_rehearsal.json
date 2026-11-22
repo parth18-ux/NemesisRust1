@@ -1,37 +1,37 @@
 {
  "what": "Shadow-pilot rehearsal: rusetect-server in memory mode with analyst keys and throwaway secrets, fixture sent through tools/pilot_sender.py, then sent again to check idempotency",
  "script": "tools/pilot_rehearsal.py",
- "fixture": "first 2000 payments of service/models/demo_stream.csv.gz (IBM AMLworld HI-Small, synthetic), time order, engine started with no account history",
+ "fixture": "all payments (160000) of service/models/demo_stream.csv.gz (IBM AMLworld HI-Small, synthetic), time order, each clock hour re-dated to its own UTC day, engine started with no account history",
  "first_pass": {
-  "sent": 2000,
-  "accepted": 2000,
+  "sent": 160000,
+  "accepted": 160000,
   "replayed": 0,
   "failed": 0,
   "retried": 0
  },
  "decisions_by_action": {
-  "allow": 1954,
-  "block": 1,
-  "hold": 4,
-  "verify": 41
+  "allow": 143748,
+  "block": 428,
+  "hold": 3297,
+  "verify": 12527
  },
  "decisions_by_band": {
-  "Approve": 1954,
-  "Block + STR draft": 1,
-  "Hold for analyst": 4,
-  "Step-up verification": 41
+  "Approve": 143748,
+  "Block + STR draft": 428,
+  "Hold for analyst": 3297,
+  "Step-up verification": 12527
  },
  "second_pass": {
-  "sent": 2000,
+  "sent": 160000,
   "accepted": 0,
-  "replayed": 2000,
+  "replayed": 160000,
   "failed": 0
  },
- "second_pass_same_result": 2000,
- "alerts_open": 46,
- "alerts_after_resend": 46,
- "ledger_entries": 2000,
- "ledger_entries_after_resend": 2000,
+ "second_pass_same_result": 160000,
+ "alerts_open": 10000,
+ "alerts_after_resend": 10000,
+ "ledger_entries": 160000,
+ "ledger_entries_after_resend": 160000,
  "ledger_chain_valid": true,
  "live_feed": {
   "events_shown": 50,
@@ -41,11 +41,13 @@
  "drift": {
   "http": 200,
   "status": "alert",
-  "window_n": 2000,
+  "window_n": 160000,
   "warming_up": false,
   "reasons": [
-   "score PSI 1.003 >= 0.25",
-   "verify rate 2.04x the reference"
+   "score PSI 0.657 >= 0.25",
+   "verify rate 7.78x the reference",
+   "hold rate 5.36x the reference",
+   "block rate 2.15x the reference"
   ]
  },
  "health": {
@@ -55,10 +57,215 @@
   "auth": "configured keys"
  },
  "latency_ms": {
-  "server_p50": 0.3,
-  "server_p95": 0.71,
-  "round_trip_p50": 1.13,
-  "round_trip_p95": 1.75,
+  "server_p50": 0.31,
+  "server_p95": 2.27,
+  "round_trip_p50": 1.15,
+  "round_trip_p95": 3.22,
   "note": "one machine, sender and server on loopback, one event at a time; not a capacity figure"
+ },
+ "fixed_budget": {
+  "setup": {
+   "validation_utc": [
+    "2022-09-01",
+    "2022-09-04"
+   ],
+   "holdout_utc": [
+    "2022-09-04",
+    "2022-09-10"
+   ],
+   "labels_as_of": "2022-09-17T00:00:00Z",
+   "reviews_per_utc_day": 50,
+   "incumbent_stand_in": "USD amount (a naive rule; no real incumbent exists)",
+   "review_group": "payer bank:account",
+   "case": "payee bank:account of each labelled payment",
+   "velocity": "payer's payments in the trailing 24 h",
+   "cascade_column": "set to the served risk"
+  },
+  "policy": {
+   "validation_start_utc": "2022-09-01",
+   "validation_end_utc_exclusive": "2022-09-04",
+   "reviews_per_utc_day": 50,
+   "random_seed": 41,
+   "thresholds": {
+    "served": 0.06004,
+    "cascade": 0.06004,
+    "amount_usd": 10409843.36,
+    "velocity": 5.0,
+    "random": 0.997447114574294
+   },
+   "validation": {
+    "payments": 56542,
+    "calendar_days": 3,
+    "methods": {
+     "served": {
+      "reviews": 90,
+      "reviews_by_payment_day": {
+       "2022-09-01": 17,
+       "2022-09-02": 23,
+       "2022-09-03": 50
+      }
+     },
+     "cascade": {
+      "reviews": 90,
+      "reviews_by_payment_day": {
+       "2022-09-01": 17,
+       "2022-09-02": 23,
+       "2022-09-03": 50
+      }
+     },
+     "amount_usd": {
+      "reviews": 147,
+      "reviews_by_payment_day": {
+       "2022-09-01": 49,
+       "2022-09-02": 48,
+       "2022-09-03": 50
+      }
+     },
+     "velocity": {
+      "reviews": 150,
+      "reviews_by_payment_day": {
+       "2022-09-01": 50,
+       "2022-09-02": 50,
+       "2022-09-03": 50
+      }
+     },
+     "random": {
+      "reviews": 145,
+      "reviews_by_payment_day": {
+       "2022-09-01": 45,
+       "2022-09-02": 50,
+       "2022-09-03": 50
+      }
+     }
+    }
+   }
+  },
+  "ranking": {
+   "holdout_start_utc": "2022-09-04",
+   "holdout_end_utc_exclusive": "2022-09-10",
+   "labels_as_of_utc": "2022-09-17T00:00:00+00:00",
+   "reviews_per_utc_day": 50,
+   "days_with_payments": 6,
+   "payments": 103458,
+   "confirmed_cases": 139,
+   "events_confirmed_after_snapshot": 0,
+   "rusetect": {
+    "reviews": 300,
+    "reviews_linked_to_confirmed_cases": 68,
+    "confirmed_cases_found": 63,
+    "confirmed_event_yield": 0.22666666666666666,
+    "confirmed_case_recall": 0.45323741007194246
+   },
+   "incumbent": {
+    "reviews": 300,
+    "reviews_linked_to_confirmed_cases": 2,
+    "confirmed_cases_found": 2,
+    "confirmed_event_yield": 0.006666666666666667,
+    "confirmed_case_recall": 0.014388489208633094
+   },
+   "cases_found_by_both": 2,
+   "cases_found_only_by_rusetect": 61,
+   "cases_found_only_by_incumbent": 0
+  },
+  "queue": {
+   "holdout_start_utc": "2022-09-04",
+   "holdout_end_utc_exclusive": "2022-09-10",
+   "labels_as_of_utc": "2022-09-17T00:00:00+00:00",
+   "validation_end_utc_exclusive": "2022-09-04",
+   "reviews_per_utc_day": 50,
+   "thresholds": {
+    "served": 0.06004,
+    "cascade": 0.06004,
+    "amount_usd": 10409843.36,
+    "velocity": 5.0,
+    "random": 0.997447114574294
+   },
+   "random_seed": 41,
+   "payments": 103458,
+   "confirmed_cases": 139,
+   "events_confirmed_after_snapshot": 0,
+   "methods": {
+    "served": {
+     "reviews": 282,
+     "reviews_by_day": {
+      "2022-09-04": 50,
+      "2022-09-05": 50,
+      "2022-09-06": 50,
+      "2022-09-07": 50,
+      "2022-09-08": 50,
+      "2022-09-09": 32
+     },
+     "confirmed_cases_found": 26,
+     "confirmed_event_yield": 0.09219858156028368,
+     "confirmed_case_recall": 0.18705035971223022,
+     "median_minutes_to_first_review": 0.0,
+     "confirmed_cases_also_found_by_served": 26
+    },
+    "cascade": {
+     "reviews": 282,
+     "reviews_by_day": {
+      "2022-09-04": 50,
+      "2022-09-05": 50,
+      "2022-09-06": 50,
+      "2022-09-07": 50,
+      "2022-09-08": 50,
+      "2022-09-09": 32
+     },
+     "confirmed_cases_found": 26,
+     "confirmed_event_yield": 0.09219858156028368,
+     "confirmed_case_recall": 0.18705035971223022,
+     "median_minutes_to_first_review": 0.0,
+     "confirmed_cases_also_found_by_served": 26
+    },
+    "amount_usd": {
+     "reviews": 260,
+     "reviews_by_day": {
+      "2022-09-04": 47,
+      "2022-09-05": 44,
+      "2022-09-06": 50,
+      "2022-09-07": 49,
+      "2022-09-08": 50,
+      "2022-09-09": 20
+     },
+     "confirmed_cases_found": 0,
+     "confirmed_event_yield": 0.0,
+     "confirmed_case_recall": 0.0,
+     "median_minutes_to_first_review": null,
+     "confirmed_cases_also_found_by_served": 0
+    },
+    "velocity": {
+     "reviews": 253,
+     "reviews_by_day": {
+      "2022-09-04": 50,
+      "2022-09-05": 50,
+      "2022-09-06": 50,
+      "2022-09-07": 50,
+      "2022-09-08": 50,
+      "2022-09-09": 3
+     },
+     "confirmed_cases_found": 0,
+     "confirmed_event_yield": 0.0,
+     "confirmed_case_recall": 0.0,
+     "median_minutes_to_first_review": null,
+     "confirmed_cases_also_found_by_served": 0
+    },
+    "random": {
+     "reviews": 229,
+     "reviews_by_day": {
+      "2022-09-04": 50,
+      "2022-09-05": 50,
+      "2022-09-06": 38,
+      "2022-09-07": 50,
+      "2022-09-08": 30,
+      "2022-09-09": 11
+     },
+     "confirmed_cases_found": 0,
+     "confirmed_event_yield": 0.0,
+     "confirmed_case_recall": 0.0,
+     "median_minutes_to_first_review": null,
+     "confirmed_cases_also_found_by_served": 0
+    }
+   }
+  }
  }
 }

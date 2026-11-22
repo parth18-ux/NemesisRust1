@@ -53,19 +53,33 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
 
   await check("every section link routes; unbuilt sections say so", async () => {
     const links = await page.locator('#nav a[href^="#/"]').evaluateAll((as) => as.map((a) => [a.getAttribute("href"), a.textContent.trim()]));
-    assert(links.length === 9, `${links.length} section links`);
+    assert(links.length === 10, `${links.length} section links`);
     for (const [href] of links) {
       await openMenu();
       await page.click(`#nav a[href="${href}"]`);
       await page.waitForFunction((h) => location.hash === h && document.querySelector('#nav a[aria-current="page"]')?.getAttribute("href") === h, href);
       await page.waitForSelector("#main > *:not([role=status])", {timeout: 10000});
-      const built = ["#/dashboard", "#/transactions", "#/scam", "#/behaviour", "#/network", "#/alerts", "#/investigations", "#/assistant", "#/reports"].includes(href);
+      const built = ["#/dashboard", "#/transactions", "#/scam", "#/behaviour", "#/network", "#/alerts", "#/investigations", "#/assistant", "#/reports", "#/pilot"].includes(href);
       if (!built) assert(await page.locator("#main >> text=coming in a later stage").count() === 1, `${href} has no later-stage note`);
     }
     for (const href of ["/", "/console", "/investigate", "/report", "/docs"]) {
       const r = await page.request.get(BASE + href);
       assert(r.status() === 200, `${href} returned ${r.status()}`);
     }
+    assert(errors.length === 0, "console errors: " + errors.join(" | "));
+  });
+
+  await check("pilot health: drift PSI, alert volume per day and latency come from the API", async () => {
+    // a demo server may have no webhook decision yet, so the latency card can show its empty state
+    await page.goto(BASE + "/app#/pilot");
+    await page.waitForSelector("#pl-drift, #pl-latency", {timeout: 15000});
+    assert(await page.locator("#pl-drift tbody tr").count() >= 1, "PSI rows");
+    assert(await page.locator("#pl-drift >> text=score").count() >= 1, "score PSI row");
+    assert(await page.locator("#pl-volume").count() === 1, "volume card");
+    assert(await page.locator("#pl-latency >> text=Server latency p50").count() === 1, "latency card");
+    assert(await page.locator("#main >> text=not yet measured").count() === 1, "accuracy caveat");
+    const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    assert(over <= 0, `page scrolls sideways by ${over}px`);
     assert(errors.length === 0, "console errors: " + errors.join(" | "));
   });
 
@@ -821,7 +835,7 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
     return out;
   });
   const auditRoutes = () => ["dashboard", "transactions", `transactions/${triaged}`, "scam", "behaviour", "network?account=MULE01&bank=0200", "alerts", `alerts/${triaged}`,
-    "investigations", `investigations/${caseId}`, `assistant/${caseId}`, "reports", `reports/${caseId}`];
+    "investigations", `investigations/${caseId}`, `assistant/${caseId}`, "reports", `reports/${caseId}`, "pilot"];
   for (const theme of ["light", "dark"]) {
     await check(`audit (${theme} theme): every route is console-error-free, CSP-clean, labelled, named, AA contrast and fits the width`, async () => {
       await page.emulateMedia({colorScheme: theme});

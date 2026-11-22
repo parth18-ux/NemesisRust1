@@ -427,7 +427,7 @@ const ASSETS: &[(&str, &[u8])] = assets![
     "service/static/assets/js/network.js", "service/static/assets/js/transactions.js", "service/static/assets/js/investigations.js",
     "service/static/assets/js/assistant.js", "service/static/assets/js/reports.js",
     "service/static/assets/js/scam.js", "service/static/assets/js/behaviour.js",
-    "service/static/assets/js/evidence.js", "service/static/assets/js/docs.js",
+    "service/static/assets/js/evidence.js", "service/static/assets/js/docs.js", "service/static/assets/js/pilot.js",
     "service/static/assets/legacy/index.css", "service/static/assets/legacy/index.js", "service/static/assets/legacy/console.css",
     "service/static/assets/legacy/console.js", "service/static/assets/legacy/investigate.css", "service/static/assets/legacy/investigate.js",
     "service/static/assets/legacy/report.css", "service/static/assets/legacy/report.js", "service/static/assets/legacy/motion.css",
