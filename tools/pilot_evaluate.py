@@ -62,10 +62,15 @@ def read_csv(path, columns, parse):
     values = {}
     with open(path, newline="", encoding="utf-8-sig") as stream:
         reader = csv.DictReader(stream)
-        if not reader.fieldnames or not set(columns).issubset(reader.fieldnames):
+        header = reader.fieldnames or []
+        if len(set(header)) != len(header):
+            raise ValueError(f"duplicate CSV header in {path}")
+        if not set(columns).issubset(header):
             raise ValueError(f"expected columns {', '.join(columns)} in {path}")
         for row in reader:
             try:
+                if None in row or None in row.values():
+                    raise ValueError("row has extra or missing fields")
                 event_id = row["event_id"]
                 if not event_id or not event_id.strip() or event_id in values:
                     raise ValueError("empty or duplicate event_id")

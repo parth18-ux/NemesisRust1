@@ -2,8 +2,11 @@
 
 import argparse
 import json
+import os
+import sys
 from datetime import date
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pilot_queue import METHODS, load_events, scores_for, select
 
 

@@ -3,9 +3,12 @@
 import argparse
 import hashlib
 import json
+import os
+import sys
 from datetime import date
 from statistics import median
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pilot_evaluate import finite_score, parse_outcome, read_csv, timestamp
 
 
@@ -117,7 +120,7 @@ def read_policy(path):
     if type(seed) is not int or not 0 <= thresholds["random"] <= 1:
         raise ValueError("require an integer random_seed and a random threshold between 0 and 1")
     budget = config.get("reviews_per_utc_day")
-    if "reviews_per_utc_day" in config and (type(budget) is not int or budget < 1):
+    if type(budget) is not int or budget < 1:
         raise ValueError("require a positive integer reviews_per_utc_day")
     return validation_end, thresholds, seed, budget
 
@@ -126,7 +129,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("payments", help="CSV with event_id,timestamp,review_group,served,cascade,amount_usd,velocity")
     parser.add_argument("outcomes", help="CSV with event_id,case_id,confirmed_at")
-    parser.add_argument("policy", help="JSON with validation_end_utc_exclusive, thresholds, and random_seed")
+    parser.add_argument("policy", help="JSON with validation_end_utc_exclusive, reviews_per_utc_day, thresholds, and random_seed")
     parser.add_argument("--start", required=True, type=date.fromisoformat)
     parser.add_argument("--end", required=True, type=date.fromisoformat)
     parser.add_argument("--as-of", required=True, type=timestamp)
@@ -139,7 +142,7 @@ def main():
         validation_end, thresholds, seed, frozen_budget = read_policy(args.policy)
         if validation_end > args.start:
             raise ValueError("validation overlaps holdout")
-        if frozen_budget is not None and frozen_budget != args.reviews_per_day:
+        if frozen_budget != args.reviews_per_day:
             raise ValueError("review budget differs from the frozen policy")
         events = load_events(args.payments, args.start, args.end)
         if not events:

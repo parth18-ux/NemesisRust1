@@ -79,11 +79,11 @@ review group should come from payment-time data, such as an account identifier a
 The separate outcomes CSV has the same format as in the replay comparison above.
 
 Choose each method's threshold using a preceding validation interval and record the interval, feature definitions,
-daily capacity, and model revisions before scoring the holdout. Save the exclusive validation end and five thresholds
-in the policy JSON. To generate a policy without outcome labels, run:
+daily capacity, and model revisions before scoring the holdout. Save the exclusive validation end, daily cap, random
+seed, and five thresholds in the policy JSON. To generate a policy without outcome labels, run:
 
 ```bash
-python3 tools/pilot_freeze_policy.py validation-payments.csv \
+python3 -I tools/pilot_freeze_policy.py validation-payments.csv \
     --start 2026-07-01 --end 2026-08-01 --reviews-per-day 50 --random-seed 41 > policy.json
 ```
 
@@ -93,18 +93,20 @@ validation queue to report how many reviews the chronological rule actually admi
 at the threshold, and historical payments may cluster, so the daily cap still applies and actual utilization may
 fall short of capacity. Freeze the generated file before evaluating the holdout and use the same daily budget.
 
-A hand-authored policy can also use this format. The following values are examples.
+A hand-authored policy must include a positive integer `reviews_per_utc_day` that matches `--reviews-per-day` in
+the holdout command. The following values are examples.
 
 ```json
 {
   "validation_end_utc_exclusive": "2026-08-01",
+  "reviews_per_utc_day": 50,
   "random_seed": 41,
   "thresholds": {"served": 0.5, "cascade": 0.5, "amount_usd": 5000, "velocity": 10, "random": 0.99}
 }
 ```
 
 ```bash
-python3 tools/pilot_queue.py payments.csv outcomes.csv policy.json \
+python3 -I tools/pilot_queue.py payments.csv outcomes.csv policy.json \
     --start 2026-08-01 --end 2026-09-01 --as-of 2026-10-01T00:00:00Z \
     --reviews-per-day 50 > chronological-comparison.json
 ```
