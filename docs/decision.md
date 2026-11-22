@@ -656,7 +656,7 @@ in `docs/PILOT.md`. Preserve the frozen policy, export fingerprints and run conf
 Keep payment-level exports and private identifiers in the pilot environment. Log the outcome even if the served score
 loses and use a new holdout for any subsequent tuning.
 
-**8aj. ReviewDesk indexed eviction growth comparison (pre-registered).** Compare main `015bd0e` with the isolated
+**8ak. ReviewDesk indexed eviction growth comparison (pre-registered).** Compare main `015bd0e` with the isolated
 candidate `c211043` using the existing signed F1 webhook generator and timing in `e2e_bench f1 growth`. Keep the
 same release toolchain, Redis version and four logical CPUs for both. Run the same load-generator binary against
 each server, on loopback, with fresh Redis and server processes per repetition. Run three pairs, in baseline–candidate,
@@ -671,12 +671,15 @@ alerts in every repetition. Pair stages by event count and report differences in
 The durable alert count is an indicator of time spent above the desk's 10,000-alert eviction threshold. The
 processes share four logical CPUs, so the comparison characterizes the local workload.
 
-**8aj-result. ReviewDesk eviction growth comparison.** All six runs passed the per-stage sequence gate with zero
+**8ak-result. ReviewDesk eviction growth comparison.** All six runs passed the per-stage sequence gate with zero
 errors across 846,000 synthetic requests. The final stage began at 13,644–13,645 durable alerts on main and 13,644 on
 the candidate. Median throughput rose from 2,539.81 to 4,300.90 events/s (+69.34%) and the median of the run-level
 p99 latencies fell from 30.90 to 13.32 ms (−56.89%). Every stage that started above capacity improved throughput by
 65.59–69.34%. The three stages that finished below capacity ranged from −8.19% to +7.77% in throughput. Median p99
 fell at all seven stages. See `results/reviewdesk_growth.json` for each run, store size, and binary checksum.
+Revisions measured: baseline main `015bd0e` and candidate `c211043` (the eviction change alone on `015bd0e`), under
+protocol commit `d1cd5c3`, as recorded in the results file. The candidate was not re-measured after it was carried onto
+the pilot-evaluator branch with the 8aj work, nor after the later fix that also caps restores of evicted alerts.
 
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
