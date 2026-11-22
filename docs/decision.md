@@ -638,6 +638,24 @@ The `HEAVY_READS` permit was held by the async handler, so a client that disconn
 read ran on; the permit now moves into the blocking closure and is released only when the read ends. Each fix has a
 test that fails without it.
 
+**8aj. Fixed-budget pilot comparison (protocol before holdout scoring).** Compare the served score, cascade score,
+USD amount, transaction velocity and seeded random on the same payments. The primary measure is confirmed-case recall
+at the agreed analyst reviews per UTC day. Report case counts, realized reviews by day, confirmed event yield and median
+minutes from first linked holdout payment to first review for cases each method finds. Read timing alongside recall because
+each method can find a different set of cases. A served score that fails to improve recall over the strongest baseline at
+the same capacity does not demonstrate incremental case capture on this holdout. If there are no confirmed cases as of
+the snapshot, report recall as unavailable.
+
+Before opening holdout outcomes, record the exclusive UTC split dates, outcome snapshot cutoff, model revisions and
+store configuration. Record the decision-time review group and trailing velocity definition, the daily capacity and the
+seed (41). When actual capacity is unavailable, use the earlier validation payment count divided by all calendar days in
+that interval to translate 5, 10 and 25 reviews per 10,000 payments to fixed daily caps. Round each cap up and report any
+scenarios that collapse to the same cap. Report these as sensitivity scenarios. Freeze a separate policy for each distinct
+cap using only validation payments. Use `tools/pilot_freeze_policy.py` followed by `tools/pilot_queue.py` as documented
+in `docs/PILOT.md`. Preserve the frozen policy, export fingerprints and run configuration with the aggregate results.
+Keep payment-level exports and private identifiers in the pilot environment. Log the outcome even if the served score
+loses and use a new holdout for any subsequent tuning.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
