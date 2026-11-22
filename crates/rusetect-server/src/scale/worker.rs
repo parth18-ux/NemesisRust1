@@ -28,15 +28,9 @@ impl Scorer {
 
 /// One payment through the cascade with account state in Redis: same structuring window and format hardening as
 /// Engine::finish_risk (the window applies with or without the hardening file, as there), then the context layer.
+/// A payment with an eid (live or from the stream) is scored with the pair score saved by its first scoring, so a retry
+/// or redelivery decides as its first attempt did.
 pub fn score_one(eng: &Engine, state: &mut RedisState, p: &Payment) -> redis::RedisResult<Value> {
-    score_payment(eng, state, p, None)
-}
-
-pub(crate) fn score_live(eng: &Engine, state: &mut RedisState, p: &Payment) -> redis::RedisResult<Value> {
-    score_payment(eng, state, p, p.eid)
-}
-
-fn score_payment(eng: &Engine, state: &mut RedisState, p: &Payment, live_eid: Option<i64>) -> redis::RedisResult<Value> {
     let m = eng.models.as_ref().unwrap();
     let cfg = &eng.cfg;
     let (f, write) = state.features_read(p)?;
@@ -50,8 +44,8 @@ fn score_payment(eng: &Engine, state: &mut RedisState, p: &Payment, live_eid: Op
     // one round trip: the account-state write script, then the pair window (different keys, so the order is free)
     let mut pl = redis::pipe();
     pl.add_command(write);
-    let (n, pair) = if let Some(eid) = live_eid {
-        state.live_pair_score_cmds(&mut pl, p, &payee, risk, eid);
+    let (n, pair) = if let Some(eid) = p.eid {
+        state.pair_score_cmds(&mut pl, p, &payee, risk, eid);
         let (_, pair): (i64, (usize, f64)) = pl.query(&mut state.con)?;
         pair
     } else {

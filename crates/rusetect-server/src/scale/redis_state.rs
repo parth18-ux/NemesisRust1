@@ -10,7 +10,7 @@
 //!               one member per eid (a rescored payment replaces its own member)
 //!   seen:{eid}  string  set once per payment eid (26 h), holding the features it was first scored with: a redelivered
 //!               payment does not write account state twice and is scored again from the same features
-//!   pair-score:{eid}  string  first live scoring attempt's pair count and noisy-OR (26 h)
+//!   pair-score:{eid}  string  the pair count and noisy-OR of the payment's first scoring (26 h); a retry or redelivery reuses it
 //! Per payment: one pipelined read round trip, features computed exactly as Engine::features, then one Lua script that
 //! claims seen:{eid} and applies the writes atomically (a crash cannot leave the claim without the writes). score_one
 //! sends that script and the pair window in one round trip.
@@ -90,8 +90,8 @@ impl RedisState {
         self.append_pair_window(pl, p, payee, risk, None);
     }
 
-    /// Append a pair window update that returns the first live scoring attempt's (count, noisy-OR).
-    pub(crate) fn live_pair_score_cmds(&self, pl: &mut redis::Pipeline, p: &Payment, payee: &str, risk: f64, eid: i64) {
+    /// Append a pair window update that returns the (count, noisy-OR) of this eid's first scoring.
+    pub(crate) fn pair_score_cmds(&self, pl: &mut redis::Pipeline, p: &Payment, payee: &str, risk: f64, eid: i64) {
         self.append_pair_window(pl, p, payee, risk, Some(self.k("pair-score", &eid.to_string())));
     }
 
