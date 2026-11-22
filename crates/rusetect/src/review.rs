@@ -6,9 +6,10 @@
 //! * Every event is appended to a hash-chained audit log, so an edit to history is detectable.
 //! * An evidence pack bundles what the model saw and what people did, with its own content hash.
 use crate::pyfmt::{dumps, utc_now_z, HASH_STYLE};
-use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::ops::Index;
 
 pub const ACTIONS: [&str; 4] = ["approve_block", "hold", "release", "verify"]; // sorted, as Python prints them
 
@@ -27,9 +28,99 @@ pub enum ReviewError {
 /// none is final; the hash-chained log is kept whole, since trimming its head would break verify_chain.
 pub const MAX_ALERTS: usize = 10_000;
 
+/// Keyed lookup and stable arrival order, with a separate index for final alerts.
+#[derive(Default)]
+pub struct ReviewAlerts {
+    by_id: HashMap<String, u64>,
+    by_arrival: BTreeMap<u64, (String, Value)>,
+    final_alerts: BTreeSet<u64>,
+    next_arrival: u64,
+}
+
+impl ReviewAlerts {
+    pub fn contains_key(&self, id: &str) -> bool {
+        self.by_id.contains_key(id)
+    }
+
+    pub fn get(&self, id: &str) -> Option<&Value> {
+        self.by_id.get(id).and_then(|arrival| self.by_arrival.get(arrival)).map(|(_, alert)| alert)
+    }
+
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = (&String, &Value)> + ExactSizeIterator {
+        self.by_arrival.values().map(|(id, alert)| (id, alert))
+    }
+
+    pub fn values(&self) -> impl DoubleEndedIterator<Item = &Value> + ExactSizeIterator {
+        self.iter().map(|(_, alert)| alert)
+    }
+
+    /// Restore or refresh a stored alert. A refresh retains the alert's original position. Beyond MAX_ALERTS the
+    /// oldest final alert, else the oldest alert, other than this one is dropped, so restores keep the desk bounded.
+    pub fn insert(&mut self, id: String, alert: Value) {
+        let arrival = if let Some(&arrival) = self.by_id.get(&id) {
+            arrival
+        } else {
+            let arrival = self.next_arrival;
+            self.next_arrival += 1;
+            self.by_id.insert(id.clone(), arrival);
+            arrival
+        };
+        self.index_final_status(arrival, alert["status"].as_str());
+        self.by_arrival.insert(arrival, (id, alert));
+        self.evict_over_capacity(arrival);
+    }
+
+    pub fn remove(&mut self, id: &str) {
+        if let Some(&arrival) = self.by_id.get(id) {
+            self.remove_at(arrival);
+        }
+    }
+
+    fn get_mut(&mut self, id: &str) -> Option<&mut Value> {
+        let arrival = self.by_id.get(id)?;
+        self.by_arrival.get_mut(arrival).map(|(_, alert)| alert)
+    }
+
+    fn index_final_status(&mut self, arrival: u64, status: Option<&str>) {
+        if matches!(status, Some("released" | "blocked")) {
+            self.final_alerts.insert(arrival);
+        } else {
+            self.final_alerts.remove(&arrival);
+        }
+    }
+
+    fn note_status(&mut self, id: &str, status: Option<&str>) {
+        self.index_final_status(self.by_id[id], status);
+    }
+
+    fn remove_at(&mut self, arrival: u64) {
+        if let Some((id, _)) = self.by_arrival.remove(&arrival) {
+            self.by_id.remove(&id);
+            self.final_alerts.remove(&arrival);
+        }
+    }
+
+    /// Drop alerts beyond MAX_ALERTS, oldest final first, never the one just inserted (`keep`).
+    fn evict_over_capacity(&mut self, keep: u64) {
+        while self.by_arrival.len() > MAX_ALERTS {
+            let Some(oldest) = self.final_alerts.iter().copied().find(|&a| a != keep)
+                .or_else(|| self.by_arrival.keys().copied().find(|&a| a != keep)) else { break };
+            self.remove_at(oldest);
+        }
+    }
+}
+
+impl<K: AsRef<str>> Index<K> for ReviewAlerts {
+    type Output = Value;
+
+    fn index(&self, id: K) -> &Self::Output {
+        self.get(id.as_ref()).expect("unknown alert")
+    }
+}
+
 #[derive(Default)]
 pub struct ReviewDesk {
-    pub alerts: IndexMap<String, Value>,
+    pub alerts: ReviewAlerts,
     pub log: Vec<Value>,
     next_id: u64,
 }
@@ -84,12 +175,6 @@ impl ReviewDesk {
         let a = json!({"alert_id": aid, "status": "open", "shown_decision": shown, "payment": payment, "assessed": assessed,
                        "actions": [], "block_approvals": []});
         self.alerts.insert(aid.clone(), a.clone());
-        if self.alerts.len() > MAX_ALERTS {
-            let is_final = |a: &Value| matches!(a["status"].as_str(), Some("released" | "blocked"));
-            let old = self.alerts.iter().find(|(_, a)| is_final(a)).map(|(k, _)| k.clone())
-                .unwrap_or_else(|| self.alerts.keys().next().cloned().unwrap_or_default());
-            self.alerts.shift_remove(&old);
-        }
         self.append(json!({"type": "alert_opened", "alert_id": aid, "decision": shown, "context_band": assessed["context_band"],
                            "ruleset": assessed["context"]["ruleset"], "inputs_hash": inputs_hash}));
         Some(a)
@@ -134,6 +219,7 @@ impl ReviewDesk {
         }
         a["actions"].as_array_mut().unwrap().push(json!({"analyst": analyst, "action": action, "note": note}));
         let out = a.clone();
+        self.alerts.note_status(alert_id, out["status"].as_str());
         self.append(json!({"type": "analyst_action", "alert_id": alert_id, "analyst": analyst, "action": action, "status": out["status"]}));
         Ok(out)
     }
@@ -146,6 +232,9 @@ impl ReviewDesk {
         }
         a["actions"].as_array_mut().unwrap().push(json!({"analyst": actor, "action": status, "note": detail}));
         let out = a.clone();
+        if set_status {
+            self.alerts.note_status(alert_id, out["status"].as_str());
+        }
         self.append(json!({"type": "event", "alert_id": alert_id, "actor": actor, "action": status, "status": out["status"]}));
         Ok(out)
     }
@@ -174,7 +263,11 @@ impl ReviewDesk {
 
     pub fn set_field(&mut self, alert_id: &str, k: &str, v: Value) {
         if let Some(a) = self.alerts.get_mut(alert_id) {
+            let status = (k == "status").then(|| v.as_str().map(str::to_owned));
             a[k] = v;
+            if let Some(status) = status {
+                self.alerts.note_status(alert_id, status.as_deref());
+            }
         }
     }
 
@@ -227,11 +320,51 @@ mod tests {
         for _ in 0..MAX_ALERTS {
             d.open_alert(&Map::new(), &hold);
         }
-        d.alerts["A00005"]["status"] = json!("released");
+        d.act("A00005", "analyst", "release", "").unwrap();
         d.open_alert(&Map::new(), &hold);
-        assert_eq!(d.alerts.len(), MAX_ALERTS);
+        assert_eq!(d.alerts.iter().len(), MAX_ALERTS);
         assert!(!d.alerts.contains_key("A00005") && d.alerts.contains_key("A00001"), "the final alert goes first");
         d.open_alert(&Map::new(), &hold);
         assert!(!d.alerts.contains_key("A00001") && d.verify_chain(), "then the oldest; the log stays whole");
+    }
+
+    #[test]
+    fn restoring_evicted_alerts_keeps_the_desk_capped() {
+        let mut d = ReviewDesk::new();
+        let hold = json!({"final_decision": "Hold"});
+        for _ in 0..MAX_ALERTS + 3 {
+            d.open_alert(&Map::new(), &hold);
+        }
+        assert!(!d.alerts.contains_key("A00001"));
+        d.act("A00010", "analyst", "release", "").unwrap();
+        // a live read restores evicted alerts from the store, as live::with_alert does
+        for id in ["A00001", "A00002", "A00003"] {
+            d.alerts.insert(id.into(), json!({"alert_id": id, "status": "released"}));
+            assert!(d.alerts.contains_key(id), "the restored alert stays for the caller");
+            assert_eq!(d.alerts.iter().len(), MAX_ALERTS);
+        }
+        assert!(!d.alerts.contains_key("A00010"), "the oldest final alert went first");
+    }
+
+    #[test]
+    fn restoring_and_removing_alerts_keeps_eviction_in_arrival_order() {
+        let mut d = ReviewDesk::new();
+        for i in 0..MAX_ALERTS {
+            d.alerts.insert(format!("stored-{i}"), json!({"status": "open"}));
+        }
+        d.alerts.insert("stored-5".into(), json!({"status": "blocked"}));
+        d.alerts.insert("stored-2".into(), json!({"status": "released"}));
+        d.alerts.insert("stored-3".into(), json!({"status": "released"}));
+        d.set_field("stored-2", "status", json!("open"));
+        d.alerts.remove("stored-3");
+        d.alerts.insert("stored-3".into(), json!({"status": "released"}));
+        let hold = json!({"final_decision": "Hold"});
+        d.open_alert(&Map::new(), &hold);
+        assert!(!d.alerts.contains_key("stored-5"));
+        assert!(d.alerts.contains_key("stored-2"));
+        assert_eq!(d.alerts.iter().rev().nth(1).unwrap().0, "stored-3");
+        d.open_alert(&Map::new(), &hold);
+        assert!(!d.alerts.contains_key("stored-3"));
+        assert_eq!(d.alerts.iter().next().unwrap().0, "stored-0");
     }
 }

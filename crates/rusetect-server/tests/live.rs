@@ -664,6 +664,40 @@ async fn a_retry_after_a_newer_payment_on_the_pair_scores_as_a_clean_single_send
     assert_eq!(one_decision(&shared, &mut con, "nr:", &rec).1, 1);
 }
 
+#[tokio::test]
+async fn a_retry_keeps_its_original_pair_score_after_history_is_pruned() {
+    let Some(r) = redis_server() else { return };
+    let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
+    let (prior, target) = pair_events("PRUNED");
+    let mut later = event("PRUNED-3", "PRUNED");
+    // This payment's cutoff is between prior (10:00) and target (10:05).
+    later["timestamp"] = json!("2022-09-10 10:01");
+
+    let (clean_app, _, _) = redis_instance(&r, "pc:");
+    assert_eq!(send(&clean_app, &prior, now(), None).await.0, StatusCode::OK);
+    let (s, clean, _) = send(&clean_app, &target, now(), None).await;
+    assert_eq!(s, StatusCode::OK, "{clean}");
+    assert_ne!(clean["action"], "allow", "{clean}");
+
+    let (app, shared, du) = redis_instance(&r, "prune:");
+    assert_eq!(send(&app, &prior, now(), None).await.0, StatusCode::OK);
+    du.fail_next_commit(1);
+    assert_eq!(send(&app, &target, now(), None).await.0, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(send(&app, &later, now(), None).await.0, StatusCode::OK);
+    let keys: Vec<String> = redis::cmd("KEYS").arg("prune:pr:*").query(&mut con).unwrap();
+    assert_eq!(keys.len(), 1);
+    let remaining: usize = redis::cmd("ZCOUNT").arg(&keys[0]).arg("-inf").arg(rusetect::pyfmt::parse_minutes("2022-09-09 10:05").unwrap())
+        .query(&mut con).unwrap();
+    assert_eq!(remaining, 1, "the live window has pruned the prior payment");
+
+    let (s, rec, replayed) = send(&app, &target, now(), None).await;
+    assert_eq!((s, replayed), (StatusCode::OK, false), "{rec}");
+    for k in ["action", "final_decision", "payment_decision", "risk", "context_band"] {
+        assert_eq!(rec[k], clean[k], "{k}: the retry uses the first attempt's pair history");
+    }
+    assert_eq!(one_decision(&shared, &mut con, "prune:", &rec), (1, 1, 1, 1));
+}
+
 /// The commit is applied but its reply is lost: the request finds its own result and answers with it; the alert and the
 /// ledger entry it opened stand, once; a retry is a replay.
 #[tokio::test]

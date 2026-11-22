@@ -29,10 +29,12 @@ It is cheaper in tokens and covers code, docs and the research review in one pla
 
 ### Model routing
 
-- Fable 5.2: architecture, hard bugs, review
-- Opus 5.5: edits, tests, docs, refactors
-- Haiku 5.5: lookups and summaries
-- Pass `model` on every Agent call (`fable`, `opus`, `haiku`)
+- Fable 5.2, while credits last: the most complex reasoning, architecture, hard bugs and review.
+- ChatGPT Astra 6.2: takes the most complex reasoning whenever Fable is unavailable.
+- Opus 5.5: solving: edits, tests, docs and refactors.
+- GPT 6.2 Sol: reviews Claude's code and solves alongside Opus.
+- Haiku 5.5: lookups and summaries.
+- Pass `model` on every Agent call (`fable`, `opus`, `haiku`).
 
 ### Delegation
 
@@ -40,6 +42,13 @@ It is cheaper in tokens and covers code, docs and the research review in one pla
 - Run independent sub-agents in parallel
 - Read the report, never the files
 
+### Handover when a usage limit is reached
+
+- Before Claude or GPT stops because of a usage limit, it posts a STATE file to the shared "RuseTect AI log" Drive
+  folder: what is done, what is in progress (branch, commit, files) and the next step, so the other assistant can
+  carry on. This applies in both directions.
+
 ### Skills
 
-- Use graphify and ponytail on every task: navigate with graphify first; ponytail for the smallest complete change.
+- Graphify and ponytail apply to all work, whether Claude or GPT did it: navigate with graphify first, and review every
+  change, including GPT's, with ponytail for the smallest complete change.

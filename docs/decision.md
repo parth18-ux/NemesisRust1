@@ -628,6 +628,58 @@ instead was not possible: Lua scripts in Redis have no rollback. A ledger entry 
 entries committed in the meantime; it keeps its own `seq` and hash. One test per record (feed, ledger, alert) covers
 both paths. The pair window also counts members written before this change (`eid|risk` repeated for one eid) once, at
 their highest risk.
+A second Codex review of PR #40 found two more gaps. (1) Capping the retry's pair window at its own minute kept later
+payments out, but a later payment also trims the pair key, so a retry could lose an earlier payment its first attempt
+had counted. The first scoring of a payment with an eid now saves the window's count and noisy-OR in `pair-score:{eid}`,
+in the same script that updates the window, and a retry reuses it: with `seen:` and `pair-score:` present (both 26 h), a
+retry is scored from exactly the first attempt's inputs. The live endpoint and the batch workers share this path
+(`scale::worker::score_one`), so a worker's at-least-once redelivery decides as its first delivery did. (2)
+The `HEAVY_READS` permit was held by the async handler, so a client that disconnected released it while the blocking
+read ran on; the permit now moves into the blocking closure and is released only when the read ends. Each fix has a
+test that fails without it.
+
+**8aj. Fixed-budget pilot comparison (protocol before holdout scoring).** Compare the served score, cascade score,
+USD amount, transaction velocity and seeded random on the same payments. The primary measure is confirmed-case recall
+at the agreed analyst reviews per UTC day. Report case counts, realized reviews by day, confirmed event yield and median
+minutes from first linked holdout payment to first review for cases each method finds. Read timing alongside recall because
+each method can find a different set of cases. A served score that fails to improve recall over the strongest baseline at
+the same capacity does not demonstrate incremental case capture on this holdout. If there are no confirmed cases as of
+the snapshot, report recall as unavailable.
+
+Before opening holdout outcomes, record the exclusive UTC split dates, outcome snapshot cutoff, model revisions and
+store configuration. Record the decision-time review group and trailing velocity definition, the daily capacity and the
+seed (41). When actual capacity is unavailable, use the earlier validation payment count divided by all calendar days in
+that interval to translate 5, 10 and 25 reviews per 10,000 payments to fixed daily caps. Round each cap up and report any
+scenarios that collapse to the same cap. Report these as sensitivity scenarios. Freeze a separate policy for each distinct
+cap using only validation payments. Use `tools/pilot_freeze_policy.py` followed by `tools/pilot_queue.py` as documented
+in `docs/PILOT.md`. Preserve the frozen policy, export fingerprints and run configuration with the aggregate results.
+Keep payment-level exports and private identifiers in the pilot environment. Log the outcome even if the served score
+loses and use a new holdout for any subsequent tuning.
+
+**8ak. ReviewDesk indexed eviction growth comparison (pre-registered).** Compare main `015bd0e` with the isolated
+candidate `c211043` using the existing signed F1 webhook generator and timing in `e2e_bench f1 growth`. Keep the
+same release toolchain, Redis version and four logical CPUs for both. Run the same load-generator binary against
+each server, on loopback, with fresh Redis and server processes per repetition. Run three pairs, in baseline–candidate,
+candidate–baseline, baseline–candidate order. Warm up with 1,000 events at concurrency 4, then send seven successive
+stages of 20,000 unique synthetic payments at concurrency 32, with continuous payment indices and no analyst traffic.
+
+Record successful events per second, p99, errors and durable alert counts before and after each stage. Require zero
+request errors including warm-up, and the expected Redis live sequence before and after every stage. Report all
+stages with their median throughput and p99. Compare the early stages that finish below 10,000 durable alerts for
+both variants and use the last stage as the primary full-desk comparison only if it starts at or above 10,000 durable
+alerts in every repetition. Pair stages by event count and report differences in actual durable alert counts.
+The durable alert count is an indicator of time spent above the desk's 10,000-alert eviction threshold. The
+processes share four logical CPUs, so the comparison characterizes the local workload.
+
+**8ak-result. ReviewDesk eviction growth comparison.** All six runs passed the per-stage sequence gate with zero
+errors across 846,000 synthetic requests. The final stage began at 13,644–13,645 durable alerts on main and 13,644 on
+the candidate. Median throughput rose from 2,539.81 to 4,300.90 events/s (+69.34%) and the median of the run-level
+p99 latencies fell from 30.90 to 13.32 ms (−56.89%). Every stage that started above capacity improved throughput by
+65.59–69.34%. The three stages that finished below capacity ranged from −8.19% to +7.77% in throughput. Median p99
+fell at all seven stages. See `results/reviewdesk_growth.json` for each run, store size, and binary checksum.
+Revisions measured: baseline main `015bd0e` and candidate `c211043` (the eviction change alone on `015bd0e`), under
+protocol commit `d1cd5c3`, as recorded in the results file. The candidate was not re-measured after it was carried onto
+the pilot-evaluator branch with the 8aj work, nor after the later fix that also caps restores of evicted alerts.
 
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.

@@ -19,7 +19,7 @@
 //! A commit that did not land takes its alert and desk-chain entries back out of the desk (Attempt::unwind), so the
 //! retry leaves one alert and one decision; when the outcome is unknown, the entries are voided by the next attempt that
 //! finds the event uncommitted. The retry is scored from the features stored with the payment's first account write
-//! (seen:{eid}), and its pair-window member replaces the earlier one, so it decides as a clean single send would.
+//! (seen:{eid}) and the pair-window score saved by its first scoring (pair-score:{eid}).
 //! A success means the decision and its feed, ledger and alert records are all written: a record the commit could not
 //! write stays listed in repair:{id}, the answer is a 503, and every replay completes the list before answering.
 //!
@@ -421,7 +421,7 @@ impl Attempt {
     /// never committed or answered); otherwise a void entry names them.
     fn unwind(&self, s: &mut AppState, ev_id: &str) {
         if let Some(a) = &self.alert_id {
-            s.desk.alerts.shift_remove(a);
+            s.desk.alerts.remove(a);
         }
         if self.end == self.mark {
             return;
@@ -440,7 +440,7 @@ impl Attempt {
     /// voided only if a later attempt finds the event uncommitted.
     fn unknown(&self, s: &mut AppState, ev_id: &str) {
         if let Some(a) = &self.alert_id {
-            s.desk.alerts.shift_remove(a);
+            s.desk.alerts.remove(a);
         }
         if self.end > self.mark {
             let v = self.void(s, ev_id, "commit outcome unknown; a later attempt found the event uncommitted");

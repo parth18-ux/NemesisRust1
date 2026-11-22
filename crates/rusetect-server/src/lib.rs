@@ -307,8 +307,19 @@ pub(crate) async fn blocking_read<F>(f: F) -> ApiResult
 where
     F: FnOnce() -> ApiResult + Send + 'static,
 {
-    let _permit = HEAVY_READS.acquire().await.map_err(|e| ApiError::new(500, format!("internal error: {e}")))?;
-    blocking(f).await
+    blocking_read_with_limit(&HEAVY_READS, f).await
+}
+
+async fn blocking_read_with_limit<F>(limit: &'static tokio::sync::Semaphore, f: F) -> ApiResult
+where
+    F: FnOnce() -> ApiResult + Send + 'static,
+{
+    let permit = limit.acquire().await.map_err(|e| ApiError::new(500, format!("internal error: {e}")))?;
+    blocking(move || {
+        // The blocking task can outlive the handler if the request is cancelled.
+        let _permit = permit;
+        f()
+    }).await
 }
 
 // ---------------------------------------------------------------- router
@@ -943,7 +954,7 @@ async fn v2_str(State(app): State<AppRef>, h: HeaderMap, Path(alert_id): Path<St
     require_reader(&h)?;
     blocking(move || live::with_alert(&app, &alert_id.clone(), |s| {
         let pack = s.desk.evidence(&alert_id).ok_or_else(|| ApiError::new(404, "unknown alert"))?;
-        let camps = rusetect::campaigns::build_recent(&s.desk.alerts);
+        let camps = rusetect::campaigns::build_recent_values(s.desk.alerts.values());
         let camp = camps.iter().find(|c| c["alerts"].as_array().map(|a| a.iter().any(|x| x == alert_id.as_str())).unwrap_or(false));
         ok(rusetect::str_report::draft(&pack, camp, rusetect::str_report::DEFAULT_ENTITY))
     })).await
@@ -952,7 +963,7 @@ async fn v2_str(State(app): State<AppRef>, h: HeaderMap, Path(alert_id): Path<St
 /// Alerts linked into scam campaigns by shared payee, payee identifiers in messages, or near identical scripts.
 async fn v2_campaigns(State(app): State<AppRef>) -> ApiResult {
     with_state(app, |s| {
-        ok(Value::Array(rusetect::campaigns::build_recent(&s.desk.alerts)))
+        ok(Value::Array(rusetect::campaigns::build_recent_values(s.desk.alerts.values())))
     }).await
 }
 
@@ -1622,7 +1633,7 @@ pub fn description() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{auth_failure_line, blocking_read, client_key, ok, read_json, HEAVY_READS};
+    use super::{auth_failure_line, blocking_read, blocking_read_with_limit, client_key, ok, read_json, HEAVY_READS};
 
     #[test]
     fn auth_failure_line_never_holds_the_key() {
@@ -1654,6 +1665,31 @@ mod tests {
         let bound = std::thread::available_parallelism().map_or(2, |n| n.get()).max(2);
         assert_eq!(HEAVY_READS.available_permits(), bound);
         assert!(most.load(SeqCst) <= bound && most.load(SeqCst) >= 1, "{} at once, bound {bound}", most.load(SeqCst));
+    }
+
+    #[tokio::test]
+    async fn cancelled_read_holds_its_permit_until_blocking_work_finishes() {
+        use std::time::Duration;
+        use tokio::sync::{oneshot, Semaphore};
+        use tokio::time::timeout;
+
+        static LIMIT: Semaphore = Semaphore::const_new(1);
+        let wait = Duration::from_secs(5);
+        let (started, running) = oneshot::channel();
+        let (release, finish) = std::sync::mpsc::channel();
+        let request = tokio::spawn(blocking_read_with_limit(&LIMIT, move || {
+            started.send(()).unwrap();
+            finish.recv().unwrap();
+            ok(serde_json::json!({}))
+        }));
+
+        timeout(wait, running).await.unwrap().unwrap();
+        request.abort();
+        assert!(matches!(request.await, Err(e) if e.is_cancelled()));
+        let slot_was_held = LIMIT.try_acquire().is_err();
+        release.send(()).unwrap();
+        assert!(slot_was_held);
+        assert!(timeout(wait, LIMIT.acquire()).await.unwrap().is_ok());
     }
 
     #[test]

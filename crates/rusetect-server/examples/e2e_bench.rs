@@ -173,7 +173,7 @@ async fn redis_server() -> (Kill, String) {
 
 /// As `redis_server`, on a given port.
 async fn redis_server_on(rport: u16) -> (Kill, String) {
-    let redis = Kill(Command::new("redis-server").args(["--port", &rport.to_string(), "--save", "", "--appendonly", "no"])
+    let redis = Kill(Command::new("redis-server").args(["--bind", "127.0.0.1", "--port", &rport.to_string(), "--save", "", "--appendonly", "no"])
         .stdout(Stdio::null()).spawn().expect("redis-server must be installed"));
     for _ in 0..100 {
         if TcpStream::connect(("127.0.0.1", rport)).await.is_ok() {
@@ -578,6 +578,46 @@ mod f1 {
         (redis, srv, con, sp, rp)
     }
 
+    /// One fixed-concurrency sequence on fresh processes. Keep the same payment generator and
+    /// timing as F1, while recording the durable store size at each measurement boundary.
+    async fn growth() {
+        const CONCURRENCY: usize = 32;
+        const STAGES: usize = 7;
+        let (_redis, _server, mut con, sp, rp) = start().await;
+        let warmup = run(SERVER_PORT, 4, WARM_WEBHOOK, webhook(SERVER_PORT, "growth".into(), 0), (&sp, &rp), &mut con).await;
+        let mut stages = Vec::with_capacity(STAGES);
+        for stage in 0..STAGES {
+            let offset = WARM_WEBHOOK + stage * N_WEBHOOK;
+            let (events_before, alerts_before) = growth_counts(&mut con);
+            let mut row = run(SERVER_PORT, CONCURRENCY, N_WEBHOOK, webhook(SERVER_PORT, "growth".into(), offset), (&sp, &rp), &mut con).await;
+            let (events_after, alerts_after) = growth_counts(&mut con);
+            row["stage"] = json!(stage + 1);
+            row["events_before"] = json!(events_before);
+            row["events_after"] = json!(events_after);
+            row["durable_alerts_before"] = json!(alerts_before);
+            row["durable_alerts_after"] = json!(alerts_after);
+            row["check"] = json!(row["errors"] == 0 && events_before == offset && events_after == offset + N_WEBHOOK);
+            eprintln!("growth stage {}: {} to {} durable alerts, {} rps, p99 {} ms, check {}",
+                stage + 1, alerts_before, alerts_after, row["throughput_rps"], row["latency_ms"]["p99"], row["check"]);
+            stages.push(row);
+        }
+        let green = warmup["errors"] == 0 && stages.iter().all(|row| row["check"] == true);
+        println!("{}", json!({
+            "machine": machine(),
+            "variant": std::env::var("RUSETECT_BENCH_VARIANT").ok(),
+            "server_revision": std::env::var("RUSETECT_BENCH_SERVER_REVISION").ok(),
+            "warmup": warmup,
+            "stages": stages,
+            "check": green,
+        }));
+    }
+
+    fn growth_counts(con: &mut redis::Connection) -> (usize, usize) {
+        let seq = redis::cmd("GET").arg("bench:live:seq").query::<Option<usize>>(con).unwrap().unwrap_or(0);
+        let alerts = redis::cmd("HLEN").arg("bench:live:alerts").query::<usize>(con).unwrap();
+        (seq, alerts)
+    }
+
     async fn rep(rep: usize) -> (Vec<Value>, Vec<(&'static str, Vec<Value>)>) {
         let (_redis, _srv, mut con, sp, rp) = start().await;
         let port = SERVER_PORT;
@@ -650,6 +690,10 @@ mod f1 {
     }
 
     pub async fn main(arg: Option<&str>) {
+        if arg == Some("growth") {
+            growth().await;
+            return;
+        }
         if arg == Some("hold") {
             let secs: u64 = std::env::args().nth(3).and_then(|a| a.parse().ok()).unwrap_or(600);
             let (_redis, _srv, _con, sp, rp) = start().await;
