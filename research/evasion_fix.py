@@ -30,8 +30,18 @@ Arms (8al step 2, 8am).
           served score: raised to the 24 h pair noisy-OR, mapped by an isotonic map fitted on the clean first half of
           validation, then max with the served iso_free(hardening) as in finish_risk. No L1 gate.
 Half 1 (original rows [VAL0, mid)) fits the isotonic maps and each retrained arm's block threshold (the score
-quantile that gives the arm S's half-1 block rate r1; secondary use only), and r1 itself. They are written to
-research/out/evasion_fix_half1.json before any half-2 row is scored or read.
+quantile that gives the arm S's half-1 block rate r1; secondary use only), and r1 itself. Freeze (enforced in code
+since the correction after the run, see below): the script first reads raw rows [0, mid) only, builds and scores the
+clean stream up to mid, fits the models, maps, r1, B and thresholds, writes them (maps included) to
+research/out/evasion_fix_half1.json, then checks that file (load_checkpoint) and only then reads rows [mid, TEST0),
+builds the attack streams and scores anything of half 2; the half-2 stage uses the maps and B from the file.
+Correction after the one run (results unchanged, not re-run): the run at commit 0cd81c6 dumped and scored the whole
+clean stream, half 2 included, before it wrote the checkpoint, and built the attack streams (raw rows only) before it.
+Only half-1 rows (a mask on the original row) entered r1, B, the maps and the thresholds; features, the pair
+noisy-OR and the models (trained on rows before VAL0) are causal, so no half-2 row could change a half-1 value; no
+half-2 value was printed or written before the checkpoint (research/out/evasion_fix_half1.json, run log). The
+ordering was changed afterwards so that a future run cannot score half 2 before the freeze.
+Self-test of the guard: python3 -I research/evasion_fix.py --self-test
 Half 2 (original rows [mid, TEST0)): B = round(r1 x half-2 payments); per stream each arm alerts its B highest half-2
 rows (stable sort on the stream order, so ties go to the earlier row). Cases, recall, precision, the fresh-payee
 cohort G (genuine clean half-2 payments with payee_fresh = 1), FPR_G, the paired block bootstrap ((payer, 24 h block
@@ -162,30 +172,78 @@ def finish(z, iso):
     return out
 
 
+CHECKPOINT = "evasion_fix_half1.json"
+
+
+def load_checkpoint(path):
+    """the half-1 freeze; half 2 may be read only after this returns"""
+    if not os.path.exists(path):
+        raise RuntimeError(f"half-1 checkpoint {path} missing: half 2 stays closed")
+    h = json.load(open(path))
+    need = ("r1", "B", "block_thresholds_half1", "iso_maps", "half1_rows")
+    if any(k not in h for k in need) or h["half1_rows"][1] >= MID or set(h["iso_maps"]) != set(NEWIN):
+        raise RuntimeError(f"half-1 checkpoint {path} incomplete or not from half 1: half 2 stays closed")
+    return h
+
+
+def read_raw(src, n):
+    raw = pd.read_csv(src, nrows=n, dtype=str, keep_default_na=False)[COLS]
+    assert len(raw) == n
+    raw["t"], raw["o"], raw["j"] = minutes(raw.ts), np.arange(n), 0
+    return raw
+
+
+class Interp:
+    """an isotonic map read back from the checkpoint (sklearn's clip interpolation)"""
+    def __init__(self, m):
+        self.x, self.y = np.asarray(m["x"]), np.asarray(m["y"])
+
+    def predict(self, v):
+        return np.interp(v, self.x, self.y)
+
+
+def self_test():
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, CHECKPOINT)
+        for bad in (None, {"r1": 0.1}, {"r1": 0.1, "B": 1, "block_thresholds_half1": {}, "half1_rows": [VAL0, MID],
+                                         "iso_maps": {a: {} for a in NEWIN}}):
+            if bad is not None:
+                json.dump(bad, open(p, "w"))
+            try:
+                load_checkpoint(p)
+                raise AssertionError(f"checkpoint {bad} opened half 2")
+            except RuntimeError:
+                pass
+        ok = {"r1": 0.1, "B": 1, "block_thresholds_half1": {}, "half1_rows": [VAL0, MID - 1], "iso_maps": {a: {} for a in NEWIN}}
+        json.dump(ok, open(p, "w"))
+        assert load_checkpoint(p)["B"] == 1
+    m = IsotonicRegression(out_of_bounds="clip", y_min=0, y_max=1).fit([0.1, 0.2, 0.3, 0.4], [0, 1, 0, 1])
+    v = np.array([-1, 0.15, 0.25, 0.35, 2.0])
+    assert np.allclose(Interp({"x": m.X_thresholds_, "y": m.y_thresholds_}).predict(v), m.predict(v))
+    print("self-test ok")
+
+
 def main():
     t0 = time.time()
     src, work = sys.argv[1:3]
     os.makedirs(work, exist_ok=True)
-    raw = pd.read_csv(src, nrows=TEST0, dtype=str, keep_default_na=False)[COLS]
-    assert len(raw) == TEST0
-    raw["t"], raw["o"], raw["j"] = minutes(raw.ts), np.arange(TEST0), 0
+    ck = os.path.join(OUT, CHECKPOINT)
+    if os.path.exists(ck):
+        os.remove(ck)  # a stale checkpoint must not open half 2
+    # ---------------------------------------------------------------- training and half 1: rows [0, MID) only
+    raw = read_raw(src, MID)
     prefix = os.path.join(work, "prefix.csv")
     if not os.path.exists(prefix):
         raw.iloc[:VAL0][COLS].to_csv(prefix, index=False)
     first = int(np.searchsorted(raw.t.values, raw.t.values[VAL0] - 4320, side="right"))  # the 72 h pair window
-    val = raw.iloc[VAL0:]
-    lau = val[val.y == "1"]
-    gen = val[val.y != "1"]
-    A = attacks(lau)
-    A["timing_feasible"], n_moved = feasible(lau, A["timing_jitter"])
-
-    # ---------------------------------------------------------------- training and half 1 (no half-2 row is read)
-    dc, rc = dump("clean", val, prefix, 0, work)
+    dc, rc = dump("clean", raw.iloc[VAL0:MID], prefix, 0, work)
+    assert rc.o.max() < MID
     models = Models(dc)
     dc, rc = dc.iloc[first:].reset_index(drop=True), pd.concat([raw.iloc[first:VAL0], rc], ignore_index=True)
-    assert (dc.row.values == np.arange(first, TEST0)).all()
+    assert (dc.row.values == np.arange(first, MID)).all()
     zc = raw_scores(dc, rc, models)
-    h1 = (rc.o.values >= VAL0) & (rc.o.values < MID)
+    h1 = rc.o.values >= VAL0
     y1 = rc.y.values[h1].astype(int)
     iso = {a: IsotonicRegression(out_of_bounds="clip", y_min=0, y_max=1).fit(zc[a][h1], y1) for a in NEWIN}
     fin1 = {a: v[h1] for a, v in finish(zc, iso).items()}
@@ -195,14 +253,28 @@ def main():
     thr = {"S": H["thresholds"]["block"], "T-pair": H["thresholds"]["block"]}
     for a in NEWIN:
         thr[a] = float(np.quantile(fin1[a], 1 - r1))
-    H1 = {"script": "research/evasion_fix.py", "entry": "docs/decision.md 8al, 8am", "written": "before any half-2 row is scored",
+    H1 = {"script": "research/evasion_fix.py", "entry": "docs/decision.md 8al, 8am",
+          "written": "before any half-2 row is read (raw rows [0, mid) only)",
           "half1_rows": [VAL0, MID - 1], "half1_payments": int(h1.sum()), "r1": r1, "half2_payments": n2, "B": B,
           "block_thresholds_half1": thr, "rounds": models.rounds, "fitting_rows": [-(-VAL0 // 10), int(VAL0 * 0.9) - 1],
-          "early_stopping_rows": [int(VAL0 * 0.9), VAL0 - 1], "timing_feasible_moved_payments": n_moved,
+          "early_stopping_rows": [int(VAL0 * 0.9), VAL0 - 1],
           "half1_block_alerts": {a: int((fin1[a] >= thr[a]).sum()) for a in ARMS},
+          "iso_maps": {a: {"x": [float(v) for v in m.X_thresholds_], "y": [float(v) for v in m.y_thresholds_]} for a, m in iso.items()},
           "seconds": round(time.time() - t0)}
-    json.dump(H1, open(os.path.join(OUT, "evasion_fix_half1.json"), "w"), indent=1)
-    print(json.dumps(H1), flush=True)
+    json.dump(H1, open(ck, "w"), indent=1)
+    print(json.dumps({k: v for k, v in H1.items() if k != "iso_maps"}), flush=True)
+    del dc, rc, zc, fin1, iso, raw
+
+    # ---------------------------------------------------------------- half 2: opened only through the checkpoint
+    H1 = load_checkpoint(ck)
+    r1, B, thr = H1["r1"], H1["B"], H1["block_thresholds_half1"]
+    iso = {a: Interp(m) for a, m in H1["iso_maps"].items()}
+    raw = read_raw(src, TEST0)
+    val = raw.iloc[VAL0:]
+    lau = val[val.y == "1"]
+    gen = val[val.y != "1"]
+    A = attacks(lau)
+    A["timing_feasible"], n_moved = feasible(lau, A["timing_jitter"])
 
     # ---------------------------------------------------------------- half 2
     def keep(r, fin, z):
@@ -212,19 +284,17 @@ def main():
         f["fresh"] = z["payee_fresh"][ev]
         return f
 
-    V = {"clean": keep(rc, finish(zc, iso), zc)}
-    del dc, zc
-
     def one(name, a):
-        d, r = dump(name, pd.concat([gen, a]), prefix, first, work)
+        d, r = dump(name, val if a is None else pd.concat([gen, a]), prefix, first, work)
         r = pd.concat([raw.iloc[first:VAL0], r], ignore_index=True)
         assert len(d) == len(r)
         z = raw_scores(d, r, models)
         print(name, "scored", round(time.time() - t0), flush=True)
         return keep(r, finish(z, iso), z)
 
+    V = {}
     with ThreadPoolExecutor(2) as ex:
-        jobs = {n: ex.submit(one, n, a) for n, a in A.items()}
+        jobs = {n: ex.submit(one, n, a) for n, a in {"clean": None, **A}.items()}
         for n, j in jobs.items():
             V[n] = j.result()
 
@@ -278,7 +348,7 @@ def main():
     secondary = {}
     for n, v in V.items():
         g = v.groupby("o").agg(**{"y": ("y", "max")}, **{a: (a, "max") for a in ARMS})
-        thr_a = H1["block_thresholds_half1"]
+        thr_a = thr
         secondary[n] = {a: {"pr_auc": round(float(AP(g.y, g[a])), 4),
                             "block_alerts_half1_threshold": int((v[a].values >= thr_a[a]).sum()),
                             "block_recall_half1_threshold": round(float((g[a][g.y == 1] >= thr_a[a]).mean()), 4)} for a in ARMS}
@@ -286,7 +356,7 @@ def main():
     others = [n for n in V if n not in ("clean", "timing_feasible")]
     R = {"script": "research/evasion_fix.py", "entry": "docs/decision.md 8al, 8am",
          "split": "HI-Small validation second half (original rows %d to %d); test not read" % (MID, TEST0 - 1),
-         "half1": "research/out/evasion_fix_half1.json", "r1": r1, "B": B, "half2_payments": n2, "cases": int(len(cases)),
+         "half1": "research/out/evasion_fix_half1.json", "timing_feasible_moved_payments": n_moved, "r1": r1, "B": B, "half2_payments": n2, "cases": int(len(cases)),
          "blocks": nb, "fresh_payee_cohort_G": int(len(G)), "bootstrap": {"resamples": BOOT, "seed": BOOT_SEED, "block": "(payer, 24 h from VAL0)"},
          "recall_at_B": {n: {a: round(x, 4) for a, x in r.items()} for n, r in rec.items()},
          "precision_clean_at_B": {a: round(x, 4) for a, x in prec.items()},
@@ -338,4 +408,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    self_test() if sys.argv[1:] == ["--self-test"] else main()
