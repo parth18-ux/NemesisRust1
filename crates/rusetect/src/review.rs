@@ -54,7 +54,8 @@ impl ReviewAlerts {
         self.iter().map(|(_, alert)| alert)
     }
 
-    /// Restore or refresh a stored alert. A refresh retains the alert's original position.
+    /// Restore or refresh a stored alert. A refresh retains the alert's original position. Beyond MAX_ALERTS the
+    /// oldest final alert, else the oldest alert, other than this one is dropped, so restores keep the desk bounded.
     pub fn insert(&mut self, id: String, alert: Value) {
         let arrival = if let Some(&arrival) = self.by_id.get(&id) {
             arrival
@@ -66,6 +67,7 @@ impl ReviewAlerts {
         };
         self.index_final_status(arrival, alert["status"].as_str());
         self.by_arrival.insert(arrival, (id, alert));
+        self.evict_over_capacity(arrival);
     }
 
     pub fn remove(&mut self, id: &str) {
@@ -98,10 +100,11 @@ impl ReviewAlerts {
         }
     }
 
-    fn evict_over_capacity(&mut self) {
-        if self.by_arrival.len() > MAX_ALERTS {
-            let oldest = self.final_alerts.first().copied()
-                .unwrap_or_else(|| *self.by_arrival.first_key_value().unwrap().0);
+    /// Drop alerts beyond MAX_ALERTS, oldest final first, never the one just inserted (`keep`).
+    fn evict_over_capacity(&mut self, keep: u64) {
+        while self.by_arrival.len() > MAX_ALERTS {
+            let Some(oldest) = self.final_alerts.iter().copied().find(|&a| a != keep)
+                .or_else(|| self.by_arrival.keys().copied().find(|&a| a != keep)) else { break };
             self.remove_at(oldest);
         }
     }
@@ -172,7 +175,6 @@ impl ReviewDesk {
         let a = json!({"alert_id": aid, "status": "open", "shown_decision": shown, "payment": payment, "assessed": assessed,
                        "actions": [], "block_approvals": []});
         self.alerts.insert(aid.clone(), a.clone());
-        self.alerts.evict_over_capacity();
         self.append(json!({"type": "alert_opened", "alert_id": aid, "decision": shown, "context_band": assessed["context_band"],
                            "ruleset": assessed["context"]["ruleset"], "inputs_hash": inputs_hash}));
         Some(a)
@@ -324,6 +326,24 @@ mod tests {
         assert!(!d.alerts.contains_key("A00005") && d.alerts.contains_key("A00001"), "the final alert goes first");
         d.open_alert(&Map::new(), &hold);
         assert!(!d.alerts.contains_key("A00001") && d.verify_chain(), "then the oldest; the log stays whole");
+    }
+
+    #[test]
+    fn restoring_evicted_alerts_keeps_the_desk_capped() {
+        let mut d = ReviewDesk::new();
+        let hold = json!({"final_decision": "Hold"});
+        for _ in 0..MAX_ALERTS + 3 {
+            d.open_alert(&Map::new(), &hold);
+        }
+        assert!(!d.alerts.contains_key("A00001"));
+        d.act("A00010", "analyst", "release", "").unwrap();
+        // a live read restores evicted alerts from the store, as live::with_alert does
+        for id in ["A00001", "A00002", "A00003"] {
+            d.alerts.insert(id.into(), json!({"alert_id": id, "status": "released"}));
+            assert!(d.alerts.contains_key(id), "the restored alert stays for the caller");
+            assert_eq!(d.alerts.iter().len(), MAX_ALERTS);
+        }
+        assert!(!d.alerts.contains_key("A00010"), "the oldest final alert went first");
     }
 
     #[test]
