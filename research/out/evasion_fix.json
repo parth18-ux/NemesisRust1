@@ -1,0 +1,849 @@
+{
+ "script": "research/evasion_fix.py",
+ "entry": "docs/decision.md 8al, 8am",
+ "split": "HI-Small validation second half (original rows 3554841 to 4062675); test not read",
+ "half1": "research/out/evasion_fix_half1.json",
+ "r1": 0.0016304540460071598,
+ "B": 828,
+ "half2_payments": 507835,
+ "cases": 524,
+ "blocks": 124561,
+ "fresh_payee_cohort_G": 89,
+ "bootstrap": {
+  "resamples": 2000,
+  "seed": 20261122,
+  "block": "(payer, 24 h from VAL0)"
+ },
+ "recall_at_B": {
+  "clean": {
+   "S": 0.6565,
+   "T-pair": 0.6508,
+   "C": 0.6584,
+   "T": 0.6679,
+   "N": 0.6489,
+   "T2": 0.6565
+  },
+  "structuring": {
+   "S": 0.6336,
+   "T-pair": 0.626,
+   "C": 0.6317,
+   "T": 0.6355,
+   "N": 0.626,
+   "T2": 0.626
+  },
+  "timing_jitter": {
+   "S": 0.5477,
+   "T-pair": 0.5401,
+   "C": 0.5496,
+   "T": 0.5668,
+   "N": 0.5496,
+   "T2": 0.5534
+  },
+  "amount_jitter": {
+   "S": 0.6508,
+   "T-pair": 0.645,
+   "C": 0.6584,
+   "T": 0.666,
+   "N": 0.6508,
+   "T2": 0.6565
+  },
+  "new_payee": {
+   "S": 0.5687,
+   "T-pair": 0.5611,
+   "C": 0.5706,
+   "T": 0.5573,
+   "N": 0.5382,
+   "T2": 0.5706
+  },
+  "format_ACH": {
+   "S": 0.6565,
+   "T-pair": 0.6508,
+   "C": 0.6603,
+   "T": 0.6698,
+   "N": 0.6508,
+   "T2": 0.6584
+  },
+  "format_Bitcoin": {
+   "S": 0.6279,
+   "T-pair": 0.6069,
+   "C": 0.605,
+   "T": 0.626,
+   "N": 0.6088,
+   "T2": 0.6088
+  },
+  "format_Cash": {
+   "S": 0.626,
+   "T-pair": 0.605,
+   "C": 0.605,
+   "T": 0.6221,
+   "N": 0.6069,
+   "T2": 0.605
+  },
+  "format_Cheque": {
+   "S": 0.626,
+   "T-pair": 0.605,
+   "C": 0.605,
+   "T": 0.6221,
+   "N": 0.6069,
+   "T2": 0.605
+  },
+  "format_Credit Card": {
+   "S": 0.624,
+   "T-pair": 0.6031,
+   "C": 0.605,
+   "T": 0.6221,
+   "N": 0.6069,
+   "T2": 0.605
+  },
+  "format_Reinvestment": {
+   "S": 0.624,
+   "T-pair": 0.6031,
+   "C": 0.605,
+   "T": 0.6221,
+   "N": 0.6069,
+   "T2": 0.605
+  },
+  "format_Wire": {
+   "S": 0.624,
+   "T-pair": 0.6031,
+   "C": 0.605,
+   "T": 0.6221,
+   "N": 0.6069,
+   "T2": 0.605
+  },
+  "currency_US Dollar": {
+   "S": 0.6546,
+   "T-pair": 0.6469,
+   "C": 0.6546,
+   "T": 0.6641,
+   "N": 0.6508,
+   "T2": 0.6584
+  },
+  "currency_Euro": {
+   "S": 0.6527,
+   "T-pair": 0.6508,
+   "C": 0.6527,
+   "T": 0.6641,
+   "N": 0.6489,
+   "T2": 0.6527
+  },
+  "timing_feasible": {
+   "S": 0.5477,
+   "T-pair": 0.5458,
+   "C": 0.5515,
+   "T": 0.5725,
+   "N": 0.5496,
+   "T2": 0.5534
+  }
+ },
+ "precision_clean_at_B": {
+  "S": 0.4155,
+  "T-pair": 0.4118,
+  "C": 0.4167,
+  "T": 0.4227,
+  "N": 0.4106,
+  "T2": 0.4155
+ },
+ "fpr_G": {
+  "S": 0.02247,
+  "T-pair": 0.02247,
+  "C": 0.02247,
+  "T": 0.02247,
+  "N": 0.01124,
+  "T2": 0.02247
+ },
+ "secondary": {
+  "clean": {
+   "S": {
+    "pr_auc": 0.6468,
+    "block_alerts_half1_threshold": 689,
+    "block_recall_half1_threshold": 0.6469
+   },
+   "T-pair": {
+    "pr_auc": 0.6136,
+    "block_alerts_half1_threshold": 876,
+    "block_recall_half1_threshold": 0.6565
+   },
+   "C": {
+    "pr_auc": 0.6519,
+    "block_alerts_half1_threshold": 885,
+    "block_recall_half1_threshold": 0.6698
+   },
+   "T": {
+    "pr_auc": 0.6533,
+    "block_alerts_half1_threshold": 747,
+    "block_recall_half1_threshold": 0.6546
+   },
+   "N": {
+    "pr_auc": 0.6506,
+    "block_alerts_half1_threshold": 884,
+    "block_recall_half1_threshold": 0.666
+   },
+   "T2": {
+    "pr_auc": 0.6525,
+    "block_alerts_half1_threshold": 887,
+    "block_recall_half1_threshold": 0.6775
+   }
+  },
+  "structuring": {
+   "S": {
+    "pr_auc": 0.6366,
+    "block_alerts_half1_threshold": 873,
+    "block_recall_half1_threshold": 0.6412
+   },
+   "T-pair": {
+    "pr_auc": 0.6012,
+    "block_alerts_half1_threshold": 1060,
+    "block_recall_half1_threshold": 0.6508
+   },
+   "C": {
+    "pr_auc": 0.6428,
+    "block_alerts_half1_threshold": 1138,
+    "block_recall_half1_threshold": 0.6698
+   },
+   "T": {
+    "pr_auc": 0.6442,
+    "block_alerts_half1_threshold": 981,
+    "block_recall_half1_threshold": 0.6546
+   },
+   "N": {
+    "pr_auc": 0.6425,
+    "block_alerts_half1_threshold": 1150,
+    "block_recall_half1_threshold": 0.6679
+   },
+   "T2": {
+    "pr_auc": 0.6449,
+    "block_alerts_half1_threshold": 1151,
+    "block_recall_half1_threshold": 0.6756
+   }
+  },
+  "timing_jitter": {
+   "S": {
+    "pr_auc": 0.4746,
+    "block_alerts_half1_threshold": 625,
+    "block_recall_half1_threshold": 0.5286
+   },
+   "T-pair": {
+    "pr_auc": 0.4025,
+    "block_alerts_half1_threshold": 811,
+    "block_recall_half1_threshold": 0.5382
+   },
+   "C": {
+    "pr_auc": 0.5006,
+    "block_alerts_half1_threshold": 839,
+    "block_recall_half1_threshold": 0.5706
+   },
+   "T": {
+    "pr_auc": 0.5009,
+    "block_alerts_half1_threshold": 700,
+    "block_recall_half1_threshold": 0.5573
+   },
+   "N": {
+    "pr_auc": 0.4919,
+    "block_alerts_half1_threshold": 833,
+    "block_recall_half1_threshold": 0.5592
+   },
+   "T2": {
+    "pr_auc": 0.5044,
+    "block_alerts_half1_threshold": 835,
+    "block_recall_half1_threshold": 0.5668
+   }
+  },
+  "amount_jitter": {
+   "S": {
+    "pr_auc": 0.6357,
+    "block_alerts_half1_threshold": 685,
+    "block_recall_half1_threshold": 0.6393
+   },
+   "T-pair": {
+    "pr_auc": 0.5978,
+    "block_alerts_half1_threshold": 873,
+    "block_recall_half1_threshold": 0.6489
+   },
+   "C": {
+    "pr_auc": 0.6491,
+    "block_alerts_half1_threshold": 885,
+    "block_recall_half1_threshold": 0.6698
+   },
+   "T": {
+    "pr_auc": 0.6495,
+    "block_alerts_half1_threshold": 747,
+    "block_recall_half1_threshold": 0.6546
+   },
+   "N": {
+    "pr_auc": 0.6477,
+    "block_alerts_half1_threshold": 886,
+    "block_recall_half1_threshold": 0.6698
+   },
+   "T2": {
+    "pr_auc": 0.65,
+    "block_alerts_half1_threshold": 887,
+    "block_recall_half1_threshold": 0.6775
+   }
+  },
+  "new_payee": {
+   "S": {
+    "pr_auc": 0.5532,
+    "block_alerts_half1_threshold": 638,
+    "block_recall_half1_threshold": 0.5573
+   },
+   "T-pair": {
+    "pr_auc": 0.4918,
+    "block_alerts_half1_threshold": 819,
+    "block_recall_half1_threshold": 0.5573
+   },
+   "C": {
+    "pr_auc": 0.5274,
+    "block_alerts_half1_threshold": 838,
+    "block_recall_half1_threshold": 0.5706
+   },
+   "T": {
+    "pr_auc": 0.5386,
+    "block_alerts_half1_threshold": 699,
+    "block_recall_half1_threshold": 0.5573
+   },
+   "N": {
+    "pr_auc": 0.5202,
+    "block_alerts_half1_threshold": 821,
+    "block_recall_half1_threshold": 0.5382
+   },
+   "T2": {
+    "pr_auc": 0.5333,
+    "block_alerts_half1_threshold": 835,
+    "block_recall_half1_threshold": 0.5706
+   }
+  },
+  "format_ACH": {
+   "S": {
+    "pr_auc": 0.6474,
+    "block_alerts_half1_threshold": 689,
+    "block_recall_half1_threshold": 0.6469
+   },
+   "T-pair": {
+    "pr_auc": 0.6138,
+    "block_alerts_half1_threshold": 876,
+    "block_recall_half1_threshold": 0.6565
+   },
+   "C": {
+    "pr_auc": 0.653,
+    "block_alerts_half1_threshold": 887,
+    "block_recall_half1_threshold": 0.6737
+   },
+   "T": {
+    "pr_auc": 0.6541,
+    "block_alerts_half1_threshold": 749,
+    "block_recall_half1_threshold": 0.6584
+   },
+   "N": {
+    "pr_auc": 0.6515,
+    "block_alerts_half1_threshold": 886,
+    "block_recall_half1_threshold": 0.6698
+   },
+   "T2": {
+    "pr_auc": 0.653,
+    "block_alerts_half1_threshold": 888,
+    "block_recall_half1_threshold": 0.6794
+   }
+  },
+  "format_Bitcoin": {
+   "S": {
+    "pr_auc": 0.6097,
+    "block_alerts_half1_threshold": 661,
+    "block_recall_half1_threshold": 0.5954
+   },
+   "T-pair": {
+    "pr_auc": 0.5809,
+    "block_alerts_half1_threshold": 850,
+    "block_recall_half1_threshold": 0.6088
+   },
+   "C": {
+    "pr_auc": 0.62,
+    "block_alerts_half1_threshold": 851,
+    "block_recall_half1_threshold": 0.605
+   },
+   "T": {
+    "pr_auc": 0.6206,
+    "block_alerts_half1_threshold": 715,
+    "block_recall_half1_threshold": 0.5935
+   },
+   "N": {
+    "pr_auc": 0.6196,
+    "block_alerts_half1_threshold": 854,
+    "block_recall_half1_threshold": 0.6088
+   },
+   "T2": {
+    "pr_auc": 0.6206,
+    "block_alerts_half1_threshold": 851,
+    "block_recall_half1_threshold": 0.6088
+   }
+  },
+  "format_Cash": {
+   "S": {
+    "pr_auc": 0.6088,
+    "block_alerts_half1_threshold": 659,
+    "block_recall_half1_threshold": 0.5916
+   },
+   "T-pair": {
+    "pr_auc": 0.5803,
+    "block_alerts_half1_threshold": 848,
+    "block_recall_half1_threshold": 0.605
+   },
+   "C": {
+    "pr_auc": 0.6201,
+    "block_alerts_half1_threshold": 851,
+    "block_recall_half1_threshold": 0.605
+   },
+   "T": {
+    "pr_auc": 0.6203,
+    "block_alerts_half1_threshold": 712,
+    "block_recall_half1_threshold": 0.5897
+   },
+   "N": {
+    "pr_auc": 0.6194,
+    "block_alerts_half1_threshold": 853,
+    "block_recall_half1_threshold": 0.6069
+   },
+   "T2": {
+    "pr_auc": 0.6204,
+    "block_alerts_half1_threshold": 849,
+    "block_recall_half1_threshold": 0.605
+   }
+  },
+  "format_Cheque": {
+   "S": {
+    "pr_auc": 0.609,
+    "block_alerts_half1_threshold": 659,
+    "block_recall_half1_threshold": 0.5916
+   },
+   "T-pair": {
+    "pr_auc": 0.5805,
+    "block_alerts_half1_threshold": 848,
+    "block_recall_half1_threshold": 0.605
+   },
+   "C": {
+    "pr_auc": 0.6201,
+    "block_alerts_half1_threshold": 851,
+    "block_recall_half1_threshold": 0.605
+   },
+   "T": {
+    "pr_auc": 0.6204,
+    "block_alerts_half1_threshold": 712,
+    "block_recall_half1_threshold": 0.5897
+   },
+   "N": {
+    "pr_auc": 0.6194,
+    "block_alerts_half1_threshold": 853,
+    "block_recall_half1_threshold": 0.6069
+   },
+   "T2": {
+    "pr_auc": 0.6204,
+    "block_alerts_half1_threshold": 849,
+    "block_recall_half1_threshold": 0.605
+   }
+  },
+  "format_Credit Card": {
+   "S": {
+    "pr_auc": 0.6076,
+    "block_alerts_half1_threshold": 658,
+    "block_recall_half1_threshold": 0.5897
+   },
+   "T-pair": {
+    "pr_auc": 0.5793,
+    "block_alerts_half1_threshold": 847,
+    "block_recall_half1_threshold": 0.6031
+   },
+   "C": {
+    "pr_auc": 0.6201,
+    "block_alerts_half1_threshold": 851,
+    "block_recall_half1_threshold": 0.605
+   },
+   "T": {
+    "pr_auc": 0.6203,
+    "block_alerts_half1_threshold": 712,
+    "block_recall_half1_threshold": 0.5897
+   },
+   "N": {
+    "pr_auc": 0.6193,
+    "block_alerts_half1_threshold": 853,
+    "block_recall_half1_threshold": 0.6069
+   },
+   "T2": {
+    "pr_auc": 0.6204,
+    "block_alerts_half1_threshold": 849,
+    "block_recall_half1_threshold": 0.605
+   }
+  },
+  "format_Reinvestment": {
+   "S": {
+    "pr_auc": 0.6074,
+    "block_alerts_half1_threshold": 658,
+    "block_recall_half1_threshold": 0.5897
+   },
+   "T-pair": {
+    "pr_auc": 0.5791,
+    "block_alerts_half1_threshold": 847,
+    "block_recall_half1_threshold": 0.6031
+   },
+   "C": {
+    "pr_auc": 0.6201,
+    "block_alerts_half1_threshold": 851,
+    "block_recall_half1_threshold": 0.605
+   },
+   "T": {
+    "pr_auc": 0.6203,
+    "block_alerts_half1_threshold": 712,
+    "block_recall_half1_threshold": 0.5897
+   },
+   "N": {
+    "pr_auc": 0.6193,
+    "block_alerts_half1_threshold": 853,
+    "block_recall_half1_threshold": 0.6069
+   },
+   "T2": {
+    "pr_auc": 0.6204,
+    "block_alerts_half1_threshold": 849,
+    "block_recall_half1_threshold": 0.605
+   }
+  },
+  "format_Wire": {
+   "S": {
+    "pr_auc": 0.6074,
+    "block_alerts_half1_threshold": 658,
+    "block_recall_half1_threshold": 0.5897
+   },
+   "T-pair": {
+    "pr_auc": 0.5791,
+    "block_alerts_half1_threshold": 847,
+    "block_recall_half1_threshold": 0.6031
+   },
+   "C": {
+    "pr_auc": 0.6201,
+    "block_alerts_half1_threshold": 851,
+    "block_recall_half1_threshold": 0.605
+   },
+   "T": {
+    "pr_auc": 0.6203,
+    "block_alerts_half1_threshold": 712,
+    "block_recall_half1_threshold": 0.5897
+   },
+   "N": {
+    "pr_auc": 0.6193,
+    "block_alerts_half1_threshold": 853,
+    "block_recall_half1_threshold": 0.6069
+   },
+   "T2": {
+    "pr_auc": 0.6204,
+    "block_alerts_half1_threshold": 849,
+    "block_recall_half1_threshold": 0.605
+   }
+  },
+  "currency_US Dollar": {
+   "S": {
+    "pr_auc": 0.6407,
+    "block_alerts_half1_threshold": 687,
+    "block_recall_half1_threshold": 0.6431
+   },
+   "T-pair": {
+    "pr_auc": 0.6118,
+    "block_alerts_half1_threshold": 876,
+    "block_recall_half1_threshold": 0.6565
+   },
+   "C": {
+    "pr_auc": 0.6507,
+    "block_alerts_half1_threshold": 882,
+    "block_recall_half1_threshold": 0.6641
+   },
+   "T": {
+    "pr_auc": 0.6529,
+    "block_alerts_half1_threshold": 747,
+    "block_recall_half1_threshold": 0.6546
+   },
+   "N": {
+    "pr_auc": 0.6504,
+    "block_alerts_half1_threshold": 884,
+    "block_recall_half1_threshold": 0.666
+   },
+   "T2": {
+    "pr_auc": 0.6524,
+    "block_alerts_half1_threshold": 887,
+    "block_recall_half1_threshold": 0.6775
+   }
+  },
+  "currency_Euro": {
+   "S": {
+    "pr_auc": 0.646,
+    "block_alerts_half1_threshold": 687,
+    "block_recall_half1_threshold": 0.6431
+   },
+   "T-pair": {
+    "pr_auc": 0.6138,
+    "block_alerts_half1_threshold": 874,
+    "block_recall_half1_threshold": 0.6527
+   },
+   "C": {
+    "pr_auc": 0.6503,
+    "block_alerts_half1_threshold": 882,
+    "block_recall_half1_threshold": 0.6641
+   },
+   "T": {
+    "pr_auc": 0.6518,
+    "block_alerts_half1_threshold": 743,
+    "block_recall_half1_threshold": 0.6469
+   },
+   "N": {
+    "pr_auc": 0.6504,
+    "block_alerts_half1_threshold": 881,
+    "block_recall_half1_threshold": 0.6603
+   },
+   "T2": {
+    "pr_auc": 0.651,
+    "block_alerts_half1_threshold": 885,
+    "block_recall_half1_threshold": 0.6737
+   }
+  },
+  "timing_feasible": {
+   "S": {
+    "pr_auc": 0.475,
+    "block_alerts_half1_threshold": 626,
+    "block_recall_half1_threshold": 0.5305
+   },
+   "T-pair": {
+    "pr_auc": 0.4065,
+    "block_alerts_half1_threshold": 814,
+    "block_recall_half1_threshold": 0.5439
+   },
+   "C": {
+    "pr_auc": 0.5065,
+    "block_alerts_half1_threshold": 844,
+    "block_recall_half1_threshold": 0.5802
+   },
+   "T": {
+    "pr_auc": 0.5063,
+    "block_alerts_half1_threshold": 704,
+    "block_recall_half1_threshold": 0.5649
+   },
+   "N": {
+    "pr_auc": 0.4975,
+    "block_alerts_half1_threshold": 837,
+    "block_recall_half1_threshold": 0.5668
+   },
+   "T2": {
+    "pr_auc": 0.51,
+    "block_alerts_half1_threshold": 839,
+    "block_recall_half1_threshold": 0.5744
+   }
+  }
+ },
+ "arms": {
+  "T": {
+   "target": "timing_jitter",
+   "R1": {
+    "delta_vs": "C",
+    "delta": 0.0172,
+    "delta_ci95": [
+     0.0041,
+     0.0317
+    ],
+    "gain_over_S": 0.0191,
+    "half_S_drop": 0.0544,
+    "pass": false
+   },
+   "R2": {
+    "delta_vs_C": 0.006,
+    "delta_ci95": [
+     -0.0092,
+     0.0203
+    ],
+    "vs_S": 0.0072,
+    "pass": true
+   },
+   "R3": {
+    "recall_minus_S": {
+     "structuring": 0.0019,
+     "amount_jitter": 0.0153,
+     "new_payee": -0.0115,
+     "format_ACH": 0.0134,
+     "format_Bitcoin": -0.0019,
+     "format_Cash": -0.0038,
+     "format_Cheque": -0.0038,
+     "format_Credit Card": -0.0019,
+     "format_Reinvestment": -0.0019,
+     "format_Wire": -0.0019,
+     "currency_US Dollar": 0.0095,
+     "currency_Euro": 0.0115
+    },
+    "worst": "new_payee",
+    "pass": true
+   },
+   "R4": {
+    "G": 89,
+    "status": "inconclusive",
+    "pass": false,
+    "fpr_observed": 0.02247,
+    "fpr_C_observed": 0.02247
+   },
+   "outcome": "fail"
+  },
+  "T-pair": {
+   "target": "timing_jitter",
+   "R1": {
+    "delta_vs": "S",
+    "delta": -0.0076,
+    "delta_ci95": [
+     -0.0237,
+     0.0076
+    ],
+    "gain_over_S": -0.0076,
+    "half_S_drop": 0.0544,
+    "pass": false
+   },
+   "R2": {
+    "delta_vs_C": -0.0048,
+    "delta_ci95": [
+     -0.0533,
+     0.0342
+    ],
+    "vs_S": -0.0036,
+    "pass": false
+   },
+   "R3": {
+    "recall_minus_S": {
+     "structuring": -0.0076,
+     "amount_jitter": -0.0057,
+     "new_payee": -0.0076,
+     "format_ACH": -0.0057,
+     "format_Bitcoin": -0.021,
+     "format_Cash": -0.021,
+     "format_Cheque": -0.021,
+     "format_Credit Card": -0.021,
+     "format_Reinvestment": -0.021,
+     "format_Wire": -0.021,
+     "currency_US Dollar": -0.0076,
+     "currency_Euro": -0.0019
+    },
+    "worst": "format_Bitcoin",
+    "pass": false
+   },
+   "R4": {
+    "G": 89,
+    "status": "inconclusive",
+    "pass": false,
+    "fpr_observed": 0.02247,
+    "fpr_C_observed": 0.02247
+   },
+   "outcome": "fail"
+  },
+  "N": {
+   "target": "new_payee",
+   "R1": {
+    "delta_vs": "C",
+    "delta": -0.0324,
+    "delta_ci95": [
+     -0.0532,
+     -0.0132
+    ],
+    "gain_over_S": -0.0305,
+    "half_S_drop": 0.0439,
+    "pass": false
+   },
+   "R2": {
+    "delta_vs_C": -0.006,
+    "delta_ci95": [
+     -0.0179,
+     0.0054
+    ],
+    "vs_S": -0.0048,
+    "pass": true
+   },
+   "R3": {
+    "recall_minus_S": {
+     "structuring": -0.0076,
+     "timing_jitter": 0.0019,
+     "amount_jitter": 0.0,
+     "format_ACH": -0.0057,
+     "format_Bitcoin": -0.0191,
+     "format_Cash": -0.0191,
+     "format_Cheque": -0.0191,
+     "format_Credit Card": -0.0172,
+     "format_Reinvestment": -0.0172,
+     "format_Wire": -0.0172,
+     "currency_US Dollar": -0.0038,
+     "currency_Euro": -0.0038
+    },
+    "worst": "format_Bitcoin",
+    "pass": true
+   },
+   "R4": {
+    "G": 89,
+    "status": "inconclusive",
+    "pass": false,
+    "fpr_observed": 0.01124,
+    "fpr_C_observed": 0.02247
+   },
+   "outcome": "fail"
+  },
+  "T2": {
+   "target": "timing_jitter",
+   "R1": {
+    "delta_vs": "C",
+    "delta": 0.0038,
+    "delta_ci95": [
+     -0.0084,
+     0.0169
+    ],
+    "gain_over_S": 0.0057,
+    "half_S_drop": 0.0544,
+    "pass": false
+   },
+   "R2": {
+    "delta_vs_C": -0.0012,
+    "delta_ci95": [
+     -0.0139,
+     0.0111
+    ],
+    "vs_S": 0.0,
+    "pass": true
+   },
+   "R3": {
+    "recall_minus_S": {
+     "structuring": -0.0076,
+     "amount_jitter": 0.0057,
+     "new_payee": 0.0019,
+     "format_ACH": 0.0019,
+     "format_Bitcoin": -0.0191,
+     "format_Cash": -0.021,
+     "format_Cheque": -0.021,
+     "format_Credit Card": -0.0191,
+     "format_Reinvestment": -0.0191,
+     "format_Wire": -0.0191,
+     "currency_US Dollar": 0.0038,
+     "currency_Euro": 0.0
+    },
+    "worst": "format_Cash",
+    "pass": false
+   },
+   "R4": {
+    "G": 89,
+    "status": "inconclusive",
+    "pass": false,
+    "fpr_observed": 0.02247,
+    "fpr_C_observed": 0.02247
+   },
+   "outcome": "fail",
+   "secondary_feasible_order_R1": {
+    "recall_T2": 0.5534,
+    "recall_C": 0.5515,
+    "delta": 0.0019,
+    "delta_ci95": [
+     -0.0089,
+     0.0143
+    ]
+   }
+  }
+ },
+ "served": {
+  "timing": null,
+  "new_payee": null
+ },
+ "seconds": 4869
+}

@@ -1,0 +1,61 @@
+{
+ "script": "research/evasion_fix.py",
+ "entry": "docs/decision.md 8al, 8am",
+ "written": "before any half-2 row is scored",
+ "half1_rows": [
+  3047007,
+  3554840
+ ],
+ "half1_payments": 507834,
+ "r1": 0.0016304540460071598,
+ "half2_payments": 507835,
+ "B": 828,
+ "block_thresholds_half1": {
+  "S": 0.13074204946996468,
+  "T-pair": 0.13074204946996468,
+  "C": 0.0936768149882904,
+  "T": 0.10869565217391304,
+  "N": 0.09705882352941177,
+  "T2": 0.09392265193370165
+ },
+ "rounds": {
+  "C": [
+   289,
+   339,
+   509
+  ],
+  "T": [
+   359,
+   399,
+   308
+  ],
+  "N": [
+   94,
+   339,
+   142
+  ],
+  "T2": [
+   160,
+   260,
+   297
+  ]
+ },
+ "fitting_rows": [
+  304701,
+  2742305
+ ],
+ "early_stopping_rows": [
+  2742306,
+  3047006
+ ],
+ "timing_feasible_moved_payments": 139,
+ "half1_block_alerts": {
+  "S": 828,
+  "T-pair": 984,
+  "C": 1028,
+  "T": 862,
+  "N": 1040,
+  "T2": 1032
+ },
+ "seconds": 873
+}
