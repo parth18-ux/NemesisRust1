@@ -681,6 +681,204 @@ Revisions measured: baseline main `015bd0e` and candidate `c211043` (the evictio
 protocol commit `d1cd5c3`, as recorded in the results file. The candidate was not re-measured after it was carried onto
 the pilot-evaluator branch with the 8aj work, nor after the later fix that also caps restores of evicted alerts.
 
+**8al. D1: fixes for the two known evasions, timing jitter and new payee: pre-registration.** Written before any
+number in this entry was computed (diagnostic D included); to be committed before the engine runs of step 2. The two
+weaknesses come from 8ae (`research/out/evasion_validation.json`). Nothing served changes until a fix passes below.
+
+Root cause hypotheses (from the code; D tests them).
+- *Timing jitter* (`research/evasion_validation.py:86`, each laundering payment moved later by 0 to 2,880 minutes,
+  independently). Every account-window input of the models has a 24 h horizon (`Window::add`, `engine.rs:139-153`,
+  `MIN24` at `engine.rs:24`): `s_fanout_24h`, `s_cnt_24h`, `s_usd_24h`, `d_fanin_24h`, `d_cnt_24h`
+  (`engine.rs:584-590`); so is the pair noisy-OR (`PairWindow::push`, `engine.rs:335-347`, used by `finish_risk`,
+  `engine.rs:704-708`). The gap inputs `s_gap_out`, `d_gap_in`, `s_mins_since_in`, `s_out_over_last_in`
+  (`engine.rs:573-582`) carry the pass-through timing, and jitter can put a forward before the receipt that funds
+  it; `hour`/`dow` (`engine.rs:247-248`) become uniform. D reports these inputs' share of total gain in the L2
+  XGBoost and the hardening model.
+- *New payee* (`research/evasion_validation.py:89`, each laundering payment to a never-seen account). The payee-side
+  history goes empty: `new_pair` = 1, `d_in_n`, `d_uniq_src`, `d_in_usd_log` = 0, `d_gap_in` = NaN, `d_cnt_24h` and
+  `d_fanin_24h` = 1, `reciprocal` = 0 (`engine.rs:571-594`); `d_uniq_src` is the hardening model's largest input.
+  A fresh payee looks benign to the models because engine state starts empty at the training start, so early
+  training rows are full of fresh, genuine payees. The pair window (`engine.rs:705-707`) never repeats. The original
+  collector's onward payments also lose their receipt (an artefact: the attack does not simulate the new mule).
+  The model has no input that says "this payee has never appeared in any role" or "this payer is paying several
+  never-seen accounts".
+
+Proposed changes (smallest that address each cause; each is one arm).
+- **T (timing).** 72 h companions of the window inputs, 72 h = the 24 h window plus the attack's largest delay:
+  `s_cnt_72h`, `s_usd_72h`, `d_cnt_72h`, `d_fanin_72h` (a second `Window` horizon per account). Arm **T-pair**, no
+  retrain: pair noisy-OR horizon 1,440 to 4,320 minutes; run only if D shows it covers at least 10% of first-half
+  laundering payments under jitter (rule D-cover below).
+- **N (new payee).** Two causal inputs: `payee_fresh` (the payee has not appeared in any role before this payment)
+  and `s_fresh_payees_72h` (the payer's payments in the last 72 h, current included, to a payee that was fresh at the
+  time). If D shows the training confound (genuine fresh-payee rate in the first training decile at least 5 times
+  that of validation), the arm also drops the first training decile from fitting (rows still build state).
+- False-positive risks named in advance: new customers and first payments to new merchants (fresh payees are common
+  at a real bank, unlike in a synthetic stream whose accounts are mostly seen by validation); payroll and supplier runs
+  that pay several new accounts; heavy legitimate payers whose 72 h counts are large; a longer pair window
+  accumulating noisy-OR over a genuine pair's repeated payments (rent, standing orders). An attacker can still jitter
+  beyond 48 h; the 72 h choice is tied to this attack and is said so.
+
+Data and splits (chronological). HI-Small sorted (`hi_small_sorted.csv.gz`). Train: rows before VAL0 (3,047,007),
+early stopping on its last 10% (rows from 0.9 x VAL0), as the served recipe. Validation first half [VAL0, mid),
+mid = VAL0 + (TEST0 - VAL0) // 2 = 3,554,841: isotonic maps and band thresholds fitted here, and diagnostic D reads
+only this half. Validation second half [mid, TEST0): the decision. Test (from TEST0 = 4,062,676) is not read. Attacks
+are those of 8ae (`evasion_validation.attacks`, `default_rng(7)`), re-scored through the Rust engine with full history.
+
+Step 1, diagnostic D (Python only, no fitting, no engine): `research/evasion_gap_diagnostic.py`, output
+`research/out/evasion_gap_diagnostic.json`. Recomputes the window, gap and payee-history inputs and the proposed ones
+on the clean, jittered and new-payee streams; reports, for first-half validation, laundering-row shifts,
+single-input PR-AUC with a fixed direction, hour distance, forward-before-receipt share, pair-window coverage and the
+fresh-payee rates (training by decile, genuine and laundering in validation). Rule D-cover: an arm whose mechanism
+touches fewer than 10% of first-half laundering payments under its attack is dropped before any engine run, recorded
+as a failed hypothesis.
+
+Freeze (review by Codex, folded in before any commit). Validation half 1 is for development only: diagnostic D used
+it alone (original rows 3,047,007 to 3,554,840; its laundering and genuine counts are `laundering_payments` and
+`genuine_payments` in `research/out/evasion_gap_diagnostic.json`), and half 1 also fits the isotonic maps, the band
+thresholds and the review budget below. The arms, inputs, budget rule, margins, cohort minimum, bootstrap and stop
+rule in 8al and 8am are frozen by the commit that holds this text; `research/evasion_fix.py` is committed after it
+and is the only code that reads half 2.
+
+Step 2 (engine; `research/evasion_fix.py`). Arms: served S; control C (the served recipe retrained, three seeds
+averaged, 31 inputs, with the warm-up of arm N when it applies, so C and every candidate share their fitting rows);
+candidate T (C + 4 inputs); candidate N (C + 2 inputs); T-pair (S with a 4,320-minute pair window, no retrain); T2
+(8am).
+
+Definitions used by R1 to R4.
+- Half 2: original validation rows [3,554,841, 4,062,676). A case is one original laundering payment of half 2; its
+  score is the maximum over its parts (8ae). Each arm's target attack: timing_jitter for T, T-pair and T2;
+  new_payee for N.
+- Review budget B: r1 = the share of half-1 payments that S places in its block band on the clean stream (S's served
+  block threshold), computed and written to the output before half 2 is opened; B = round(r1 x number of half-2
+  payments). On every stream each arm alerts its B highest-scored half-2 rows (ties broken by row order), so every
+  arm has the same analyst workload.
+- Recall_X(a): share of cases with any part among X's B alerts on attack stream a. Precision_X: laundering share of
+  X's B alerts on the clean stream.
+- Fresh-payee cohort G: genuine half-2 payments on the clean stream whose payee has not appeared in any role before
+  (the `payee_fresh` definition of D). FPR_G(X): members of G among X's B clean alerts, over the size of G.
+- Uncertainty: paired block bootstrap. A block is (payer account, 24 h block of the original payment minute counted
+  from VAL0's minute). Blocks of half 2 are resampled with replacement, 2,000 resamples, numpy default_rng(20261122);
+  the same resampled blocks are used for every arm (paired); alert sets are fixed from the full half-2 ranking and
+  each statistic is recomputed on the resampled cases or rows. Intervals are 2.5% and 97.5% percentiles.
+
+Primary endpoint (one, case level): Recall_X(target) at budget B on half 2, compared with C. Everything else
+(PR-AUC clean and per attack, recall at the first-half band thresholds, alert counts, the feasible-order variant of
+8am, the single-input numbers of D) is secondary and cannot make an arm pass.
+
+Decision rule (per arm; all four must pass; nothing is tuned after a half-2 number is seen):
+- R1 efficacy (primary). Delta = Recall_X(target) - Recall_C(target) is at least 0.05 and the lower end of its 95%
+  paired bootstrap interval is above 0; and Recall_X(target) - Recall_S(target) is at least half of S's own drop,
+  0.5 x (Recall_S(clean) - Recall_S(target)). For T-pair, which has no retrain, C is replaced by S in the first part.
+- R2 no wider false positives on clean traffic. Precision_X - Precision_C is at least -0.01 and the lower end of its
+  95% paired interval is above -0.02; Precision_X is at least Precision_S - 0.01.
+- R3 no new hole. For every other attack a of 8ae (structuring, amount_jitter, each format, each currency, and the
+  other of timing_jitter and new_payee), Recall_X(a) is at least Recall_S(a) - 0.02.
+- R4 fresh-payee false positives (every arm). FPR_G(X) is at most 0.02, and FPR_G(X) - FPR_G(C) is at most 0.005
+  with the upper end of its 95% paired interval at most 0.01. If G has fewer than 300 payments, R4 is inconclusive,
+  and an inconclusive R4 is not a pass: the arm is not served and the result is recorded as inconclusive. Half 1
+  suggests G will be small (`fresh.val_first_half_clean.genuine` x `genuine_payments` in D's output), so arm N is
+  expected to be inconclusive on HI-Small and to need a bank's data.
+
+Evidence rule. The synthetic freshness result of D (`inputs.new_payee.payee_fresh`, single-input PR-AUC under
+new_payee) is diagnostic only and is not evidence for arm N: genuine traffic in this generator almost never pays a
+never-seen account. No number from half 1 counts toward R1 to R4. Disclosure: 8ae already scored S (and only S) on
+all of validation, half 2 included, as whole-validation aggregates (`research/out/evasion_validation.json`); no
+per-half number, no candidate and no case-level recall at B has been computed on half 2.
+
+Why these values (one line each).
+- Budget B from S's half-1 block rate: the analyst workload the served system already implies, fixed before half 2.
+- R1 margin 0.05: below the smaller payment-level loss 8ae measured at the same workload
+  (`block_recall_at_clean_alert_count`, clean against new_payee), so reachable; less would not justify new inputs.
+- R2 margins 0.01 and -0.02: one precision point is the largest clean-queue dilution an analyst team would absorb
+  for a robustness gain; the interval bound allows sampling noise but not a clear loss.
+- R3 margin 0.02: smaller than 8ae's 0.05 weakness margin, so a fix cannot open a hole 8ae would have flagged.
+- R4 cap 0.02 and increase 0.005 (interval 0.01): at most one in fifty first payments to a new payee reviewed, and
+  no more than half a point above C, since real banks have far more account openings than this generator.
+- Cohort minimum 300: below it one alert moves FPR_G by more than 0.003, most of the 0.005 allowed increase.
+- 2,000 resamples: Monte Carlo error of a 2.5% percentile well under the margins; seed 20261122 is the date fixed.
+- Blocks of (payer account, 24 h): payments of one account on one day are not independent; whole blocks keep that.
+
+Stop rule. One run per arm: windows (72 h), the fresh definition, seeds, budget rule, margins, cohort minimum and
+bootstrap are fixed here and not retuned. A mechanical bug may be fixed once, recorded in the script's docstring with
+the discarded run, as in 8ae. If an arm fails or is inconclusive, it is not served, its numbers are written here, and
+the weakness stays documented; no second variant is tried on this validation part. If several timing arms pass, the
+one with the highest primary endpoint is served alone.
+
+Failure. Any R check failing, R4 inconclusive, or the arm dropped by D-cover. A pass is also qualified: the attacks are simulated by
+us and the 72 h horizon is fitted to the attack's own bound, so a pass shows robustness to this attack, not to timing
+evasion in general. Rust files to change if adopted: `crates/rusetect/src/engine.rs` (FEATURES, `fx`, `Window`,
+`Engine::features`, `PairWindow` for T-pair, READABLE and display), `crates/rusetect/src/compact_state.rs`,
+`crates/rusetect-server/src/scale/redis_state.rs` (the same inputs in the other two state stores) and
+`crates/rusetect/examples/research_dump.rs`; models and configs in `service/models/`.
+
+**8al-D. Diagnostic D outcome (first half of validation; written after D ran).** All three arms pass D-cover
+(`research/out/evasion_gap_diagnostic.json`, `d_cover`), and the warm-up applies (`training_confound`). Two findings
+change what step 2 can be expected to show, and are recorded before it is written. (1) The timing signal that jitter
+destroys is mostly the gap inputs, `s_mins_since_in` and `s_gap_out` (`inputs.timing_jitter`, single-input PR-AUC
+clean against jittered), not the 24 h counts; the 72 h counts of arm T do not replace a gap, so T may fail R1. A
+jitter-tolerant pass-through input (payer inflow in the last 72 h and this payment over it) would target the cause,
+but it was not pre-registered; adding it now would be informed by D on the first half, so it needs its own
+amendment (8am), committed before step 2, and is judged on the second half only. Forward-before-receipt, the attack's
+infeasible part, touches only a small share of laundering (`forward_before_receipt`). (2) Under new payee,
+`payee_fresh` alone separates almost perfectly (`inputs.new_payee.payee_fresh`) because by validation almost no
+genuine payment goes to a never-seen account in this synthetic stream (`fresh.val_first_half_clean`), while the first
+training decile is mostly fresh payees (`fresh.train_by_decile`). That is a property of the generator, not of a
+bank: a pass of arm N on HI-Small says little about false positives at a bank with real account openings, so R4 is
+necessary but not sufficient, and a shadow pilot must check the fresh-payee alert rate. T-pair: a 72 h pair window
+reaches far more genuine payments than laundering ones (`pair_cover`), so its false-positive risk is the largest.
+
+**8am. Amendment to 8al: arm T2, a 72 h pass-through input (pre-registration; not run).** Written after diagnostic
+D (8al-D) and before step 2; it adds one arm and changes nothing else in 8al. Disclosure: the arm was chosen after D
+read the first half of validation, so the first half cannot be used to support it. It is decided on the second half
+only, and no number for T2 is computed on any part before `research/evasion_fix.py` (with this arm in it) is
+committed.
+
+Hypothesis. Jitter breaks the pass-through gap inputs (`s_mins_since_in`, `s_out_over_last_in`, `engine.rs:578-582`),
+which read only the payer's last receipt. A receipt that came at most 24 h before the forward that spends it stays
+inside a 72 h look-back ending at the jittered forward whenever the jittered forward still comes after the jittered
+receipt: each payment moves later by 0 to 48 h, so the forward-minus-receipt gap ends up between -48 h and 72 h. So an
+input summing the payer's receipts over 72 h keeps the pass-through signal for every feasible order. The infeasible
+order, a forward before the receipt that funds it, is missed by design: a causal input cannot see a later receipt.
+D measured how often that order occurs (`forward_before_receipt`).
+
+Inputs (causal: computed before the payment updates state, current payment excluded, no label read).
+- `s_in_usd_72h`: log(1 + USD the payer received in (t - 4,320, t]).
+- `s_out_over_in_72h`: this payment's USD over the payer's USD received in (t - 4,320, t]; NaN when that is zero.
+Implementation: a second receipt window per account with a 4,320-minute horizon (the 24 h `win_in` is kept as is),
+in `Engine::features` (`crates/rusetect/src/engine.rs`), `crates/rusetect/src/compact_state.rs`,
+`crates/rusetect-server/src/scale/redis_state.rs` (a 72 h receipt zset) and `crates/rusetect/examples/research_dump.rs`.
+A test checks that the three state stores give the same two values on the demo stream.
+
+Arm. T2 = control C (8al) + the two inputs (33 inputs), trained with the served recipe and the same three seeds,
+on rows before VAL0 with early stopping on their last 10%; with the training warm-up of arm N only if 8al's rule
+applies it to N (it does, `training_confound`), so T2 and C share the fitting rows. Isotonic maps and band thresholds
+are fitted on [VAL0, mid); the decision is on [mid, TEST0). Test is not read.
+
+Decision rule: 8al's definitions (half 2, budget B, cases, bootstrap) and R1 to R4 apply to T2 unchanged, with
+timing_jitter as the target attack and C as the comparator: (R1, primary) Recall_T2(timing_jitter) - Recall_C at
+least 0.05 with the 95% paired interval above 0, and the gain over S at least half of S's own recall drop; (R2) clean
+precision at B no worse than C by 0.01 (interval above -0.02) and no worse than S by 0.01; (R3) every other attack's
+recall at B at least S's minus 0.02; (R4) fresh-payee false-positive rate at most 0.02, at most 0.005 over C (upper
+interval end at most 0.01), inconclusive and not a pass below 300 payments. Also reported, secondary and not judged:
+R1 on a feasible-order variant of the attack, in which a payment that forwards a laundering receipt is moved no
+earlier than that receipt's new time.
+False-positive risks named in advance: salary-to-bills accounts and business accounts that spend most of what came
+in within three days look like pass-through; a 72 h sum is larger for busy accounts, so the ratio falls for them and
+may hide mules that also have genuine inflow.
+
+Stop rule and failure: as 8al. One run; the 72 h horizon and the input definitions are not retuned; one recorded
+mechanical fix at most. Among timing arms that pass (T, T-pair, T2), the one with the highest primary endpoint is
+served, and none is combined with another without a new pre-registration. If T2 fails any of R1 to R4 or R4 is
+inconclusive, it is not served and its numbers are written here. Codex reviews this protocol before anything is
+implemented.
+
+**8al-result. D1 step 2 outcome (second half of validation; written after `research/evasion_fix.py` ran once).** No arm passes and nothing served changes: both evasion gaps stay documented as known weaknesses. The script and the research-only inputs (`crates/rusetect/examples/research_dump.rs`) were committed before the run; r1 = 0.00163 and B = 828 are in `research/out/evasion_fix_half1.json`. Correction (after an external review by Codex; an earlier version of this entry said they were written before any half-2 row was scored, which was wrong): the run dumped and scored the whole clean stream, half 2 included, and built the attack streams before it wrote that file. Only half-1 rows, selected by original row, entered r1, B, the isotonic maps and the thresholds. The features, the pair noisy-OR and the models (trained on rows before VAL0) are causal, so no half-2 row could change those values, Before that file was written, half-2 rows were written only to temporary scratch files (the clean stream's input and its feature dump, deleted once loaded), and half-2 scores were kept in memory only, for the clean half-2 numbers after the freeze; nothing of half 2 was printed (the run log before the file holds only training rounds) or inspected. The script now reads half 2 only after writing and checking that file; the run was not repeated and no number below changed. Every number below is in `research/out/evasion_fix.json`. One run, no mechanical fix. Half 2 has 524 cases and 124561 (payer, 24 h) blocks. At B, Recall_S is 0.6565 clean, 0.5477 under timing_jitter and 0.5687 under new_payee; Recall_C is 0.5496 and 0.5706.
+- **T** (72 h counts): R1 fail (Delta vs C 0.0172 [0.0041, 0.0317], gain over S 0.0191 against the required 0.0544); R2 pass (0.006 vs C [-0.0092, 0.0203], 0.0072 vs S); R3 pass (worst new_payee -0.0115 vs S); R4 inconclusive.
+- **T-pair** (72 h pair window): R1 fail (Delta vs S -0.0076 [-0.0237, 0.0076], gain over S -0.0076 against the required 0.0544); R2 fail (-0.0048 vs C [-0.0533, 0.0342], -0.0036 vs S; the interval's lower end is below -0.02); R3 fail (worst format_Bitcoin -0.021 vs S); R4 inconclusive.
+- **N** (fresh payee): R1 fail (Delta vs C -0.0324 [-0.0532, -0.0132], gain over S -0.0305 against the required 0.0439: below C); R2 pass (-0.006 vs C [-0.0179, 0.0054], -0.0048 vs S); R3 pass (worst format_Bitcoin -0.0191 vs S); R4 inconclusive.
+- **T2** (72 h pass-through, 8am): R1 fail (Delta vs C 0.0038 [-0.0084, 0.0169], gain over S 0.0057 against the required 0.0544); R2 pass (-0.0012 vs C [-0.0139, 0.0111], 0.0 vs S); R3 fail (worst format_Cash -0.021 vs S); R4 inconclusive. Secondary, feasible order: Delta vs C 0.0019 [-0.0089, 0.0143].
+R4 is inconclusive for every arm: the fresh-payee cohort G has 89 half-2 payments, below the 300 minimum, as 8al expected (observed FPR_G: C 0.02247, N 0.01124). So even an R1 pass could not have been served on HI-Small. Only arm T's gain over C has an interval above zero, and it is about a third of the required 0.05; adding inputs to the cascade does not close the timing gap at this workload, as 8al-D warned, and the payee-freshness inputs of N lowered recall under new_payee. How the script reads the protocol where it left a choice (the retrained arms replace the served cascade inside the served score, keeping the hardening term; no L1 gate; the genuine sample and seeds) is in its docstring, committed before the run. Per the stop rule, no second variant is tried on this validation part. The weaknesses stay in `research/out/evasion_validation.json`; the fresh-payee question needs a bank's data (the shadow pilot).
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
