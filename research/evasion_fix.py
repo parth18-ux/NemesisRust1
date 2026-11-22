@@ -38,8 +38,11 @@ builds the attack streams and scores anything of half 2; the half-2 stage uses t
 Correction after the one run (results unchanged, not re-run): the run at commit 0cd81c6 dumped and scored the whole
 clean stream, half 2 included, before it wrote the checkpoint, and built the attack streams (raw rows only) before it.
 Only half-1 rows (a mask on the original row) entered r1, B, the maps and the thresholds; features, the pair
-noisy-OR and the models (trained on rows before VAL0) are causal, so no half-2 row could change a half-1 value; no
-half-2 value was printed or written before the checkpoint (research/out/evasion_fix_half1.json, run log). The
+noisy-OR and the models (trained on rows before VAL0) are causal, so no half-2 row could change a half-1 value.
+Before the checkpoint, half-2 rows were *written* only to temporary files in the scratch directory (the clean
+stream's input CSV and its research_dump output, half 2 included; both deleted by dump() once loaded); half-2 scores
+were *kept* in memory only (used after the checkpoint for the clean stream's half-2 numbers); nothing of half 2 was
+*printed* (the run log before the checkpoint holds only training rounds) and nothing of half 2 was *inspected*. The
 ordering was changed afterwards so that a future run cannot score half 2 before the freeze.
 Self-test of the guard: python3 -I research/evasion_fix.py --self-test
 Half 2 (original rows [mid, TEST0)): B = round(r1 x half-2 payments); per stream each arm alerts its B highest half-2

@@ -1,7 +1,7 @@
 {
  "script": "research/evasion_fix.py",
  "entry": "docs/decision.md 8al, 8am",
- "written": "after the whole clean stream, half 2 included, was dumped and scored (run at 0cd81c6); only half-1 rows entered these values; see the correction in research/evasion_fix.py and docs/decision.md 8al-result",
+ "written": "after the whole clean stream, half 2 included, was dumped and scored (run at 0cd81c6); before this file, half-2 rows were written only to temporary scratch files (deleted once loaded) and half-2 scores were kept in memory only, nothing of half 2 was printed or inspected; only half-1 rows entered these values; see the correction in research/evasion_fix.py and docs/decision.md 8al-result",
  "half1_rows": [
   3047007,
   3554840
