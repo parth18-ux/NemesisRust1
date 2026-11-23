@@ -391,7 +391,9 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
     await page.fill("#tx-form [name=min_amount]", "15000");
     await page.click("#tx-form [type=submit]");
     await page.waitForFunction(() => /min_amount=15000/.test(location.hash) && /typology=pass_through/.test(location.hash));
-    await page.waitForFunction(() => [...document.querySelectorAll("#tx-table tbody td:nth-child(5)")].every((td) => Number(td.textContent.replace(/[^\d.]/g, "")) >= 15000));
+    // the table is empty while the filtered page loads, and every() is true on an empty list, so require rows
+    await page.waitForFunction(() => { const tds = [...document.querySelectorAll("#tx-table tbody td:nth-child(5)")];
+      return tds.length > 0 && tds.every((td) => Number(td.textContent.replace(/[^\d.]/g, "")) >= 15000); });
     const amts = (await page.locator("#tx-table tbody td:nth-child(5)").allTextContents()).map((t) => Number(t.replace(/[^\d.]/g, "")));
     rows = await rowsText();
     assert(amts.length > 0 && amts.length < all && amts.every((a) => a >= 15000), "amount filter: " + amts);
@@ -752,11 +754,14 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
     await page.waitForSelector("#bh-type");
     assert(await page.locator("text=consent-based demonstration").count() >= 5, "consent labels");
     const phrase = "the quick brown fox jumps over the lazy dog then reads the paper";
-    for (let i = 0; i < 3; i++) {
+    // wait for the click handler to finish, not for the response: it sets the status after parsing the body, then clears
+    // the box and the captured keys, so typing earlier would lose keys and reading earlier would see the old status
+    for (let i = 1; i <= 3; i++) {
       await page.locator("#bh-type").pressSequentially(phrase, {delay: 25});
-      await Promise.all([page.waitForResponse((r) => r.url().endsWith("/behaviour/enrol")), page.click("#bh-enrol")]);
+      await page.click("#bh-enrol");
+      await page.waitForFunction((n) => document.querySelector("#bh-tstat").textContent.includes(`${n} enrolment session(s)`) &&
+        document.querySelector("#bh-type").value === "", i);
     }
-    assert((await page.textContent("#bh-tstat")).includes("3 enrolment session(s)"), await page.textContent("#bh-tstat"));
     await page.locator("#bh-type").pressSequentially(phrase, {delay: 25});
     const [resp] = await Promise.all([page.waitForResponse((r) => r.url().endsWith("/behaviour/check")), page.click("#bh-check")]);
     const r = await resp.json();
