@@ -391,7 +391,9 @@ function assert(c, msg) { if (!c) throw new Error(msg); }
     await page.fill("#tx-form [name=min_amount]", "15000");
     await page.click("#tx-form [type=submit]");
     await page.waitForFunction(() => /min_amount=15000/.test(location.hash) && /typology=pass_through/.test(location.hash));
-    await page.waitForFunction(() => [...document.querySelectorAll("#tx-table tbody td:nth-child(5)")].every((td) => Number(td.textContent.replace(/[^\d.]/g, "")) >= 15000));
+    // the table is empty while the filtered page loads, and every() is true on an empty list, so require rows
+    await page.waitForFunction(() => { const tds = [...document.querySelectorAll("#tx-table tbody td:nth-child(5)")];
+      return tds.length > 0 && tds.every((td) => Number(td.textContent.replace(/[^\d.]/g, "")) >= 15000); });
     const amts = (await page.locator("#tx-table tbody td:nth-child(5)").allTextContents()).map((t) => Number(t.replace(/[^\d.]/g, "")));
     rows = await rowsText();
     assert(amts.length > 0 && amts.length < all && amts.every((a) => a >= 15000), "amount filter: " + amts);
