@@ -232,52 +232,47 @@ impl ApiError {
         ApiError { status, detail: Value::String(detail.into()) }
     }
     fn invalid(errs: Errors) -> Self {
-        ApiError { status: 422, detail: Value::Array(errs.0) }
+        ApiError { status: 422, detail: Value::Array(errs.into_list()) }
     }
 }
 
-/// Largest error body. Errors echo what the caller sent (inputs, field names, actions), so without a byte cap a few
-/// errors over large values could still build a large answer; `MAX_ERRORS` alone bounds only how many there are.
+/// Largest error body, wrapper included. Errors echo what the caller sent (inputs, field names, actions), so the
+/// detail is copied only up to this many bytes (`validate::bounded`, whose cost does not grow with the request) and
+/// the finished body is checked against the cap. Validation errors are already bounded as they are collected.
 pub const MAX_ERROR_BYTES: usize = 16 * 1024;
-/// Longest string, and most items of an array or object, kept in a clipped error.
-const CLIP_STR: usize = 256;
-const CLIP_ITEMS: usize = 20;
 
-/// `detail` shortened to fit MAX_ERROR_BYTES: long strings end in "…", long arrays and objects keep their first
-/// CLIP_ITEMS, nesting stops at depth 4, then whole errors are dropped from the end. Small answers are left as they are.
-fn clip_detail(detail: Value) -> (Value, bool) {
-    fn clip(v: Value, depth: usize) -> Value {
-        match v {
-            Value::String(s) if s.chars().count() > CLIP_STR => Value::String(s.chars().take(CLIP_STR).collect::<String>() + "…"),
-            _ if depth >= 4 && (v.is_array() || v.is_object()) => json!("…"),
-            Value::Array(a) => Value::Array(a.into_iter().take(CLIP_ITEMS).map(|x| clip(x, depth + 1)).collect()),
-            Value::Object(m) => Value::Object(m.into_iter().take(CLIP_ITEMS).map(|(k, x)| (clip(json!(k), depth).as_str().unwrap_or("").to_string(), clip(x, depth + 1))).collect()),
-            v => v,
+/// The JSON body of an error: `{"detail": ...}`, plus `"truncated": true` when anything was left out to stay within
+/// MAX_ERROR_BYTES. A list detail stays a list (validation errors), ending in `validate::truncated_marker()`.
+pub fn error_body(detail: &Value) -> String {
+    let (mut d, mut cut) = validate::bounded(detail, MAX_ERROR_BYTES);
+    if d.as_array().and_then(|a| a.last()).is_some_and(|e| e["type"] == "truncated") {
+        cut = true;
+    }
+    loop {
+        let body = dumps(&if cut { json!({"detail": d, "truncated": true}) } else { json!({"detail": d}) }, RESPONSE_STYLE);
+        if body.len() <= MAX_ERROR_BYTES {
+            return body;
         }
+        // over the cap (only by the wrapper or by estimation): drop errors from the end, or shorten a text detail
+        cut = true;
+        d = match d {
+            Value::Array(mut a) => {
+                a.retain(|e| e["type"] != "truncated");
+                a.pop();
+                a.push(validate::truncated_marker());
+                Value::Array(a)
+            }
+            Value::String(t) => Value::String(t.chars().take(t.chars().count().saturating_sub(64)).collect()),
+            _ => json!("error detail too large to show"),
+        };
     }
-    let size = |v: &Value| dumps(v, RESPONSE_STYLE).len();
-    if size(&detail) <= MAX_ERROR_BYTES {
-        return (detail, false);
-    }
-    let mut d = match detail {
-        // a list of validation errors: clip each, never the list itself (it is already at most MAX_ERRORS long)
-        Value::Array(a) => Value::Array(a.into_iter().map(|e| clip(e, 1)).collect()),
-        v => clip(v, 0),
-    };
-    while size(&d) > MAX_ERROR_BYTES - 64 {
-        match d.as_array_mut() {
-            Some(a) if a.len() > 1 => drop(a.pop()),
-            _ => d = json!("error detail too large to show"),
-        }
-    }
-    (d, true)
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let (detail, truncated) = clip_detail(self.detail);
-        let body = if truncated { json!({"detail": detail, "truncated": true}) } else { json!({"detail": detail}) };
-        let mut r = PyJson(StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), body).into_response();
+        let mut r = Response::new(Body::from(error_body(&self.detail)));
+        *r.status_mut() = StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        r.headers_mut().insert("content-type", HeaderValue::from_static("application/json"));
         // every 503 is temporary: tell senders when to retry. Usually nothing was committed; when a commit's reply was
         // lost and its outcome is unknown, the retry replays the stored result or is processed (docs/live.md section 4)
         if self.status == 503 {
@@ -1729,6 +1724,27 @@ mod tests {
         release.send(()).unwrap();
         assert!(slot_was_held);
         assert!(timeout(wait, LIMIT.acquire()).await.unwrap().is_ok());
+    }
+
+    #[test]
+    fn error_body_is_exact_at_the_cap_and_cut_one_byte_over() {
+        use super::{error_body, MAX_ERROR_BYTES};
+        use serde_json::json;
+        // {"detail":"<n x>"} is n + 13 bytes; {"detail":["<n x>"]} is n + 15
+        let at = error_body(&json!("x".repeat(MAX_ERROR_BYTES - 13)));
+        assert_eq!(at.len(), MAX_ERROR_BYTES);
+        assert!(!at.contains("truncated"), "a body at the cap is unchanged");
+        let over = error_body(&json!("x".repeat(MAX_ERROR_BYTES - 12)));
+        let v: serde_json::Value = serde_json::from_str(&over).unwrap();
+        assert!(over.len() <= MAX_ERROR_BYTES && v["truncated"] == true && v["detail"].is_string(), "{}", over.len());
+        let at = error_body(&json!(["x".repeat(MAX_ERROR_BYTES - 15)]));
+        assert_eq!((at.len(), at.contains("truncated")), (MAX_ERROR_BYTES, false));
+        let over = error_body(&json!(["x".repeat(MAX_ERROR_BYTES - 14)]));
+        let v: serde_json::Value = serde_json::from_str(&over).unwrap();
+        assert!(over.len() <= MAX_ERROR_BYTES && v["truncated"] == true && v["detail"].is_array(), "a list stays a list: {over}");
+        // far over: the copy stops at the budget instead of walking the whole value
+        let huge = json!({"detail": vec!["y".repeat(100_000); 200]});
+        assert!(error_body(&huge).len() <= MAX_ERROR_BYTES);
     }
 
     #[test]

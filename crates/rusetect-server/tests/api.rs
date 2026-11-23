@@ -154,10 +154,13 @@ async fn bad_list_items_cannot_blow_up_the_error_answer() {
     let (s, _, text) = t.req("POST", "/api/v2/payments/batch", Some(Value::Array(vec![json!({}); 20_001])), &[]).await;
     assert_eq!((s, text.len() < 200), (StatusCode::PAYLOAD_TOO_LARGE, true), "{}", &text[..text.len().min(200)]);
     let (s, v, _) = t.req("POST", "/api/v2/payments/batch", Some(Value::Array(vec![json!({}); 20_000])), &[]).await;
-    assert_eq!((s, v["detail"].as_array().unwrap().len()), (StatusCode::UNPROCESSABLE_ENTITY, rusetect_server::validate::MAX_ERRORS));
+    let d = v["detail"].as_array().unwrap();
+    assert!(s == StatusCode::UNPROCESSABLE_ENTITY && d.len() <= rusetect_server::validate::MAX_ERRORS + 1 && v["truncated"] == true);
+    assert_eq!(d.last().unwrap(), &rusetect_server::validate::truncated_marker());
     let body = json!({"account": "x", "normal_pin": "1234", "duress_pin": "9999", "trusted_contacts": vec![1; 50_000]});
     let (s, v, _) = t.req("POST", "/api/v2/duress/register", Some(body), &[]).await;
-    assert_eq!((s, v["detail"].as_array().unwrap().len()), (StatusCode::UNPROCESSABLE_ENTITY, rusetect_server::validate::MAX_ERRORS));
+    assert!(s == StatusCode::UNPROCESSABLE_ENTITY && v["detail"].as_array().unwrap().len() <= rusetect_server::validate::MAX_ERRORS + 1);
+    assert_eq!(v["truncated"], true);
 }
 
 #[tokio::test]
@@ -181,6 +184,9 @@ async fn error_answers_that_echo_input_stay_under_the_byte_cap() {
         assert!(s.is_client_error(), "{path}: {s}");
         assert!(text.len() <= rusetect_server::MAX_ERROR_BYTES, "{path}: {} bytes", text.len());
         assert_eq!(v["truncated"], true, "{path}: {}", &text[..text.len().min(300)]);
+        if s == StatusCode::UNPROCESSABLE_ENTITY {
+            assert!(v["detail"].is_array(), "{path}: validation detail stays a list");
+        }
     }
     // a small error keeps the FastAPI shape exactly, with no marker
     let (_, v, _) = t.req("POST", "/api/v2/payment", Some(json!({"timestamp": "x"})), &[]).await;
