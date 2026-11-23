@@ -879,6 +879,109 @@ implemented.
 - **T2** (72 h pass-through, 8am): R1 fail (Delta vs C 0.0038 [-0.0084, 0.0169], gain over S 0.0057 against the required 0.0544); R2 pass (-0.0012 vs C [-0.0139, 0.0111], 0.0 vs S); R3 fail (worst format_Cash -0.021 vs S); R4 inconclusive. Secondary, feasible order: Delta vs C 0.0019 [-0.0089, 0.0143].
 R4 is inconclusive for every arm: the fresh-payee cohort G has 89 half-2 payments, below the 300 minimum, as 8al expected (observed FPR_G: C 0.02247, N 0.01124). So even an R1 pass could not have been served on HI-Small. Only arm T's gain over C has an interval above zero, and it is about a third of the required 0.05; adding inputs to the cascade does not close the timing gap at this workload, as 8al-D warned, and the payee-freshness inputs of N lowered recall under new_payee. How the script reads the protocol where it left a choice (the retrained arms replace the served cascade inside the served score, keeping the hardening term; no L1 gate; the genuine sample and seeds) is in its docstring, committed before the run. Per the stop rule, no second variant is tried on this validation part. The weaknesses stay in `research/out/evasion_validation.json`; the fresh-payee question needs a bank's data (the shadow pilot).
 
+**8an. R1/R2 full-data phase: HI-Small evaluation and retrain, SAML-D, HI-Medium (pre-registration; not run).**
+Written and committed before any number of this phase is computed; Codex reviews it before a script is written. The
+script (`research/full_data_retrain.py`) is committed after the review and is the only code that reads the decision
+data. Nothing served changes unless a candidate passes below.
+
+Data available (checked on 2026-11-23; no dataset was downloaded or opened for this entry).
+- **HI-Small: available locally.** The time-sorted raw file and the patterns file of the Hugging Face mirror
+  (`OsamaMIT/IBM-AML-HI-Small`, verified in `research/full_hi_eval.py`) are in an earlier session's scratch directory
+  (`/tmp/claude-0/-home-user-NemesisRust1/69fda7e6-df6e-5fd3-9680-358e74c73345/scratchpad/`, below: `hismall/hi_small_sorted.csv.gz`, `hismall/HI-Small_Patterns.txt`).
+- **SAML-D: available locally, converted only.** The AMLworld-layout file from `research/samld_convert.py`
+  (`samld/samld_aml.csv.gz`, typology sidecar `.types`) is there; the raw Kaggle file is not, and Kaggle is refused
+  by this environment's network. The converted file is all the phase needs (row count in
+  `research/out/transfer_samld.json`).
+- **HI-Medium: not available locally in usable form; downloadable.** Only an old research dump with 5% of genuine
+  rows is local (`v2/himed.csv.gz`), made by an older engine (`engine.rs` and `research_dump.rs` changed since), so it
+  is not used. The raw `HI-Medium_Trans.csv` and `HI-Medium_Patterns.txt` are on the mirror `OsamaMIT/IBM-AML-HI`,
+  which the allowed network reaches (listing checked, file not fetched). Step 0 downloads them.
+- **LI-Small (in the served cascade's training data, `cascade_config.json` `trained_on`): left out.** Only a stale
+  sampled dump is local; the raw file is on neither the reachable mirror nor any other allowed source (Kaggle is
+  refused; `qubit420/ibm-aml-LI-smaller` is a different, unverified subset). So the candidates below do not see
+  LI-Small and no LI-Small number can be compared: if a candidate is served, the model card says its LI-Small
+  behaviour is unmeasured.
+- The other local dumps of that scratch directory (HI-Large, LI-Medium, LI-Large and the card sets) are out of scope.
+
+Step 0 (mechanics, no model). Re-dump every dataset in scope with the current engine (`research_dump`, built at the
+commit that holds the script), so features match what the server computes. HI-Medium: the raw CSV is streamed into
+`sort` (by timestamp, stable, in memory with compressed temporary files) and written gzip-compressed, then dumped
+with a genuine keep rate of 0.05 and its sidecar weight (as `v2/himed.csv.gz` was). HI-Small and SAML-D: dumped in
+full. Step 0 also checks HI-Medium's row and laundering counts against `research/out/hardened_transfer.json`
+(`himed`) and the patterns file; a mismatch stops the phase before any model is fitted.
+
+Splits (chronological, by row of the time-sorted file; as before for each dataset).
+- HI-Small: train rows before VAL0 = 3,047,007; validation half 1 [VAL0, 3,554,841); validation half 2
+  [3,554,841, TEST0 = 4,062,676); test from TEST0 (the boundaries of 8al).
+- HI-Medium and SAML-D: train = first 60% of rows, validation = next 20%, test = last 20%; validation is split into
+  halves the same way (half 1 first).
+- Thresholds, isotonic maps and the review budget are fitted on validation half 1 only. Validation half 2 decides.
+  Test is read once, after the decision is written to `research/out/full_data_retrain.json`. Disclosure: no test
+  part here is untouched. HI-Small test is spent (Evaluation rules); HI-Medium and SAML-D test were scored by
+  `research/hardened_transfer.py` and `research/transfer_eval.py`; the served hardening model's format-free half
+  was trained on HI-Medium's and SAML-D's training parts; HI-Small validation half 2 decided 8al. Test numbers are
+  therefore descriptive only and cannot change the decision.
+
+Arms.
+- **S**, served, unchanged: 8al's arm S (cascade raised to the 24 h pair noisy-OR, then max(iso_served, iso_free)
+  with `service/models/hardening.json`). Its maps were fitted on all of HI-Small validation, half 2 included, which
+  flatters S on the primary endpoint; that makes replacement harder, not easier, and is accepted.
+- **C_HS**, the HI-Small retrain: 8al's arm C recipe exactly (31 served inputs, one XGBoost with the params of
+  `research/full_hi_eval.py`'s control, all laundering plus 10% of genuine training rows, first training decile
+  dropped, early stopping on the last 10% of the training part, seeds 0, 1, 2 averaged), fitted on the full HI-Small
+  training part of the new dump; it replaces the cascade inside the served score as in 8al, with its isotonic map
+  fitted on HI-Small half 1.
+- **C_P**, the pooled retrain: the same recipe on the training parts of HI-Small, HI-Medium and SAML-D together
+  (genuine rows weighted by 1 / keep rate, so each dataset keeps its own prevalence); early stopping on the last 10%
+  of each training part pooled; same seeds; map fitted on HI-Small half 1.
+No other arm, input, learner or hyperparameter is tried in this phase.
+
+Primary endpoint (one): PR-AUC of the final risk on HI-Small validation half 2, clean stream (Evaluation rules: PR-AUC
+first). Uncertainty: 8al's paired block bootstrap ((payer, 24 h) blocks from VAL0's minute; 2,000 resamples; numpy
+default_rng(20261122); the same draws for every arm).
+
+Decision rule for replacing the served model (all must pass; nothing is tuned after a half-2 number is seen).
+- P1 efficacy (primary). PR-AUC(X) - PR-AUC(S) is at least 0.02 and the lower end of its 95% paired interval is
+  above 0.
+- G1 HI-Medium. Validation half 2 PR-AUC (weighted) of X at least S's - 0.01.
+- G2 SAML-D. Validation half 2 ROC-AUC of X at least S's - 0.01 (ROC-AUC across generators, Evaluation rules).
+- G3 same workload. With B = round(r1 x half-2 payments) and r1 = S's half-1 block rate on HI-Small (8al's B,
+  recomputed on the new dump), Recall_X at B on half 2 is at least Recall_S - 0.01.
+- G4 robustness. For every 8ae attack (`evasion_validation.attacks`, default_rng(7), re-scored through the engine as
+  in 8al), Recall_X(a) at B on half 2 is at least Recall_S(a) - 0.02.
+- G5 calibration. Expected calibration error of X's risk on half 2 (20 equal-count bins, as
+  `research/served_eval.py`) is at most S's + 0.005, since the bands read the risk as a probability.
+If both candidates pass, the one with the higher primary endpoint is served; if they tie to the third decimal,
+C_HS (smaller training set, fewer moving parts). If neither passes, S stays and the numbers are written here.
+Secondary, reported, cannot make an arm pass: every metric above on test; ROC-AUC everywhere; band precision and
+recall at the half-1 thresholds; HI-Small typology recall (patterns file); SAML-D typology recall (`.types`).
+
+Why these values (one line each).
+- Margin 0.02 PR-AUC over S: replacing the model also replaces maps, thresholds and the model card, and costs an
+  analyst re-baseline; less than two points is not worth that; it is below the gap between S and the earlier
+  format-free candidate in `research/out/full_hi_eval.json`, so it is reachable. The interval bound keeps noise out.
+- Guards at 0.01 (G1 to G3) and 0.02 (G4, as 8al R3): a gain on HI-Small must not be bought with a loss elsewhere.
+- ECE + 0.005: a band threshold moves by about that much before the alert rate visibly changes.
+
+Stop rule. One run per arm. Seeds, splits, margins, budget rule and bootstrap are fixed here. A mechanical failure
+(crash, out of memory, out of disk, a dump that fails the step-0 check) may be fixed once and the run restarted from
+step 0, recorded in the script's docstring with the discarded run. A run that breaks a compute limit below is stopped
+and recorded, with no decision. If no arm passes, no second variant (other features, learner, weights, margins) is
+tried on these validation parts; the next try needs a new pre-registration and new decision data.
+
+Compute limits (this container: 4 cores, 15 GB RAM, no GPU; `df` showed 9.2 GB free on `/` when this was written).
+- Disk: new files at most 6 GB at peak; HI-Medium's raw CSV is never written uncompressed (streamed into `sort`).
+  The script checks `df` before each step and stops if fewer than 2 GB would remain. Nothing in the earlier scratch
+  directory is deleted without the user's agreement.
+- RAM: at most 12 GB resident; HI-Medium is held with genuine rows at the 0.05 keep rate; features as float32.
+- CPU: 4 threads for XGBoost and `sort`; one arm at a time.
+- Wall clock: at most 10 h for the whole phase (the earlier HI-Medium dump's time is in `v2/himed.log`); past that
+  the run stops and is recorded as not completed.
+
+Files to change if a candidate is adopted: `service/models/` (model, `cascade_config.json` `trained_on`, the
+hardening map and band thresholds), `docs/MODEL_CARD.md`, `docs/RETRAINING.md` and the served model version shown on
+the website. The result goes in 8an-result.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
