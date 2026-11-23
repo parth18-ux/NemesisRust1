@@ -1,4 +1,4 @@
-// App shell: the section navigation (A to I), hash routing, the instance status chips, the analyst key and the theme.
+// App shell: the section navigation (A to J), hash routing, the instance status chips, the analyst key and the theme.
 import {api, getKey, setKey, demoKeys, currentAnalyst} from "./api.js";
 import {$, $$, html, toast} from "./util.js";
 
@@ -12,6 +12,7 @@ const SECTIONS = [
   {k: "G", id: "investigations", name: "Investigations", load: () => import("./investigations.js")},
   {k: "H", id: "assistant", name: "AI-assisted investigation", load: () => import("./assistant.js")},
   {k: "I", id: "reports", name: "Reports and evidence", load: () => import("./reports.js")},
+  {k: "J", id: "pilot", name: "Pilot health", load: () => import("./pilot.js")},
 ];
 
 const main = $("#main");

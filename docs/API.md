@@ -26,7 +26,7 @@ Three kinds of stored payment decision are read (`source` in every row):
 
 | `source` | What | Kept |
 | --- | --- | --- |
-| `live` | events ingested by `POST /api/v2/events/payment`, approved ones included | memory: the newest 100,000 in the process. Redis: the newest 200 are listed (the feed); every flagged one stays as an alert; any event is found by id for 7 days |
+| `live` | events ingested by `POST /api/v2/events/payment`, approved ones included | memory: every event of the process, up to `RUSETECT_MAX_EVENTS` (default 100,000; a new event is then refused with 503). Redis: the newest 200 are listed (the feed); every flagged one stays as an alert; any event is found by id for 7 days |
 | `assess` | alerts opened by `POST /api/v2/assess` | flagged payments only; an approved `/assess` or `/payment` call is counted by the engine but not stored |
 | `demo_stream` | the Live Console replay of recorded IBM AMLworld (synthetic) payments | the latest 60 escalated rows; `demo: true` on every row |
 
@@ -264,7 +264,7 @@ investigation's `history` rows carry the `ledger_seq` and `ledger_hash` of their
 
 | | Memory | Redis (`REDIS_URL` / `KV_URL`) |
 | --- | --- | --- |
-| Live decisions searched | newest 20,000 of up to 100,000 | newest 200 (the feed) plus every stored live alert |
+| Live decisions searched | newest 20,000 of up to `RUSETECT_MAX_EVENTS` (default 100,000) | newest 200 (the feed) plus every stored live alert |
 | Reason codes on live rows | SHAP and motifs | none (the bank-scale path returns none); the detail says so |
 | Live alerts and their triage | this process | `live:alerts`, shared by every instance |
 | Investigations | this process | `live:cases` and the `live:case_seq` counter, shared |

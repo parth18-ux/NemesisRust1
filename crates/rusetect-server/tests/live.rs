@@ -185,6 +185,25 @@ fn extreme_timestamps_are_refused_without_overflow() {
     assert_eq!(e.status, 401);
 }
 
+/// Memory mode never forgets an event id: once its idempotency store is full a new id is refused with nothing committed,
+/// and every known id still replays (a forgotten id would be scored again on a re-send, as a rehearsal re-send showed).
+#[tokio::test]
+async fn memory_mode_refuses_new_events_when_its_idempotency_store_is_full() {
+    let (app, shared) = app();
+    shared.state.lock().unwrap().live.max_events = Some(2);
+    for i in 0..2 {
+        assert_eq!(send(&app, &event(&format!("cap-{i}"), &format!("CAP{i}")), now(), None).await.0, StatusCode::OK);
+    }
+    let seq = get(&app, "/api/v2/audit").await["entries"].as_array().map(|a| a.len()).expect("audit entries");
+    let (st, body, _) = send(&app, &event("cap-2", "CAP2"), now(), None).await;
+    assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert_eq!(get(&app, "/api/v2/audit").await["entries"].as_array().map(|a| a.len()), Some(seq), "nothing committed");
+    for i in 0..2 {
+        let (st, _, replayed) = send(&app, &event(&format!("cap-{i}"), &format!("CAP{i}")), now(), None).await;
+        assert!(st == StatusCode::OK && replayed, "cap-{i} still replays");
+    }
+}
+
 #[tokio::test]
 async fn memory_fallback_reports_not_durable() {
     let (app, _) = app();
