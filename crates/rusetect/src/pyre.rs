@@ -152,6 +152,20 @@ impl PyRegex {
     }
 }
 
+/// Test guard: abort the whole test process if it is still alive after `secs`, so a regression to an endless regex
+/// loop fails the run instead of hanging it (the looping thread cannot be stopped from outside).
+#[cfg(test)]
+pub(crate) fn deadline(secs: u64) -> std::sync::mpsc::Sender<()> {
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        if rx.recv_timeout(std::time::Duration::from_secs(secs)) == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
+            eprintln!("test deadline of {secs} s passed: aborting");
+            std::process::abort();
+        }
+    });
+    tx
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,6 +185,7 @@ mod tests {
 
     #[test]
     fn a_search_over_the_backtracking_limit_ends_instead_of_looping() {
+        let _deadline = deadline(60);
         // quadratic for this pattern: the search from every start position runs to the end of the text, so 4,600
         // characters pass the 1M-step limit; fancy-regex then yields the same error forever, which hung the server
         let r = PyRegex::new(r"\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b", true);

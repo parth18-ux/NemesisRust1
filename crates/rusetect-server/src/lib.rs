@@ -236,9 +236,48 @@ impl ApiError {
     }
 }
 
+/// Largest error body. Errors echo what the caller sent (inputs, field names, actions), so without a byte cap a few
+/// errors over large values could still build a large answer; `MAX_ERRORS` alone bounds only how many there are.
+pub const MAX_ERROR_BYTES: usize = 16 * 1024;
+/// Longest string, and most items of an array or object, kept in a clipped error.
+const CLIP_STR: usize = 256;
+const CLIP_ITEMS: usize = 20;
+
+/// `detail` shortened to fit MAX_ERROR_BYTES: long strings end in "…", long arrays and objects keep their first
+/// CLIP_ITEMS, nesting stops at depth 4, then whole errors are dropped from the end. Small answers are left as they are.
+fn clip_detail(detail: Value) -> (Value, bool) {
+    fn clip(v: Value, depth: usize) -> Value {
+        match v {
+            Value::String(s) if s.chars().count() > CLIP_STR => Value::String(s.chars().take(CLIP_STR).collect::<String>() + "…"),
+            _ if depth >= 4 && (v.is_array() || v.is_object()) => json!("…"),
+            Value::Array(a) => Value::Array(a.into_iter().take(CLIP_ITEMS).map(|x| clip(x, depth + 1)).collect()),
+            Value::Object(m) => Value::Object(m.into_iter().take(CLIP_ITEMS).map(|(k, x)| (clip(json!(k), depth).as_str().unwrap_or("").to_string(), clip(x, depth + 1))).collect()),
+            v => v,
+        }
+    }
+    let size = |v: &Value| dumps(v, RESPONSE_STYLE).len();
+    if size(&detail) <= MAX_ERROR_BYTES {
+        return (detail, false);
+    }
+    let mut d = match detail {
+        // a list of validation errors: clip each, never the list itself (it is already at most MAX_ERRORS long)
+        Value::Array(a) => Value::Array(a.into_iter().map(|e| clip(e, 1)).collect()),
+        v => clip(v, 0),
+    };
+    while size(&d) > MAX_ERROR_BYTES - 64 {
+        match d.as_array_mut() {
+            Some(a) if a.len() > 1 => drop(a.pop()),
+            _ => d = json!("error detail too large to show"),
+        }
+    }
+    (d, true)
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let mut r = PyJson(StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), json!({"detail": self.detail})).into_response();
+        let (detail, truncated) = clip_detail(self.detail);
+        let body = if truncated { json!({"detail": detail, "truncated": true}) } else { json!({"detail": detail}) };
+        let mut r = PyJson(StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), body).into_response();
         // every 503 is temporary: tell senders when to retry. Usually nothing was committed; when a commit's reply was
         // lost and its outcome is unknown, the retry replays the stored result or is processed (docs/live.md section 4)
         if self.status == 503 {

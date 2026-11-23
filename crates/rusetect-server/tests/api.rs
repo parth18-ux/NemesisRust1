@@ -161,7 +161,48 @@ async fn bad_list_items_cannot_blow_up_the_error_answer() {
 }
 
 #[tokio::test]
+async fn error_answers_that_echo_input_stay_under_the_byte_cap() {
+    // each error echoes what was sent; worst cases near the 2 MiB body limit: one huge value, a huge nested value, a
+    // huge field name (it goes into `loc`), 100 bad batch items of ~20 KB each, and a huge action echoed in a 403
+    let t = T::new();
+    let big = "x".repeat(150_000);
+    let nested = json!([[[[big.clone()]]], {"k": vec![big.clone(); 3]}]);
+    let k = "k".repeat(400_000);
+    type Case<'a> = (&'a str, Value, &'a [(&'a str, &'a str)]);
+    let cases: Vec<Case> = vec![
+        ("/api/v2/payment", json!({"timestamp": big, "from_bank": nested, "from_account": 1, "amount_paid": big}), &[]),
+        ("/api/v2/behaviour/check", json!({"account": "a", "digraphs": {k.as_str(): "x"}}), &[]),
+        ("/api/v2/payments/batch", Value::Array(vec![json!({"amount_paid": "y".repeat(20_000)}); 100]), &[]),
+        ("/api/v2/onboard", json!({"customer_age": big}), &[]),
+        ("/api/v2/alerts/A00001/review", json!({"action": "z".repeat(1_000_000)}), &[("X-Analyst-Key", "demo-analyst-1"), ("X-Nonce", "nonce-123456")]),
+    ];
+    for (path, body, h) in cases {
+        let (s, v, text) = t.req("POST", path, Some(body), h).await;
+        assert!(s.is_client_error(), "{path}: {s}");
+        assert!(text.len() <= rusetect_server::MAX_ERROR_BYTES, "{path}: {} bytes", text.len());
+        assert_eq!(v["truncated"], true, "{path}: {}", &text[..text.len().min(300)]);
+    }
+    // a small error keeps the FastAPI shape exactly, with no marker
+    let (_, v, _) = t.req("POST", "/api/v2/payment", Some(json!({"timestamp": "x"})), &[]).await;
+    assert!(v.get("truncated").is_none() && v["detail"].is_array());
+}
+
+/// Abort the whole test process if the guard is still alive after `secs`: a regression to an endless regex loop would
+/// otherwise hang the runner, since the blocking task holding the loop keeps the runtime from shutting down.
+fn deadline(secs: u64) -> std::sync::mpsc::Sender<()> {
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        if rx.recv_timeout(std::time::Duration::from_secs(secs)) == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
+            eprintln!("test deadline of {secs} s passed: aborting");
+            std::process::abort();
+        }
+    });
+    tx
+}
+
+#[tokio::test]
 async fn a_message_past_the_regex_backtracking_limit_is_answered() {
+    let _deadline = deadline(60);
     // "a." x 2,300 made the e-mail redaction pattern loop forever while holding the state lock: the server hung
     let t = T::new();
     for text in ["a-".repeat(2_500), "a.".repeat(2_300)] {

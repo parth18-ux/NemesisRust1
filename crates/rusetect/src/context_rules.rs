@@ -450,6 +450,7 @@ mod tests {
 
     #[test]
     fn redaction_ends_and_withholds_text_it_cannot_search() {
+        let _deadline = crate::pyre::deadline(60);
         // the e-mail pattern passes its backtracking limit on this text; before the fix the search never ended
         let text = format!("call 98765 43210 {}", "a.".repeat(2_300));
         let (txt, _) = redact(&text);
