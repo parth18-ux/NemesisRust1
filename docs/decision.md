@@ -982,6 +982,113 @@ Files to change if a candidate is adopted: `service/models/` (model, `cascade_co
 hardening map and band thresholds), `docs/MODEL_CARD.md`, `docs/RETRAINING.md` and the served model version shown on
 the website. The result goes in 8an-result.
 
+**8ao. Amendment to 8an after Codex's review of 8an (pre-registration; not run).**
+Written before any model of 8an is trained or any decision row is scored; it replaces the decision data, margin, guards
+and implementation rules of 8an where they differ and keeps everything else of 8an (arms S, C_HS and C_P, recipes,
+seeds 0, 1, 2, compute limits, stop rule). Only metadata were read for it: row ids and timestamps of the time-sorted
+files (`research/retrain_cohorts.py`, which reads the timestamp column only and checks every file's sha256 against
+`research/out/retrain_data_manifest.json`) and the committed results in `research/out/` and `results/`. No label was
+compared with a score. Every row range, date and count below is in `research/out/retrain_cohorts.json`.
+
+Frozen-data design (row id = 0-based data line of the time-sorted file, the `row` of `research_dump`; ranges are
+[first, last + 1); timestamps are the first and last minute in the range).
+- HI-Small training: rows [0, 3,047,007) (3,047,007 rows, 2022/09/01 00:00 to 2022/09/06 13:36).
+- HI-Small validation half 1 (freeze): rows [3,047,007, 3,554,841) (507,834 rows, 2022/09/06 13:36 to 2022/09/07 14:55). Fits everything in "Guards" below.
+- HI-Small validation half 2 (screen): rows [3,554,841, 4,062,676) (507,835 rows, 2022/09/07 14:55 to 2022/09/08 16:12). Nominates at most one challenger; it cannot replace S.
+- HI-Small test (descriptive, locked): rows [4,062,676, 5,078,345) (1,015,669 rows, 2022/09/08 16:12 to 2022/09/18 16:18). Unreachable in code until the decision record exists.
+- Boundaries are 8al's row boundaries, so a boundary minute can hold rows on both sides (train ends and half 1 starts
+  at 2022/09/06 13:36); rows are assigned by row id, which keeps the time order, as in 8al.
+- Confirmation cohort: **none eligible** (check below). So 8an cannot replace the served model: S stays, whatever the
+  screen shows.
+
+Eligibility check for a confirmation cohort (a cohort qualifies only if every item holds; evidence in
+`research/out/retrain_cohorts.json` `confirmation_candidates`).
+- Time-later than HI-Small: HI-Small ends at 2022/09/18 16:18. HI-Medium has 3,759 rows after that minute, rows
+  [31,894,479, 31,898,238) (3,759 rows, 2022/09/18 16:20 to 2022/09/28 15:58); SAML-D lies wholly after it (9,504,852 rows, 2022/10/07 10:35 to 2023/08/23 10:57). No other in-scope source is
+  local (8an, Data available).
+- No row overlap: HI-Medium and SAML-D are separate files with their own row ids; no row of either is a HI-Small row.
+  Timestamp overlap: HI-Medium rows [0, 31,894,479) share HI-Small's time span, so only the later interval was a candidate.
+- No prior scoring and no tuning use, part by part (60/20/20 split by row as in every earlier study):
+  - HI-Medium training part, rows [0, 19,138,942) (19,138,942 rows, 2022/09/01 00:00 to 2022/09/09 20:43): trained the pooled model served in `service/models/hardening.json`
+    (`unified_train.json` datasets, `pooled_hardening.py`) and the `aml_hardening.json` candidate: tuning use.
+  - HI-Medium validation part, rows [19,138,942, 25,518,590) (6,379,648 rows, 2022/09/09 20:43 to 2022/09/14 05:46): scored, and decided adoptions, in `aml_hardening.json` and
+    `pooled_hardening.json` validation.
+  - HI-Medium test part, rows [25,518,590, 31,898,238) (6,379,648 rows, 2022/09/14 05:46 to 2022/09/28 15:58): scored in `hardened_transfer.json` (all test laundering rows, checked against
+    the manifest), `unified_train.json`, `aml_hardening.json` and `pooled_hardening.json` test.
+  - SAML-D: the same three uses on all three parts ([0, 5,702,911) (5,702,911 rows, 2022/10/07 10:35 to 2023/04/16 21:10), [5,702,911, 7,603,881) (1,900,970 rows, 2023/04/16 21:10 to 2023/06/19 22:08), [7,603,881, 9,504,852) (1,900,971 rows, 2023/06/19 22:08 to 2023/08/23 10:57)), plus `transfer_samld.json`.
+  - Result: the time-later HI-Medium interval lies inside the scored test part, and every SAML-D row lies in a used
+    part. No interval of any local source is unscored. `results/` holds no HI-Medium or SAML-D result.
+- Consequence. Running 8an now can only screen. A challenger nominated on half 2 waits for a sealed cohort (for
+  example a newly generated AMLworld set of the same generator settings, or a bank's pilot data) that passes this
+  check; a short entry names that cohort, its rows and its hash before it is opened, and the confirmation rules below
+  apply to it unchanged. Until then the incumbent is kept.
+
+Decision data.
+- Half 2 screens only: it nominates at most one challenger and produces no replacement claim.
+- Replacement is judged only on the sealed, time-later confirmation cohort, read once: the challenger and S are each
+  scored on it once, in the same pass, with the half-1 freeze. No refit, map, threshold or arm choice uses it.
+
+Margin and estimator (frozen; one line of reason each).
+- Screening threshold: AP(X) - AP(S) on half 2 at least +0.02 absolute (8an's margin, kept: it is the cost of a
+  re-baseline). Of the arms that clear it and pass 8an's G3 to G5 as point estimates, the one with the larger half-2
+  AP gain is nominated; a tie to the third decimal goes to C_HS (8an). None clears it: no challenger.
+- Replacement threshold: the one-sided 95% lower confidence bound of AP(X) - AP(S) on the confirmation cohort is
+  above +0.02 (the margin must hold with the noise taken out, not only on average).
+- AP estimator: step-wise average precision (`sklearn.metrics.average_precision_score`) with sample weights 1 for
+  laundering rows and 1 / keep rate for kept genuine rows (1 where no row is dropped); no trapezoid (the trapezoid
+  rule overstates PR-AUC on rare positives, and every earlier result uses this estimator).
+- Paired block bootstrap: blocks are (payer = from bank and account, 24 h window counted from the cohort's first
+  minute) (accounts carry the dependence between payments; 8al's unit); 2,000 resamples of blocks with replacement
+  (the 5th percentile then rests on 100 replicates); numpy `default_rng(20261122)` for half 2 and
+  `default_rng(20261124)` for confirmation, the same draws for every arm and metric (paired, and fixed before any
+  number is seen); percentile bound: the lower bound is the 5th percentile of the replicate gains, an upper bound the
+  95th.
+- Undefined replicates: a replicate with no laundering row (AP and recall undefined) or no genuine row (ROC-AUC
+  undefined) is dropped and counted; the bound uses the remaining replicates (dropping is conservative only when rare,
+  hence the next rule).
+- Inconclusive evidence: a comparison is inconclusive if its cohort has fewer than 300 laundering rows, fewer than
+  100 blocks that contain one, or more than 1% undefined replicates (8al's 300 minimum: below it one row moves recall
+  by more than 0.003). Inconclusive is not a pass: S stays.
+
+Guards (all frozen on half 1 before half 2 is read; held unchanged for confirmation).
+- Score assembly: 8al's, as in 8an (the arm replaces the cascade inside max(iso_arm, iso_free) with the served
+  hardening term; no L1 gate), so the arms differ only by the model.
+- Calibration maps: one isotonic map per arm (`sklearn.isotonic.IsotonicRegression`, increasing, clip out of bounds)
+  fitted on half 1 only (the bands read risk as a probability).
+- Thresholds: each arm's band thresholds are the half-1 score quantiles that give S's half-1 band rates; the block
+  rate r1 is S's half-1 rate (alert loads stay comparable across arms).
+- Review unit: the payment (as 8al; a reviewer opens one payment).
+- Daily capacity: on each calendar day d of the scored cohort (date of the timestamp) the arm reviews its
+  round(r1 x payments on d) highest-risk payments (a desk works per day; 8an's single B over the whole half is the sum).
+- Tie-breaks: equal risks at the capacity cut go to the earlier row id (deterministic and chronological, as 8al).
+- Replacement tolerances, one-sided 95% bounds on the confirmation cohort (lower bounds unless said):
+  same-workload recall Recall_X - Recall_S at least -0.01; every 8ae attack, Recall_X(a) - Recall_S(a) at least
+  -0.02; ROC-AUC_X - ROC-AUC_S at least -0.01; upper bound of ECE_X - ECE_S (20 equal-count bins) at most +0.005
+  (8an's tolerances, now on bounds rather than point estimates, so a loss must be ruled out, not just unobserved).
+- 8an's G1 (HI-Medium) and G2 (SAML-D) run on parts already scored (above), so they are screening guards only.
+- Sparse cohorts are inconclusive, by the rule above, for every guard; one inconclusive guard blocks replacement.
+- LI-Small is unmeasured (8an); it is outside the replacement claim, and the model card says so if a model is ever
+  replaced.
+
+Implementation (enforced in `research/full_data_retrain.py`, committed before any decision scoring).
+- Split by the original integer row id and timestamp before any sampling; the genuine keep rate applies inside each
+  part afterwards, so no sampled row crosses a boundary.
+- Checks that stop the run: row ids unique and contiguous from 0 to the manifest's row count; every dump row's label
+  equal to the raw file's label at the same row id, and laundering counts equal to the manifest's; the file's sha256
+  equal to the manifest's; identical raw lines counted and written (the source can repeat a payment; a repeated row
+  id is a stop).
+- Full chronological score history: the engine streams every row from row 0 in time order, so account state at a
+  half-2 or confirmation row includes all earlier rows; per-row scores of every arm are kept in row order with the
+  row id.
+- Freeze: the script reads raw rows [0, half-2 start) only, fits and writes the freeze to
+  `research/out/full_data_retrain_half1.json` (maps, thresholds, r1, daily capacity rule, tie rule, row ranges), and
+  its sha256 goes in this log in a commit before any half-2 row is read; the script refuses to read half 2 unless the
+  file exists and matches that hash.
+- The test tail (HI-Small rows from TEST0) is unreachable: the reader clamps to rows below TEST0 and raises unless
+  `research/out/full_data_retrain.json` holds a written decision; descriptive test numbers come after it.
+- Confirmation data are read by the same script only after a named cohort passes the eligibility check in a committed
+  entry.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
