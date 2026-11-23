@@ -193,6 +193,27 @@ async fn error_answers_that_echo_input_stay_under_the_byte_cap() {
     assert!(v.get("truncated").is_none() && v["detail"].is_array());
 }
 
+#[tokio::test]
+async fn errors_built_outside_the_body_reader_are_bounded_too() {
+    // the hand-built errors (query integers and booleans, timestamps, digraph values, the review action) go through
+    // the same collector: each echo is cut to MAX_INPUT_BYTES and the answer says it was cut
+    use rusetect_server::validate::MAX_INPUT_BYTES;
+    let t = T::new();
+    let x = "x".repeat(20_000);
+    let ts = format!("2022-09-09 10:00{}", "x".repeat(4_000));
+    let pay = json!({"timestamp": ts, "from_bank": "1", "from_account": "a", "to_bank": "2", "to_account": "b", "amount_paid": 1, "payment_format": "ACH"});
+    for (m, path, body) in [("GET", format!("/api/v2/alerts?limit={x}"), None), ("POST", format!("/api/v2/demo/reset?warm={x}"), None),
+                            ("POST", "/api/v2/payment".into(), Some(pay)),
+                            ("POST", "/api/v2/behaviour/check".into(), Some(json!({"account": "a", "digraphs": {x.as_str(): x}})))] {
+        let (s, v, text) = t.req(m, &path, body, &[("X-Analyst-Key", "demo-supervisor")]).await;
+        let e = &v["detail"][0];
+        assert_eq!((s, v["truncated"].clone()), (StatusCode::UNPROCESSABLE_ENTITY, json!(true)), "{path}: {}", &text[..text.len().min(300)]);
+        assert!(e["input"].to_string().len() <= MAX_INPUT_BYTES && e["loc"].to_string().len() < 300, "{path}: {e}");
+    }
+    let (s, v, _) = t.req("POST", "/api/v2/alerts/A1/review", Some(json!({"action": "z".repeat(4_000)})), &[("X-Analyst-Key", "demo-analyst-1"), ("X-Nonce", "nonce-123456")]).await;
+    assert!(s == StatusCode::FORBIDDEN && v["detail"].as_str().unwrap().len() < 120, "{v}");
+}
+
 /// Abort the whole test process if the guard is still alive after `secs`: a regression to an endless regex loop would
 /// otherwise hang the runner, since the blocking task holding the loop keeps the runtime from shutting down.
 fn deadline(secs: u64) -> std::sync::mpsc::Sender<()> {

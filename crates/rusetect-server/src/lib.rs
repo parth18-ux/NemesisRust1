@@ -234,6 +234,13 @@ impl ApiError {
     fn invalid(errs: Errors) -> Self {
         ApiError { status: 422, detail: Value::Array(errs.into_list()) }
     }
+    /// One validation error built outside a body reader (`root` is `body` or `query`), through the same bounded
+    /// collector as the rest, so what it echoes is cut before it is copied.
+    pub(crate) fn validation(root: &str, kind: &str, loc: &[&str], msg: &str, input: &Value, ctx: Option<&Value>) -> Self {
+        let mut e = Errors::default();
+        e.push_in(root, kind, loc, msg, input, ctx);
+        ApiError::invalid(e)
+    }
 }
 
 /// Largest error body, wrapper included. Errors echo what the caller sent (inputs, field names, actions), so the
@@ -287,11 +294,10 @@ pub(crate) type ApiResult = Result<PyJson, ApiError>;
 /// Parse a JSON body; FastAPI's errors for invalid JSON.
 fn body_json(b: &Bytes) -> Result<Value, ApiError> {
     if b.is_empty() {
-        return Err(ApiError { status: 422, detail: json!([{"type": "missing", "loc": ["body"], "msg": "Field required", "input": null}]) });
+        return Err(ApiError::validation("body", "missing", &[], "Field required", &Value::Null, None));
     }
-    serde_json::from_slice(b).map_err(|e| ApiError {
-        status: 422,
-        detail: json!([{"type": "json_invalid", "loc": ["body", e.column()], "msg": "JSON decode error", "input": {}, "ctx": {"error": e.to_string()}}]),
+    serde_json::from_slice(b).map_err(|e| {
+        ApiError::validation("body", "json_invalid", &[&e.column().to_string()], "JSON decode error", &json!({}), Some(&json!({"error": e.to_string()})))
     })
 }
 
@@ -306,8 +312,13 @@ fn parse_obj<T>(b: &Bytes, f: impl FnOnce(&Obj, &mut Errors) -> T) -> Result<T, 
     }
 }
 
+/// A caller's text as an error's `input`, copied only up to what an error keeps.
+fn echo(s: &str) -> Value {
+    Value::String(validate::clip(s, validate::MAX_INPUT_BYTES))
+}
+
 fn bad_timestamp(field: &str, value: &str) -> ApiError {
-    ApiError { status: 422, detail: json!([{"type": "value_error", "loc": ["body", field], "msg": "Value error, expected YYYY-MM-DD HH:MM (UTC)", "input": value}]) }
+    ApiError::validation("body", "value_error", &[field], "Value error, expected YYYY-MM-DD HH:MM (UTC)", &echo(value), None)
 }
 
 /// Run a handler body on the blocking pool with the state locked (requests are serialised, as in Python).
@@ -947,7 +958,7 @@ async fn v2_review(State(app): State<AppRef>, Path(alert_id): Path<String>, h: H
     blocking(move || {
         let who = analyst_for(key.as_deref()).ok_or_else(|| ApiError::new(401, "missing or unknown X-Analyst-Key"))?;
         if !allowed(&who.role, &action) {
-            return Err(ApiError::new(403, format!("role {} cannot {}", who.role, action)));
+            return Err(ApiError::new(403, format!("role {} cannot {}", who.role, validate::clip(&action, 64))));
         }
         let nonce_ok = |s: &mut AppState| if s.nonces.use_nonce(nonce.as_deref()) { Ok(()) } else { Err(ApiError::new(409, "X-Nonce missing or already used")) };
         live::act_on_alert(&app, &alert_id, nonce_ok, |s| {
@@ -1159,10 +1170,8 @@ async fn v2_confirm(State(app): State<AppRef>, b: Bytes) -> ApiResult {
 
 fn digraphs_of(m: &Map<String, Value>) -> Result<IndexMap<String, f64>, ApiError> {
     m.iter().map(|(k, v)| {
-        rusetect::pyfmt::py_float_value(v).filter(|x| x.is_finite()).map(|x| (k.clone(), x)).ok_or_else(|| ApiError {
-            status: 422,
-            detail: json!([{"type": "float_parsing", "loc": ["body", "digraphs", k], "msg": "Input should be a valid number", "input": v}]),
-        })
+        rusetect::pyfmt::py_float_value(v).filter(|x| x.is_finite()).map(|x| (k.clone(), x))
+            .ok_or_else(|| ApiError::validation("body", "float_parsing", &["digraphs", k], "Input should be a valid number", v, None))
     }).collect()
 }
 
@@ -1447,9 +1456,8 @@ struct LimitQ {
 pub(crate) fn int_query(v: &Option<String>, name: &str, default: i64) -> Result<i64, ApiError> {
     match v {
         None => Ok(default),
-        Some(s) => s.trim().parse::<i64>().map_err(|_| ApiError {
-            status: 422,
-            detail: json!([{"type": "int_parsing", "loc": ["query", name], "msg": "Input should be a valid integer, unable to parse string as an integer", "input": s}]),
+        Some(s) => s.trim().parse::<i64>().map_err(|_| {
+            ApiError::validation("query", "int_parsing", &[name], "Input should be a valid integer, unable to parse string as an integer", &echo(s), None)
         }),
     }
 }
@@ -1545,9 +1553,8 @@ struct WarmQ {
 async fn demo_reset(State(app): State<AppRef>, Query(q): Query<WarmQ>) -> ApiResult {
     let warm = match &q.warm {
         None => true,
-        Some(v) => validate::parse_bool_str(v).ok_or_else(|| ApiError {
-            status: 422,
-            detail: json!([{"type": "bool_parsing", "loc": ["query", "warm"], "msg": "Input should be a valid boolean, unable to interpret input", "input": v}]),
+        Some(v) => validate::parse_bool_str(v).ok_or_else(|| {
+            ApiError::validation("query", "bool_parsing", &["warm"], "Input should be a valid boolean, unable to interpret input", &echo(v), None)
         })?,
     };
     with_state(app, move |s| {

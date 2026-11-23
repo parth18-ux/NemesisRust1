@@ -105,10 +105,17 @@ fn walk_map(m: &Map<String, Value>, b: &mut usize, depth: usize, cut: &mut bool)
 
 impl Errors {
     pub fn push(&mut self, kind: &str, loc: &[&str], msg: &str, input: &Value) {
+        self.push_in("body", kind, loc, msg, input, None);
+    }
+
+    /// `push` under another root (`query`) or with pydantic's `ctx`; every error, also one built outside `Obj`, comes
+    /// through here, so its echoes are bounded before they are copied.
+    pub fn push_in(&mut self, root: &str, kind: &str, loc: &[&str], msg: &str, input: &Value, ctx: Option<&Value>) {
         if !self.full() {
             let (input, cut) = bounded(input, MAX_INPUT_BYTES - SLACK);
-            self.2 |= cut;
-            self.add(kind, loc, msg, input);
+            let ctx = ctx.map(|c| bounded(c, MAX_INPUT_BYTES - SLACK));
+            self.2 |= cut || ctx.as_ref().is_some_and(|c| c.1);
+            self.add(root, kind, loc, msg, input, ctx.map(|c| c.0));
         }
     }
 
@@ -116,7 +123,7 @@ impl Errors {
     fn push_map(&mut self, kind: &str, loc: &[&str], msg: &str, input: &Map<String, Value>) {
         if !self.full() {
             let input = walk_map(input, &mut (MAX_INPUT_BYTES - SLACK - 2), 0, &mut self.2);
-            self.add(kind, loc, msg, Value::Object(input));
+            self.add("body", kind, loc, msg, Value::Object(input), None);
         }
     }
 
@@ -124,13 +131,16 @@ impl Errors {
         self.0.last().is_some_and(|e| e["type"] == "truncated")
     }
 
-    fn add(&mut self, kind: &str, loc: &[&str], msg: &str, input: Value) {
-        let mut l = vec![json!("body")];
+    fn add(&mut self, root: &str, kind: &str, loc: &[&str], msg: &str, input: Value, ctx: Option<Value>) {
+        let mut l = vec![json!(root)];
         l.extend(loc.iter().map(|s| match s.parse::<i64>() {
             Ok(i) => json!(i),
             Err(_) => json!(clip_str(s, &mut 128, &mut self.2)), // a field name can be any key the caller sent
         }));
-        let e = json!({"type": kind, "loc": l, "msg": clip_str(msg, &mut 512, &mut false), "input": input});
+        let mut e = json!({"type": kind, "loc": l, "msg": clip_str(msg, &mut 512, &mut false), "input": input});
+        if let Some(c) = ctx {
+            e["ctx"] = c;
+        }
         let n = size(&e) + 1;
         if self.0.len() >= MAX_ERRORS || self.1 + n > MAX_ERRORS_BYTES {
             self.0.push(truncated_marker());
@@ -151,6 +161,13 @@ impl Errors {
         }
         self.0
     }
+}
+
+/// The first `max` characters of a caller's text for an error message, ending in "…" when cut; copies no more.
+pub fn clip(s: &str, max: usize) -> String {
+    let mut it = s.chars();
+    let out: String = it.by_ref().take(max).collect();
+    if it.next().is_some() { out + "…" } else { out }
 }
 
 /// Serialized size of a value that is already bounded.
