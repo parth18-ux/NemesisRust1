@@ -9,8 +9,15 @@ use serde_json::{json, Map, Value};
 #[derive(Default)]
 pub struct Errors(pub Vec<Value>);
 
+/// Most errors one 422 lists. Each echoes its input, so without a cap a 2 MiB body of bad list items (`[{},{},...]` to
+/// /v2/payments/batch) built a 431 MB answer and took the server to 12 GB.
+pub const MAX_ERRORS: usize = 100;
+
 impl Errors {
     pub fn push(&mut self, kind: &str, loc: &[&str], msg: &str, input: &Value) {
+        if self.0.len() >= MAX_ERRORS {
+            return;
+        }
         let mut l = vec![json!("body")];
         l.extend(loc.iter().map(|s| match s.parse::<i64>() {
             Ok(i) => json!(i),

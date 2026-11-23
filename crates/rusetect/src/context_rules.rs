@@ -80,12 +80,15 @@ pub fn redact(text: &str) -> (String, Vec<String>) {
     let order: [(&str, &PyRegex); 6] = [("link", &PAT.link), ("email", &PAT.email), ("upi", &PAT.upi), ("phone", &PAT.phone),
                                          ("account", &PAT.account), ("code", &PAT.code)];
     for (kind, rx) in order {
-        out = rx.sub_with(&out, |c| {
+        let (mut done, last, complete) = rx.sub_parts(&out, |c| {
             if kind != "code" {
                 ents.push(entity_hash(kind, c.get(0).unwrap().as_str()));
             }
             format!("[{}]", kind.to_uppercase())
         });
+        // fail closed: text the pattern could not search within its backtracking limit is withheld, not kept as is
+        done.push_str(if complete { &out[last..] } else { "[REDACTED]" });
+        out = done;
     }
     (out, ents)
 }
@@ -443,6 +446,14 @@ mod tests {
         }
         assert!(ents.iter().any(|e| e.starts_with("upi:")) && ents.iter().any(|e| e.starts_with("account:")));
         assert_eq!(redact("a@ybl").1, redact("A@YBL").1);
+    }
+
+    #[test]
+    fn redaction_ends_and_withholds_text_it_cannot_search() {
+        // the e-mail pattern passes its backtracking limit on this text; before the fix the search never ended
+        let text = format!("call 98765 43210 {}", "a.".repeat(2_300));
+        let (txt, _) = redact(&text);
+        assert!(txt.ends_with("[REDACTED]") && !txt.contains("a.a.") && !txt.contains("98765"), "{txt}");
     }
 
     #[test]

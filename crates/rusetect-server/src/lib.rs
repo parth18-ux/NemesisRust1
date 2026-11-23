@@ -1375,12 +1375,12 @@ async fn v2_batch(State(app): State<AppRef>, b: Bytes) -> ApiResult {
         e.push("list_type", &[], "Input should be a valid list", &v);
         return Err(ApiError::invalid(e));
     };
+    if arr.len() > 20000 {
+        return Err(ApiError::new(413, "Batch too large (max 20000)"));
+    }
     let items: Vec<PaymentIn> = arr.iter().enumerate().filter_map(|(i, x)| Obj::new(x, vec![i.to_string()], &mut e).map(|o| PaymentIn::parse(&o, &mut e))).collect();
     if !e.is_empty() {
         return Err(ApiError::invalid(e));
-    }
-    if items.len() > 20000 {
-        return Err(ApiError::new(413, "Batch too large (max 20000)"));
     }
     // in time order by the parsed minute (sorting the raw strings misorders mixed separators or unpadded months)
     let mut pays: Vec<Payment> = items.iter().map(payment_of).collect::<Result<_, _>>()?;

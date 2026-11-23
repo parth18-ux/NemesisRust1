@@ -148,6 +148,31 @@ async fn oversized_body_is_refused_before_the_handler() {
 }
 
 #[tokio::test]
+async fn bad_list_items_cannot_blow_up_the_error_answer() {
+    // before the fix 2 MiB of `{}` items built a 431 MB 422 and took the server to 12 GB
+    let t = T::new();
+    let (s, _, text) = t.req("POST", "/api/v2/payments/batch", Some(Value::Array(vec![json!({}); 20_001])), &[]).await;
+    assert_eq!((s, text.len() < 200), (StatusCode::PAYLOAD_TOO_LARGE, true), "{}", &text[..text.len().min(200)]);
+    let (s, v, _) = t.req("POST", "/api/v2/payments/batch", Some(Value::Array(vec![json!({}); 20_000])), &[]).await;
+    assert_eq!((s, v["detail"].as_array().unwrap().len()), (StatusCode::UNPROCESSABLE_ENTITY, rusetect_server::validate::MAX_ERRORS));
+    let body = json!({"account": "x", "normal_pin": "1234", "duress_pin": "9999", "trusted_contacts": vec![1; 50_000]});
+    let (s, v, _) = t.req("POST", "/api/v2/duress/register", Some(body), &[]).await;
+    assert_eq!((s, v["detail"].as_array().unwrap().len()), (StatusCode::UNPROCESSABLE_ENTITY, rusetect_server::validate::MAX_ERRORS));
+}
+
+#[tokio::test]
+async fn a_message_past_the_regex_backtracking_limit_is_answered() {
+    // "a." x 2,300 made the e-mail redaction pattern loop forever while holding the state lock: the server hung
+    let t = T::new();
+    for text in ["a-".repeat(2_500), "a.".repeat(2_300)] {
+        let r = tokio::time::timeout(std::time::Duration::from_secs(30), t.req("POST", "/api/v2/message", Some(json!({"text": text})), &[])).await;
+        assert_eq!(r.expect("answered within 30 s").0, StatusCode::OK);
+    }
+    let m = &t.get("/api/v2/messages").await["messages"][0];
+    assert!(m["text"].as_str().unwrap().ends_with("[REDACTED]"), "unsearched text is withheld: {m}");
+}
+
+#[tokio::test]
 async fn validation_errors_look_like_fastapi() {
     let t = T::new();
     let (s, v, _) = t.req("POST", "/api/v2/payment", Some(json!({"timestamp": "2022-09-09 10:00", "from_bank": 7, "amount_paid": -1})), &[]).await;

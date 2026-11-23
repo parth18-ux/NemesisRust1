@@ -92,7 +92,7 @@ impl PyRegex {
         let t = translate(py_pattern);
         let full = if ignore_case { format!("(?i){t}") } else { t };
         let re = fancy_regex::RegexBuilder::new(&full)
-            .backtrack_limit(10_000_000)
+            .backtrack_limit(1_000_000)
             .build()
             .unwrap_or_else(|e| panic!("bad pattern {py_pattern:?}: {e}"));
         PyRegex { re, pattern: py_pattern.to_string() }
@@ -105,19 +105,19 @@ impl PyRegex {
 
     /// `[m.start() for m in re.finditer(...)]` as byte offsets
     pub fn find_starts(&self, text: &str) -> Vec<usize> {
-        self.re.find_iter(text).filter_map(|m| m.ok()).map(|m| m.start()).collect()
+        self.re.find_iter(text).map_while(Result::ok).map(|m| m.start()).collect()
     }
 
     /// `re.findall` for a pattern without groups
     pub fn find_all(&self, text: &str) -> Vec<String> {
-        self.re.find_iter(text).filter_map(|m| m.ok()).map(|m| m.as_str().to_string()).collect()
+        self.re.find_iter(text).map_while(Result::ok).map(|m| m.as_str().to_string()).collect()
     }
 
     /// `re.findall` for a pattern with groups: one Vec of group texts per match ("" for a group that did not take part)
     pub fn find_groups(&self, text: &str) -> Vec<Vec<String>> {
         self.re
             .captures_iter(text)
-            .filter_map(|c| c.ok())
+            .map_while(Result::ok)
             .map(|c| (1..c.len()).map(|i| c.get(i).map(|m| m.as_str().to_string()).unwrap_or_default()).collect())
             .collect()
     }
@@ -128,17 +128,27 @@ impl PyRegex {
     }
 
     /// `re.sub(pattern, fn, text)`
-    pub fn sub_with<F: FnMut(&Captures) -> String>(&self, text: &str, mut f: F) -> String {
+    pub fn sub_with<F: FnMut(&Captures) -> String>(&self, text: &str, f: F) -> String {
+        let (mut out, last, _) = self.sub_parts(text, f);
+        out.push_str(&text[last..]);
+        out
+    }
+
+    /// `re.sub` up to where the search ended: the replaced text before byte `last`, and whether the search reached the
+    /// end of `text`. It stops early only when a match attempt exceeds the backtracking limit; the text from `last` on
+    /// was then not searched. (fancy-regex's iterators repeat that error forever instead of ending, so every loop here
+    /// stops at the first error: `map_while`, never `filter_map`.)
+    pub fn sub_parts<F: FnMut(&Captures) -> String>(&self, text: &str, mut f: F) -> (String, usize, bool) {
         let mut out = String::with_capacity(text.len());
         let mut last = 0;
-        for c in self.re.captures_iter(text).filter_map(|c| c.ok()) {
+        for c in self.re.captures_iter(text) {
+            let Ok(c) = c else { return (out, last, false) };
             let m = c.get(0).unwrap();
             out.push_str(&text[last..m.start()]);
             out.push_str(&f(&c));
             last = m.end();
         }
-        out.push_str(&text[last..]);
-        out
+        (out, last, true)
     }
 }
 
@@ -157,6 +167,17 @@ mod tests {
     fn lookbehind_digits() {
         let r = PyRegex::new(r"(?<!\d)\d{4,8}(?!\d)", false);
         assert_eq!(r.find_all("otp 4821 and 123456789 x 99"), vec!["4821"]);
+    }
+
+    #[test]
+    fn a_search_over_the_backtracking_limit_ends_instead_of_looping() {
+        // quadratic for this pattern: the search from every start position runs to the end of the text, so 4,600
+        // characters pass the 1M-step limit; fancy-regex then yields the same error forever, which hung the server
+        let r = PyRegex::new(r"\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b", true);
+        let text = "a.".repeat(2_300);
+        assert!(r.find_all(&text).is_empty() && r.find_starts(&text).is_empty() && r.find_groups(&text).is_empty());
+        assert_eq!(r.sub(&text, "[EMAIL]"), text, "the rest of the text is kept as it is");
+        assert_eq!(r.sub_parts(&text, |_| String::new()), (String::new(), 0, false));
     }
 
     #[test]
