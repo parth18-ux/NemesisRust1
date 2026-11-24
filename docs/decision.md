@@ -1145,12 +1145,17 @@ offer).
   acquisition and contention counters are not exposed: unavailable.
 - Checks before and after the window: anonymous `GET /api/v2/alerts` returns 401; a viewer `POST .../review`
   returns 403; the analyst can hold a reserved alert (one of the newest staged alerts, never in the evidence
-  sequence; a different one before and after) and its evidence `pack_hash` is stable across the window; the live
+  sequence; a different one before and after) and the alert record in its evidence pack is unchanged across the window; the live
   sequence advanced by the accepted webhooks. Not done (time): restart and replay of accepted inputs, signature
   verification with the signing identity, response-contract comparison.
 - Validity: a trial is invalid if a staging webhook fails, a check fails, or the open offers do not drain within
   120 s after the window; it is kept in the output and rerun once in place. Application errors and timeouts during
   the window are outcomes, not invalidations.
+- Amendment before the first measured trial: a harness dry run (stage 200, main, discarded) showed that the
+  evidence `pack_hash` of the reserved alert changes across the window (a second dry trial ran the baseline binary
+  once to confirm it starts with the same configuration; both discarded), because the pack also lists linked alerts
+  and audit entries that live writes add. The check now compares the alert record in the pack (`alert`: status,
+  actions) instead.
 - Report: per revision and stage, the median over its four trials of each endpoint's p50 and p99 request latency,
   with every trial shown, and per-order paired differences (main minus baseline) without pooling. The primary
   reading is how each read endpoint's latency on main changes from 200 to 50,000 durable alerts. The result is for

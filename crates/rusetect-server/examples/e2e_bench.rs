@@ -949,7 +949,7 @@ mod readbench {
         };
         let pack_hash = |id: String| async move {
             let (_, b) = once(port, req("GET", &format!("/api/v2/alerts/{id}/evidence"), Some(ANALYST), None)).await;
-            serde_json::from_slice::<Value>(&b).ok().and_then(|v| v["pack_hash"].as_str().map(String::from))
+            serde_json::from_slice::<Value>(&b).ok().map(|v| v["alert"].clone()).filter(|a| a["status"].is_string())
         };
         let before = check(reserved[0].clone()).await;
         let hash_before = pack_hash(reserved[0].clone()).await;
@@ -1056,10 +1056,10 @@ mod readbench {
         let hash_after = pack_hash(reserved[0].clone()).await;
         let peak = r2(kb(sp, "VmHWM:") as f64 / 1024.0);
         let checks = json!({"anonymous_401": [before.0 == 401, after.0 == 401], "viewer_write_403": [before.1 == 403, after.1 == 403],
-            "analyst_hold_200": [before.2 == 200, after.2 == 200], "reserved_pack_hash_stable": hash_before.is_some() && hash_before == hash_after,
+            "analyst_hold_200": [before.2 == 200, after.2 == 200], "reserved_alert_record_stable": hash_before.is_some() && hash_before == hash_after,
             "seq_advanced_by_accepted_webhooks": seq1 - seq_before_window == accepted});
         let valid = stage_errors == 0 && missing == 0 && checks["anonymous_401"] == json!([true, true]) && checks["viewer_write_403"] == json!([true, true])
-            && checks["analyst_hold_200"] == json!([true, true]) && checks["reserved_pack_hash_stable"] == true && checks["seq_advanced_by_accepted_webhooks"] == true;
+            && checks["analyst_hold_200"] == json!([true, true]) && checks["reserved_alert_record_stable"] == true && checks["seq_advanced_by_accepted_webhooks"] == true;
 
         // ---- per endpoint summaries (measured window only) and raw rows
         let mut eps = serde_json::Map::new();
@@ -1082,7 +1082,7 @@ mod readbench {
         drop(srv);
         drop(redis);
         let _ = std::fs::remove_dir_all(&dir);
-        eprintln!("{tag}: staged {alerts0} alerts in {stage_s:.0} s, valid {valid}, open at end {open_at_end}, evidence p50 {} ms, alerts p50 {} ms",
+        eprintln!("{tag}: staged {alerts0} alerts in {stage_s:.0} s, valid {valid} {checks}, open at end {open_at_end}, evidence p50 {} ms, alerts p50 {} ms",
             eps[READS[3]]["request_ms"]["p50"], eps[READS[0]]["request_ms"]["p50"]);
         json!({"revision": rev, "stage": stage, "trial": trial, "valid": valid, "staging": {"webhooks": next, "errors": stage_errors, "seconds": r2(stage_s)},
                "start": {"seq": seq0, "durable_alerts": alerts0, "ledger": ledger0, "expected_resident": alerts0.min(10_000), "resident": null},
