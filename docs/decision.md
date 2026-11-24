@@ -1094,6 +1094,22 @@ confirmation cohort is eligible. Codex and Parth decided to defer 8an entirely, 
 of 8an is trained and no decision row is scored. The incumbent model S stays served until fresh partner data with
 mature outcomes supports an independent confirmation.
 
+**8aq. Overlapping first deliveries of one event converge on one stored score (2026-11-24).** Taken over from
+Codex (GPT). Two attempts at one eid can overlap: two stream workers on one message (a consumer restarted while
+another still runs, or the same eid published twice), or a webhook retry after the first request outlived its
+`pending:<seq>` claim (`CLAIM_TTL_S`). The fenced claim stops two webhook requests from committing two results,
+and the in-process account stripes serialise requests within one instance, but neither covers stream workers or
+two instances after a claim expiry, so the race was possible. Before the fix, `seen:{eid}` and
+`pair-score:{eid}` were each written once (SET NX and a set-once script), but an attempt that read account state
+before the other's claim landed went on with its own features: it returned (and the worker emitted) a decision
+that no stored value supports. `concurrent_first_deliveries_converge_on_one_stored_score` (tests/scale.rs)
+reproduces it deterministically: racer A reads and is held before its claim by a TCP proxy, other payments and
+racer B run in full, then A continues. Before the fix A returned Approve while the stored result was Block + STR
+draft; after it, both return the stored result. Fix: the pair-score script also reads
+`seen:{eid}`; if it holds other features than the attempt used, it writes nothing and returns them, and the
+attempt rescores from them. That costs one more round trip only on the losing path; the common path keeps its
+round trips.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

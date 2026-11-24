@@ -1,6 +1,6 @@
 //! Stateless scoring worker: reads payments from one Redis Stream partition, keeps account state in Redis, scores the
 //! payment cascade and the context layer per payment, and writes decisions to the "decisions" stream.
-use super::redis_state::RedisState;
+use super::redis_state::{decode_features, RedisState};
 use crate::inputs::{CURRENCIES, PAYMENT_FORMATS};
 use rusetect::context_rules::{assess, combine, from_engine_features};
 use rusetect::engine::DECISIONS;
@@ -33,21 +33,38 @@ impl Scorer {
 pub fn score_one(eng: &Engine, state: &mut RedisState, p: &Payment) -> redis::RedisResult<Value> {
     let m = eng.models.as_ref().unwrap();
     let cfg = &eng.cfg;
-    let (f, write) = state.features_read(p)?;
-    let sf = state.last_sender_fan_in;
-    let x = eng.vec(&f);
-    let s1 = m.l1.predict(&x) as f64;
-    let mut esc = s1 >= cfg.l1_threshold;
-    let mut risk = if esc { m.l2(&x) } else { s1 };
+    let (mut f, write) = state.features_read(p)?;
+    let mut sf = state.last_sender_fan_in;
+    let cascade = |f: &rusetect::engine::Features| {
+        let x = eng.vec(f);
+        let s1 = m.l1.predict(&x) as f64;
+        let esc = s1 >= cfg.l1_threshold;
+        (esc, if esc { m.l2(&x) } else { s1 }, x)
+    };
+    let (mut esc, mut risk, mut x) = cascade(&f);
     let payer_window = m.hardening.as_ref().is_some_and(|h| h.payer_window);
     let payee = if payer_window { String::new() } else { format!("{}|{}", p.to_bank, p.to_account) };
     // one round trip: the account-state write script, then the pair window (different keys, so the order is free)
     let mut pl = redis::pipe();
     pl.add_command(write);
     let (n, pair) = if let Some(eid) = p.eid {
-        state.pair_score_cmds(&mut pl, p, &payee, risk, eid);
-        let (_, pair): (i64, (usize, f64)) = pl.query(&mut state.con)?;
-        pair
+        state.pair_score_cmds(&mut pl, p, &payee, risk, eid, &state.last_stored);
+        let (_, mut reply): (i64, Vec<String>) = pl.query(&mut state.con)?;
+        // an overlapping attempt claimed seen:{eid} first: score from its features, as every later retry will
+        if reply.len() == 2 && reply[0] == "lost" {
+            let won = reply.pop().unwrap();
+            let bad = || redis::RedisError::from((redis::ErrorKind::TypeError, "unreadable seen:{eid}"));
+            (sf, f.0) = decode_features(&won).ok_or_else(bad)?;
+            (esc, risk, x) = cascade(&f);
+            let mut pl = redis::pipe();
+            state.pair_score_cmds(&mut pl, p, &payee, risk, eid, &won);
+            (reply,) = pl.query(&mut state.con)?;
+        }
+        let bad = || redis::RedisError::from((redis::ErrorKind::TypeError, "unexpected pair-score reply"));
+        match &reply[..] {
+            [n, s] => (n.parse::<usize>().map_err(|_| bad())?, s.parse::<f64>().map_err(|_| bad())?),
+            _ => return Err(bad()),
+        }
     } else {
         state.pair_window_cmds(&mut pl, p, &payee, risk);
         let (_, members): (i64, Vec<String>) = pl.query(&mut state.con)?;
