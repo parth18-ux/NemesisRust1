@@ -1,0 +1,16 @@
+{
+  "what": "8ap: main against candidate, rule of docs/decision.md 8ap",
+  "main": {
+    "concurrency": 32,
+    "throughput_rps": 5211.27,
+    "p99": 10.88
+  },
+  "candidate": {
+    "concurrency": 32,
+    "throughput_rps": 5053.35,
+    "p99": 10.33
+  },
+  "primary_change_pct": -3.03,
+  "candidate_gates_green": true,
+  "verdict": "no material change"
+}

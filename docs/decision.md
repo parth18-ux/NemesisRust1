@@ -1134,6 +1134,31 @@ its slot and reported as such. Outputs: `results/scale_main.json`, `results/scal
 `results/scale_compare.json`. Scope: one shared container where the load generator, server and Redis compete for four
 CPUs; not a production capacity figure. 10,000 events per second is not expected on this box (`docs/SCALING.md` 3c).
 
+**8ap-result. Single-node webhook throughput: no material change (written after the six runs).** Run as registered,
+in the registered order, with no extra runs and no stop-rule stops; every stage of every repetition passed the
+correctness gate in both variants (`results/scale_main.json`, `results/scale_candidate.json`). Primary metric
+(`results/scale_compare.json`): main 5,211.27 events per second at concurrency 32 (median p99 10.88 ms), candidate
+5,053.35 at concurrency 32 (median p99 10.33 ms), a change of -3.03%: **no material change** under the rule. Medians of three
+repetitions per stage:
+
+| Concurrency | main rps | main p99 ms | candidate rps | candidate p99 ms | main rps by repetition | candidate rps by repetition |
+|---|---|---|---|---|---|---|
+| 1 | 1,365.9 | 1.54 | 1,409.17 | 1.72 | 1,365.9 / 1,267.89 / 1,380.4 | 1,409.17 / 1,275.4 / 1,435.95 |
+| 8 | 4,111.55 | 4.5 | 4,458.37 | 3.9 | 3,799.64 / 4,111.55 / 5,191.54 | 3,652.26 / 4,458.37 / 4,740.11 |
+| 32 | 5,211.27 | 10.88 | 5,053.35 | 10.33 | 4,743.13 / 5,267.71 / 5,211.27 | 5,053.35 / 4,517.75 / 5,597.35 |
+| 64 | 5,118.74 | 18.9 | 4,537.6 | 22.27 | 5,827.32 / 5,118.74 / 4,840.51 | 4,537.6 / 4,160.42 / 4,733.46 |
+| 128 | 4,178.37 | 42.34 | 4,873.57 | 40.98 | 4,178.37 / 4,258.24 / 4,139.22 | 3,660.88 / 5,492.72 / 4,873.57 |
+
+Reading: one round trip fewer and the wider stripes did not raise throughput on this box; the spread between
+repetitions of one variant is larger than any difference between the variants. That fits the profile
+(`results/scale_profile.json`): the shared four CPUs and the single-threaded Redis, not lock waits, set the ceiling,
+and saving one loopback round trip does not free enough of either. The change is kept: it is tested, it does not
+change what is stored or decided, and each event makes one fewer network round trip, which costs more over a real
+network (Upstash from Vercel) than over loopback; that benefit was not measured here. 10,000 events per second on
+one node of this size is still not in reach; the next levers are Redis on its own core or machine, `EVALSHA`, and
+group commit. Commit ids: the binaries were built from `5b041b5` (main) and `84505e4` (candidate), as recorded in the
+files; after pull request #48 merged, the candidate commits were rebased onto `main` with no change to any file.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).

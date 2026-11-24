@@ -1,0 +1,509 @@
+{
+  "what": "8ap: the signed Redis webhook on one node, variant main (protocol: docs/decision.md 8ap)",
+  "generated_by": "crates/rusetect-server/examples/e2e_bench.rs (e2e_bench scale <variant> <rep>)",
+  "scope": "One shared 4-CPU container: load generator, server and redis-server share the same cores, over loopback. Not the Vercel deployment and not a production capacity figure.",
+  "design": {
+    "levels": [
+      1,
+      8,
+      32,
+      64,
+      128
+    ],
+    "requests_per_level": 20000,
+    "warmup_per_level": 1000,
+    "replay_samples": 100,
+    "stop_p99_ms": 1000.0,
+    "p99_bound_ms": 25.0,
+    "workload": "400 payers, 300 payees, unique HMAC-signed event ids (as S1 and F1)"
+  },
+  "repetitions": {
+    "1": {
+      "generated_at": "2026-11-24T11:37:19Z",
+      "server_revision": "5b041b5",
+      "harness_git_head": "84505e4",
+      "server_sha256": "11adedfe86d9a26a89f1db7f28cd75a041a2a5cbdde78d1e27d7a95e83f893a8",
+      "harness_sha256": "0030f02251001db8058e704dd6afd23d996c5e39cd73df1693eec575b3eb95c1",
+      "rusetect_live_pool": null,
+      "machine": {
+        "cpu": "Intel(R) Xeon(R) Processor @ 2.30GHz",
+        "logical_cpus": 4,
+        "os": "Linux 6.18.44-fc-v819",
+        "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+        "redis_server": "Redis server v=7.0.15 sha=00000000:0 malloc=jemalloc-5.3.0 bits=64 build=d064f9f48c901a92"
+      },
+      "levels": [
+        {
+          "concurrency": 1,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "wall_s": 14.64,
+          "throughput_rps": 1365.9,
+          "latency_ms": {
+            "p50": 0.66,
+            "p95": 1.13,
+            "p99": 1.53,
+            "max": 9.35,
+            "mean": 0.72
+          },
+          "gate": {
+            "green": true,
+            "ledger_growth": 20000,
+            "seq_advance": 20000,
+            "replays_sent": 100,
+            "replays_not_identical": 0,
+            "ledger_growth_on_replay": 0
+          }
+        },
+        {
+          "concurrency": 8,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "wall_s": 5.26,
+          "throughput_rps": 3799.64,
+          "latency_ms": {
+            "p50": 1.97,
+            "p95": 3.39,
+            "p99": 4.5,
+            "max": 13.72,
+            "mean": 2.09
+          },
+          "gate": {
+            "green": true,
+            "ledger_growth": 20000,
+            "seq_advance": 20000,
+            "replays_sent": 100,
+            "replays_not_identical": 0,
+            "ledger_growth_on_replay": 0
+          }
+        },
+        {
+          "concurrency": 32,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "wall_s": 4.22,
+          "throughput_rps": 4743.13,
+          "latency_ms": {
+            "p50": 6.45,
+            "p95": 9.73,
+            "p99": 11.35,
+            "max": 16.41,
+            "mean": 6.73
+          },
+          "gate": {
+            "green": true,
+            "ledger_growth": 20000,
+            "seq_advance": 20000,
+            "replays_sent": 100,
+            "replays_not_identical": 0,
+            "ledger_growth_on_replay": 0
+          }
+        },
+        {
+          "concurrency": 64,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "wall_s": 3.43,
+          "throughput_rps": 5827.32,
+          "latency_ms": {
+            "p50": 10.81,
+            "p95": 13.5,
+            "p99": 14.86,
+            "max": 17.94,
+            "mean": 10.95
+          },
+          "gate": {
+            "green": true,
+            "ledger_growth": 20000,
+            "seq_advance": 20000,
+            "replays_sent": 100,
+            "replays_not_identical": 0,
+            "ledger_growth_on_replay": 0
+          }
+        },
+        {
+          "concurrency": 128,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "wall_s": 4.79,
+          "throughput_rps": 4178.37,
+          "latency_ms": {
+            "p50": 28.46,
+            "p95": 46.32,
+            "p99": 54.46,
+            "max": 76.12,
+            "mean": 30.52
+          },
+          "gate": {
+            "green": true,
+            "ledger_growth": 20000,
+            "seq_advance": 20000,
+            "replays_sent": 100,
+            "replays_not_identical": 0,
+            "ledger_growth_on_replay": 0
+          }
+        }
+      ]
+    },
+    "2": {
+      "generated_at": "2026-11-24T11:39:08Z",
+      "server_revision": "5b041b5",
+      "harness_git_head": "84505e4",
+      "server_sha256": "11adedfe86d9a26a89f1db7f28cd75a041a2a5cbdde78d1e27d7a95e83f893a8",
+      "harness_sha256": "0030f02251001db8058e704dd6afd23d996c5e39cd73df1693eec575b3eb95c1",
+      "rusetect_live_pool": null,
+      "machine": {
+        "cpu": "Intel(R) Xeon(R) Processor @ 2.30GHz",
+        "logical_cpus": 4,
+        "os": "Linux 6.18.44-fc-v819",
+        "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+        "redis_server": "Redis server v=7.0.15 sha=00000000:0 malloc=jemalloc-5.3.0 bits=64 build=d064f9f48c901a92"
+      },
+      "levels": [
+        {
+          "concurrency": 1,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "wall_s": 15.77,
+          "throughput_rps": 1267.89,
+          "latency_ms": {
+            "p50": 0.72,
+            "p95": 1.29,
+            "p99": 1.69,
+            "max": 26.32,
+            "mean": 0.78
+          },
+          "gate": {
+            "green": true,
+            "ledger_growth": 20000,
+            "seq_advance": 20000,
+            "replays_sent": 100,
+            "replays_not_identical": 0,
+            "ledger_growth_on_replay": 0
+          }
+        },
+        {
+          "concurrency": 8,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "wall_s": 4.86,
+          "throughput_rps": 4111.55,
+          "latency_ms": {
+            "p50": 1.74,
+            "p95": 3.5,
+            "p99": 4.89,
+            "max": 14.09,
+            "mean": 1.93
+          },
+          "gate": {
+            "green": true,
+            "ledger_growth": 20000,
+            "seq_advance": 20000,
+            "replays_sent": 100,
+            "replays_not_identical": 0,
+            "ledger_growth_on_replay": 0
+          }
+        },
+        {
+          "concurrency": 32,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "wall_s": 3.8,
+          "throughput_rps": 5267.71,
+          "latency_ms": {
+            "p50": 5.98,
+            "p95": 8.09,
+            "p99": 9.36,
+            "max": 13.49,
+            "mean": 6.06
+          },
+          "gate": {
+            "green": true,
+            "ledger_growth": 20000,
+            "seq_advance": 20000,
+            "replays_sent": 100,
+            "replays_not_identical": 0,
+            "ledger_growth_on_replay": 0
+          }
+        },
+        {
+          "concurrency": 64,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "wall_s": 3.91,
+          "throughput_rps": 5118.74,
+          "latency_ms": {
+            "p50": 12.21,
+            "p95": 16.49,
+            "p99": 18.9,
+            "max": 26.28,
+            "mean": 12.47
+          },
+          "gate": {
+            "green": true,
+            "ledger_growth": 20000,
+            "seq_advance": 20000,
+            "replays_sent": 100,
+            "replays_not_identical": 0,
+            "ledger_growth_on_replay": 0
+          }
+        },
+        {
+          "concurrency": 128,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "wall_s": 4.7,
+          "throughput_rps": 4258.24,
+          "latency_ms": {
+            "p50": 29.38,
+            "p95": 37.46,
+            "p99": 41.79,
+            "max": 46.22,
+            "mean": 29.97
+          },
+          "gate": {
+            "green": true,
+            "ledger_growth": 20000,
+            "seq_advance": 20000,
+            "replays_sent": 100,
+            "replays_not_identical": 0,
+            "ledger_growth_on_replay": 0
+          }
+        }
+      ]
+    },
+    "3": {
+      "generated_at": "2026-11-24T11:39:42Z",
+      "server_revision": "5b041b5",
+      "harness_git_head": "84505e4",
+      "server_sha256": "11adedfe86d9a26a89f1db7f28cd75a041a2a5cbdde78d1e27d7a95e83f893a8",
+      "harness_sha256": "0030f02251001db8058e704dd6afd23d996c5e39cd73df1693eec575b3eb95c1",
+      "rusetect_live_pool": null,
+      "machine": {
+        "cpu": "Intel(R) Xeon(R) Processor @ 2.30GHz",
+        "logical_cpus": 4,
+        "os": "Linux 6.18.44-fc-v819",
+        "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+        "redis_server": "Redis server v=7.0.15 sha=00000000:0 malloc=jemalloc-5.3.0 bits=64 build=d064f9f48c901a92"
+      },
+      "levels": [
+        {
+          "concurrency": 1,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "wall_s": 14.49,
+          "throughput_rps": 1380.4,
+          "latency_ms": {
+            "p50": 0.65,
+            "p95": 1.12,
+            "p99": 1.54,
+            "max": 28.31,
+            "mean": 0.71
+          },
+          "gate": {
+            "green": true,
+            "ledger_growth": 20000,
+            "seq_advance": 20000,
+            "replays_sent": 100,
+            "replays_not_identical": 0,
+            "ledger_growth_on_replay": 0
+          }
+        },
+        {
+          "concurrency": 8,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "wall_s": 3.85,
+          "throughput_rps": 5191.54,
+          "latency_ms": {
+            "p50": 1.45,
+            "p95": 2.41,
+            "p99": 3.36,
+            "max": 8.7,
+            "mean": 1.53
+          },
+          "gate": {
+            "green": true,
+            "ledger_growth": 20000,
+            "seq_advance": 20000,
+            "replays_sent": 100,
+            "replays_not_identical": 0,
+            "ledger_growth_on_replay": 0
+          }
+        },
+        {
+          "concurrency": 32,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "wall_s": 3.84,
+          "throughput_rps": 5211.27,
+          "latency_ms": {
+            "p50": 5.75,
+            "p95": 9.17,
+            "p99": 10.88,
+            "max": 14.54,
+            "mean": 6.13
+          },
+          "gate": {
+            "green": true,
+            "ledger_growth": 20000,
+            "seq_advance": 20000,
+            "replays_sent": 100,
+            "replays_not_identical": 0,
+            "ledger_growth_on_replay": 0
+          }
+        },
+        {
+          "concurrency": 64,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "wall_s": 4.13,
+          "throughput_rps": 4840.51,
+          "latency_ms": {
+            "p50": 12.8,
+            "p95": 16.96,
+            "p99": 21.1,
+            "max": 34.97,
+            "mean": 13.19
+          },
+          "gate": {
+            "green": true,
+            "ledger_growth": 20000,
+            "seq_advance": 20000,
+            "replays_sent": 100,
+            "replays_not_identical": 0,
+            "ledger_growth_on_replay": 0
+          }
+        },
+        {
+          "concurrency": 128,
+          "requests": 20000,
+          "ok": 20000,
+          "errors": 0,
+          "wall_s": 4.83,
+          "throughput_rps": 4139.22,
+          "latency_ms": {
+            "p50": 30.67,
+            "p95": 39.39,
+            "p99": 42.34,
+            "max": 46.7,
+            "mean": 30.81
+          },
+          "gate": {
+            "green": true,
+            "ledger_growth": 20000,
+            "seq_advance": 20000,
+            "replays_sent": 100,
+            "replays_not_identical": 0,
+            "ledger_growth_on_replay": 0
+          }
+        }
+      ]
+    }
+  },
+  "summary": {
+    "repetitions": 3,
+    "gate_green": true,
+    "primary": {
+      "concurrency": 32,
+      "throughput_rps": 5211.27,
+      "p99": 10.88
+    },
+    "levels": [
+      {
+        "concurrency": 1,
+        "repetitions_run": 3,
+        "complete": true,
+        "gate_green": true,
+        "throughput_rps": 1365.9,
+        "p50": 0.66,
+        "p95": 1.13,
+        "p99": 1.54,
+        "max": 26.32,
+        "throughput_by_repetition": [
+          1365.9,
+          1267.89,
+          1380.4
+        ]
+      },
+      {
+        "concurrency": 8,
+        "repetitions_run": 3,
+        "complete": true,
+        "gate_green": true,
+        "throughput_rps": 4111.55,
+        "p50": 1.74,
+        "p95": 3.39,
+        "p99": 4.5,
+        "max": 13.72,
+        "throughput_by_repetition": [
+          3799.64,
+          4111.55,
+          5191.54
+        ]
+      },
+      {
+        "concurrency": 32,
+        "repetitions_run": 3,
+        "complete": true,
+        "gate_green": true,
+        "throughput_rps": 5211.27,
+        "p50": 5.98,
+        "p95": 9.17,
+        "p99": 10.88,
+        "max": 14.54,
+        "throughput_by_repetition": [
+          4743.13,
+          5267.71,
+          5211.27
+        ]
+      },
+      {
+        "concurrency": 64,
+        "repetitions_run": 3,
+        "complete": true,
+        "gate_green": true,
+        "throughput_rps": 5118.74,
+        "p50": 12.21,
+        "p95": 16.49,
+        "p99": 18.9,
+        "max": 26.28,
+        "throughput_by_repetition": [
+          5827.32,
+          5118.74,
+          4840.51
+        ]
+      },
+      {
+        "concurrency": 128,
+        "repetitions_run": 3,
+        "complete": true,
+        "gate_green": true,
+        "throughput_rps": 4178.37,
+        "p50": 29.38,
+        "p95": 39.39,
+        "p99": 42.34,
+        "max": 46.7,
+        "throughput_by_repetition": [
+          4178.37,
+          4258.24,
+          4139.22
+        ]
+      }
+    ]
+  }
+}

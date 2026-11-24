@@ -252,6 +252,14 @@ quotes only that file.
 store growing across levels (the review desk's eviction scan once it holds 10,000 alerts), not concurrency; the read
 endpoints copy every stored alert per request.
 
+## 3e. 8ap: one round trip fewer (pre-registered)
+
+The claim and the account-state read now share one pipelined Redis round trip (three per event instead of four), and
+the account stripes went from 64 to 1,024. Protocol and result: `docs/decision.md` 8ap and 8ap-result; profile
+`results/scale_profile.json`. Best stage median with p99 under 25 ms (`results/scale_compare.json`): main
+5,211.27 events per second, candidate 5,053.35, both at concurrency 32: no material change (-3.03%). On this shared
+4-CPU box the CPUs and the single-threaded Redis set the ceiling, not locks or round trips.
+
 ## 4. From here to a bank
 
 1. **Throughput.** UPI runs at roughly 20 billion payments a month, about 7,000 to 8,000 a second on average with
