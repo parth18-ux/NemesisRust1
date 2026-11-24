@@ -5,6 +5,7 @@
 //!   cargo build --release -p rusetect-server --bins --examples
 //!   target/release/examples/e2e_bench [requests per level, default 5000]
 //!   target/release/examples/e2e_bench s1 baseline|after   (S1 protocol, results/e2e_bench_s1_protocol.json)
+//!   target/release/examples/e2e_bench read   (ReviewDesk read endpoints, results/read_bench.json; see mod readbench)
 //!
 //! One machine: client, server and redis-server share its CPUs. This is not a measurement of the Vercel deployment.
 use hmac::{Hmac, Mac};
@@ -234,6 +235,9 @@ async fn mode(name: &str, redis_url: Option<&str>, endpoints: &[(&str, bool)], n
 async fn main() {
     if std::env::args().nth(1).as_deref() == Some("f1") {
         return f1::main(std::env::args().nth(2).as_deref()).await;
+    }
+    if std::env::args().nth(1).as_deref() == Some("read") {
+        return readbench::main().await;
     }
     if std::env::args().nth(1).as_deref() == Some("s1") {
         return s1::main(&std::env::args().nth(2).expect("s1 baseline|after")).await;
@@ -744,5 +748,416 @@ mod f1 {
             "results": res});
         std::fs::write(&root, serde_json::to_string_pretty(&out).unwrap() + "\n").unwrap();
         eprintln!("wrote {}", root.display());
+    }
+}
+
+/// ReviewDesk read-endpoint benchmark (docs/decision.md 8ar, protocol by Codex): stage 200 to 50,000 durable alerts
+/// through the signed webhook, then offer 60 webhooks/s and 4 analyst reads/s open loop for 15 s warm-up + 60 s.
+/// `e2e_bench read` with RUSETECT_BENCH_BIN_MAIN (and optionally RUSETECT_BENCH_BIN_BASELINE) set to server binaries;
+/// writes results/read_bench.json and results/read_bench_offers.csv.gz.
+mod readbench {
+    use super::*;
+    use std::io::Write as _;
+    use tokio::sync::Mutex;
+
+    const STAGES: [usize; 4] = [200, 2_000, 10_000, 50_000];
+    const ORDER: [&str; 8] = ["main", "baseline", "baseline", "main", "main", "baseline", "baseline", "main"];
+    const WARM_S: u64 = 15;
+    const WINDOW_S: u64 = 60;
+    const HOOK_RATE: u64 = 60;
+    const HOOK_LIMIT: usize = 32;
+    const READ_LIMIT: usize = 4;
+    const STAGE_CONC: usize = 32;
+    const DRAIN_LIMIT_S: u64 = 120;
+    const EVIDENCE_IDS: usize = 75;
+    const ANALYST: &str = "bench-analyst-key-0123456789";
+    const VIEWER: &str = "bench-viewer-key-0123456789";
+    const READS: [&str; 4] = ["GET /api/v2/alerts?limit=20", "GET /api/v2/alerts/summary", "GET /api/v2/live", "GET /api/v2/alerts/{id}/evidence"];
+    const WEBHOOK: &str = "POST /api/v2/events/payment";
+    const CMDS: [&str; 8] = ["hgetall", "hget", "hkeys", "watch", "exec", "eval", "evalsha", "info"];
+
+    fn cpu_s(pid: u32) -> f64 {
+        let s = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
+        let f: Vec<&str> = s.rsplit_once(')').map(|(_, r)| r.split_whitespace().collect()).unwrap_or_default();
+        let t = cmd_out("getconf", &["CLK_TCK"]).and_then(|s| s.parse().ok()).unwrap_or(100.0);
+        (f.get(11).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0) + f.get(12).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0)) / t
+    }
+
+    fn kb(pid: u32, key: &str) -> u64 {
+        std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap_or_default().lines()
+            .find(|l| l.starts_with(key)).and_then(|l| l.split_whitespace().nth(1)).and_then(|v| v.parse().ok()).unwrap_or(0)
+    }
+
+    fn sample(srv: u32, red: u32, at: f64) -> Value {
+        json!({"at_s": r2(at), "server_cpu_s": r2(cpu_s(srv)), "redis_cpu_s": r2(cpu_s(red)),
+               "server_rss_mb": r2(kb(srv, "VmRSS:") as f64 / 1024.0), "redis_rss_mb": r2(kb(red, "VmRSS:") as f64 / 1024.0)})
+    }
+
+    fn r2(x: f64) -> f64 {
+        (x * 100.0).round() / 100.0
+    }
+
+    fn req(method: &str, path: &str, key: Option<&str>, body: Option<&str>) -> Vec<u8> {
+        let mut h = String::new();
+        if let Some(k) = key {
+            h += &format!("x-analyst-key: {k}\r\n");
+        }
+        if method == "POST" {
+            h += &format!("x-nonce: n{}\r\n", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        }
+        let b = body.unwrap_or("");
+        let len = if method == "POST" { format!("content-type: application/json\r\ncontent-length: {}\r\n", b.len()) } else { String::new() };
+        format!("{method} {path} HTTP/1.1\r\nhost: 127.0.0.1\r\n{h}{len}\r\n{b}").into_bytes()
+    }
+
+    async fn conn(port: u16) -> BufReader<TcpStream> {
+        let s = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        s.set_nodelay(true).unwrap();
+        BufReader::new(s)
+    }
+
+    async fn once(port: u16, r: Vec<u8>) -> (u16, Vec<u8>) {
+        let (s, _, b) = exchange(&mut conn(port).await, &r).await.unwrap_or((0, false, vec![]));
+        (s, b)
+    }
+
+    fn counts(con: &mut redis::Connection) -> (usize, usize, usize) {
+        let seq = redis::cmd("GET").arg("bench:live:seq").query::<Option<usize>>(con).unwrap().unwrap_or(0);
+        let alerts = redis::cmd("HLEN").arg("bench:live:alerts").query::<usize>(con).unwrap();
+        let ledger = redis::cmd("LLEN").arg("bench:live:ledger").query::<usize>(con).unwrap();
+        (seq, alerts, ledger)
+    }
+
+    fn commandstats(con: &mut redis::Connection) -> std::collections::BTreeMap<String, u64> {
+        let info: String = redis::cmd("INFO").arg("commandstats").query(con).unwrap_or_default();
+        info.lines().filter_map(|l| {
+            let (name, rest) = l.strip_prefix("cmdstat_")?.split_once(':')?;
+            let calls = rest.split(',').find_map(|kv| kv.strip_prefix("calls="))?.parse().ok()?;
+            CMDS.contains(&name).then(|| (name.to_string(), calls))
+        }).collect()
+    }
+
+    /// Signed webhooks `from..from+n` at `conc`; returns the number not answered 200.
+    async fn send_hooks(port: u16, run: &str, from: usize, n: usize, conc: usize) -> usize {
+        let idx = Arc::new(AtomicUsize::new(from));
+        let mut tasks = vec![];
+        for _ in 0..conc {
+            let (idx, run) = (idx.clone(), run.to_string());
+            tasks.push(tokio::spawn(async move {
+                let (mut c, mut bad) = (conn(port).await, 0);
+                loop {
+                    let k = idx.fetch_add(1, Ordering::Relaxed);
+                    if k >= from + n {
+                        return bad;
+                    }
+                    if !matches!(exchange(&mut c, &request(port, true, k, &run)).await, Ok((200, _, _))) {
+                        bad += 1;
+                        c = conn(port).await;
+                    }
+                }
+            }));
+        }
+        let mut bad = 0;
+        for t in tasks {
+            bad += t.await.unwrap();
+        }
+        bad
+    }
+
+    struct Offer {
+        ep: &'static str,
+        sched_ms: f64,
+        lag_ms: f64,
+        req_ms: f64,
+        total_ms: f64,
+        status: u16,
+        bytes: usize,
+        measured: bool,
+    }
+
+    fn pct(v: &mut [f64], p: f64) -> f64 {
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        if v.is_empty() { 0.0 } else { v[((p / 100.0 * v.len() as f64).ceil() as usize).clamp(1, v.len()) - 1] }
+    }
+
+    fn series(mut v: Vec<f64>) -> Value {
+        json!({"p50": r2(pct(&mut v, 50.0)), "p95": r2(pct(&mut v, 95.0)), "p99": r2(pct(&mut v, 99.0)), "max": r2(pct(&mut v, 100.0))})
+    }
+
+    async fn trial(bin: &str, rev: &str, stage: usize, trial: usize, csv: &mut Vec<String>) -> Value {
+        let tag = format!("{rev}-s{stage}-t{trial}");
+        let (rport, port) = (free_port(), free_port());
+        let dir = std::env::temp_dir().join(format!("read-bench-{tag}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let redis = Kill(Command::new("redis-server").args(["--bind", "127.0.0.1", "--port", &rport.to_string(), "--save", "",
+            "--appendonly", "yes", "--appendfsync", "everysec", "--dir", dir.to_str().unwrap()]).stdout(Stdio::null()).spawn().unwrap());
+        let url = format!("redis://127.0.0.1:{rport}/0");
+        let mut con = loop {
+            if let Ok(c) = redis::Client::open(url.as_str()).unwrap().get_connection() {
+                break c;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        };
+        let keys = json!({ANALYST: {"analyst": "bench.analyst", "role": "analyst"}, VIEWER: {"analyst": "bench.viewer", "role": "viewer"}});
+        let srv = Kill(Command::new(bin).args(["--host", "127.0.0.1", "--port", &port.to_string()])
+            .env_remove("RUSETECT_DEMO").env("RUSETECT_ANALYST_KEYS", keys.to_string())
+            .env("RUSETECT_SIGNING_KEY", "YmVuY2gtc2lnbmluZy1zZWVkLTAxMjM0NTY3ODlhYmM=") // synthetic 32-byte seed
+            .env("RUSETECT_CONSORTIUM_SECRET", "bench-consortium").env("RUSETECT_HASH_SALT", "bench-salt")
+            .env("RUSETECT_RATE_LIMIT", "1000000000").env("RUSETECT_WEBHOOK_SECRET", SECRET)
+            .env("REDIS_URL", &url).env("RUSETECT_REDIS_PREFIX", "bench:").env_remove("KV_URL")
+            .stdout(Stdio::null()).stderr(Stdio::null()).spawn().expect("start server"));
+        let mut healthy = false;
+        for _ in 0..600 {
+            if let Ok(s) = TcpStream::connect(("127.0.0.1", port)).await {
+                if roundtrip(&mut BufReader::new(s), &req("GET", "/api/health", None, None)).await.ok() == Some(200) {
+                    healthy = true;
+                    break;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert!(healthy, "{bin} did not become healthy");
+        let (sp, rp) = (srv.0.id(), redis.0.id());
+
+        // ---- staging through the signed webhook
+        let t_stage = Instant::now();
+        let (mut next, mut stage_errors) = (0usize, 0usize);
+        loop {
+            let have = counts(&mut con).1;
+            if have >= stage {
+                break;
+            }
+            let n = ((stage - have) * 5).clamp(20, 5_000);
+            stage_errors += send_hooks(port, &tag, next, n, STAGE_CONC).await;
+            next += n;
+        }
+        let stage_s = t_stage.elapsed().as_secs_f64();
+        let (seq0, alerts0, ledger0) = counts(&mut con);
+        let mut ids: Vec<String> = redis::cmd("HKEYS").arg("bench:live:alerts").query(&mut con).unwrap();
+        ids.sort_by_key(|s| s.trim_start_matches(|c: char| !c.is_ascii_digit()).parse::<u64>().unwrap_or(u64::MAX));
+        let evidence: Vec<String> = ids.iter().take(EVIDENCE_IDS).cloned().collect();
+        let reserved = [ids[ids.len() - 1].clone(), ids[ids.len() - 2].clone()];
+        assert!(evidence.len() == EVIDENCE_IDS && !evidence.contains(&reserved[0]) && !evidence.contains(&reserved[1]), "too few alerts");
+
+        // ---- checks before
+        let check = |held: String| async move {
+            let anon = once(port, req("GET", "/api/v2/alerts?limit=1", None, None)).await.0;
+            let viewer = once(port, req("POST", &format!("/api/v2/alerts/{held}/review"), Some(VIEWER), Some(r#"{"action":"hold"}"#))).await.0;
+            let hold = once(port, req("POST", &format!("/api/v2/alerts/{held}/review"), Some(ANALYST), Some(r#"{"action":"hold","note":"bench"}"#))).await.0;
+            (anon, viewer, hold)
+        };
+        let pack_hash = |id: String| async move {
+            let (_, b) = once(port, req("GET", &format!("/api/v2/alerts/{id}/evidence"), Some(ANALYST), None)).await;
+            serde_json::from_slice::<Value>(&b).ok().and_then(|v| v["pack_hash"].as_str().map(String::from))
+        };
+        let before = check(reserved[0].clone()).await;
+        let hash_before = pack_hash(reserved[0].clone()).await;
+        let seq_before_window = counts(&mut con).0;
+
+        // ---- open-loop window
+        let pool = |n: usize| async move {
+            let (tx, rx) = tokio::sync::mpsc::channel(n);
+            for _ in 0..n {
+                tx.send(conn(port).await).await.unwrap();
+            }
+            (tx, Arc::new(Mutex::new(rx)))
+        };
+        let (htx, hrx) = pool(HOOK_LIMIT).await;
+        let (rtx, rrx) = pool(READ_LIMIT).await;
+        let total_s = WARM_S + WINDOW_S;
+        let t0 = tokio::time::Instant::now() + Duration::from_millis(300);
+        let end = t0 + Duration::from_secs(total_s);
+        let mut tasks = vec![];
+        let mut plan: Vec<(&'static str, Duration, Vec<u8>, bool)> = vec![];
+        for k in 0..(total_s * HOOK_RATE) as usize {
+            let at = Duration::from_secs_f64(k as f64 / HOOK_RATE as f64);
+            plan.push((WEBHOOK, at, vec![], true));
+        }
+        for (s, id) in evidence.iter().enumerate().take(total_s as usize) {
+            for (j, ep) in READS.iter().enumerate() {
+                let path = match j {
+                    0 => "/api/v2/alerts?limit=20".to_string(),
+                    1 => "/api/v2/alerts/summary".to_string(),
+                    2 => "/api/v2/live".to_string(),
+                    _ => format!("/api/v2/alerts/{id}/evidence"),
+                };
+                plan.push((ep, Duration::from_secs(s as u64) + Duration::from_millis(250 * j as u64), req("GET", &path, Some(ANALYST), None), false));
+            }
+        }
+        let warm = Duration::from_secs(WARM_S);
+        let mut hook_k = next;
+        for (ep, at, body, is_hook) in plan {
+            let (tx, rx) = if is_hook { (htx.clone(), hrx.clone()) } else { (rtx.clone(), rrx.clone()) };
+            let tag = tag.clone();
+            let k = hook_k;
+            if is_hook {
+                hook_k += 1;
+            }
+            tasks.push(tokio::spawn(async move {
+                let sched = t0 + at;
+                tokio::time::sleep_until(sched).await;
+                let mut c = rx.lock().await.recv().await.unwrap();
+                let start = tokio::time::Instant::now();
+                let body = if is_hook { request(port, true, k, &tag) } else { body };
+                let (status, bytes) = match exchange(&mut c, &body).await {
+                    Ok((s, _, b)) => (s, b.len()),
+                    Err(_) => {
+                        c = conn(port).await;
+                        (0, 0)
+                    }
+                };
+                let done = tokio::time::Instant::now();
+                tx.send(c).await.unwrap();
+                let ms = |d: Duration| d.as_secs_f64() * 1000.0;
+                (Offer { ep, sched_ms: ms(at), lag_ms: ms(start - sched), req_ms: ms(done - start), total_ms: ms(done - sched), status, bytes,
+                         measured: at >= warm }, done)
+            }));
+        }
+        // probes: every 10 s, and the commandstats at the start and end of the measured window
+        let probe = tokio::spawn({
+            let url = url.clone();
+            async move {
+                let mut c = redis::Client::open(url.as_str()).unwrap().get_connection().unwrap();
+                let (mut samples, mut cs) = (vec![], vec![]);
+                for s in (0..=total_s).step_by(5) {
+                    tokio::time::sleep_until(t0 + Duration::from_secs(s)).await;
+                    if s % 10 == 0 || s == total_s {
+                        samples.push(sample(sp, rp, s as f64));
+                    }
+                    if s == WARM_S || s == total_s {
+                        cs.push(commandstats(&mut c));
+                    }
+                }
+                (samples, cs)
+            }
+        });
+        let mut offers = vec![];
+        let mut last_done = end;
+        let deadline = end + Duration::from_secs(DRAIN_LIMIT_S);
+        let mut missing = 0;
+        for t in tasks {
+            match tokio::time::timeout_at(deadline, t).await {
+                Ok(Ok((o, done))) => {
+                    last_done = last_done.max(done);
+                    offers.push((o, done));
+                }
+                _ => missing += 1,
+            }
+        }
+        let (samples, cs) = probe.await.unwrap();
+        let open_at_end = offers.iter().filter(|(_, d)| *d > end).count() + missing;
+        let drain_s = (last_done - end).as_secs_f64();
+
+        // ---- checks after
+        let (seq1, alerts1, ledger1) = counts(&mut con);
+        let accepted = offers.iter().filter(|(o, _)| o.ep == WEBHOOK && o.status == 200).count();
+        let after = check(reserved[1].clone()).await;
+        let hash_after = pack_hash(reserved[0].clone()).await;
+        let peak = r2(kb(sp, "VmHWM:") as f64 / 1024.0);
+        let checks = json!({"anonymous_401": [before.0 == 401, after.0 == 401], "viewer_write_403": [before.1 == 403, after.1 == 403],
+            "analyst_hold_200": [before.2 == 200, after.2 == 200], "reserved_pack_hash_stable": hash_before.is_some() && hash_before == hash_after,
+            "seq_advanced_by_accepted_webhooks": seq1 - seq_before_window == accepted});
+        let valid = stage_errors == 0 && missing == 0 && checks["anonymous_401"] == json!([true, true]) && checks["viewer_write_403"] == json!([true, true])
+            && checks["analyst_hold_200"] == json!([true, true]) && checks["reserved_pack_hash_stable"] == true && checks["seq_advanced_by_accepted_webhooks"] == true;
+
+        // ---- per endpoint summaries (measured window only) and raw rows
+        let mut eps = serde_json::Map::new();
+        for ep in std::iter::once(WEBHOOK).chain(READS) {
+            let rows: Vec<&Offer> = offers.iter().map(|(o, _)| o).filter(|o| o.ep == ep && o.measured).collect();
+            let mut st = std::collections::BTreeMap::<String, usize>::new();
+            for o in &rows {
+                *st.entry(o.status.to_string()).or_default() += 1;
+            }
+            eps.insert(ep.into(), json!({"offers": rows.len(), "status": st,
+                "request_ms": series(rows.iter().map(|o| o.req_ms).collect()), "scheduled_to_completion_ms": series(rows.iter().map(|o| o.total_ms).collect()),
+                "start_lag_ms": series(rows.iter().map(|o| o.lag_ms).collect()), "mean_response_bytes": rows.iter().map(|o| o.bytes).sum::<usize>() / rows.len().max(1)}));
+        }
+        for (o, _) in &offers {
+            csv.push(format!("{rev},{stage},{trial},{},{},{:.1},{:.3},{:.3},{:.3},{},{}", o.ep, o.measured as u8, o.sched_ms, o.lag_ms, o.req_ms, o.total_ms, o.status, o.bytes));
+        }
+        let window_hooks_ok = offers.iter().filter(|(o, _)| o.ep == WEBHOOK && o.measured && o.status == 200).count();
+        let delta: Value = cs.get(1).map(|b| json!(CMDS.iter().map(|k| (k.to_string(), json!(b.get(*k).unwrap_or(&0) - cs[0].get(*k).unwrap_or(&0))))
+            .collect::<serde_json::Map<String, Value>>())).unwrap_or(Value::Null);
+        drop(srv);
+        drop(redis);
+        let _ = std::fs::remove_dir_all(&dir);
+        eprintln!("{tag}: staged {alerts0} alerts in {stage_s:.0} s, valid {valid}, open at end {open_at_end}, evidence p50 {} ms, alerts p50 {} ms",
+            eps[READS[3]]["request_ms"]["p50"], eps[READS[0]]["request_ms"]["p50"]);
+        json!({"revision": rev, "stage": stage, "trial": trial, "valid": valid, "staging": {"webhooks": next, "errors": stage_errors, "seconds": r2(stage_s)},
+               "start": {"seq": seq0, "durable_alerts": alerts0, "ledger": ledger0, "expected_resident": alerts0.min(10_000), "resident": null},
+               "end": {"seq": seq1, "durable_alerts": alerts1, "ledger": ledger1, "accepted_with_alert_delta": alerts1 - alerts0},
+               "evidence_ids": {"first": evidence.first(), "last": evidence.last()}, "reserved": reserved,
+               "window": {"webhooks_accepted_per_s": r2(window_hooks_ok as f64 / WINDOW_S as f64), "open_at_end": open_at_end, "drain_s": r2(drain_s), "missing": missing},
+               "endpoints": eps, "checks": checks, "samples": samples, "server_peak_rss_mb": peak,
+               "redis_commandstats_window_delta": delta, "harness_info_calls_in_window": 1,
+               "pool_counters": "unavailable (not exposed)"})
+    }
+
+    fn median(mut v: Vec<f64>) -> f64 {
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        if v.is_empty() { f64::NAN } else if v.len() % 2 == 1 { v[v.len() / 2] } else { (v[v.len() / 2 - 1] + v[v.len() / 2]) / 2.0 }
+    }
+
+    pub async fn main() {
+        let bins: Vec<(&str, String)> = [("main", "RUSETECT_BENCH_BIN_MAIN"), ("baseline", "RUSETECT_BENCH_BIN_BASELINE")].iter()
+            .filter_map(|(r, k)| std::env::var(k).ok().map(|b| (*r, b))).collect();
+        assert!(bins.iter().any(|(r, _)| *r == "main"), "set RUSETECT_BENCH_BIN_MAIN");
+        let only: Option<Vec<usize>> = std::env::var("RUSETECT_BENCH_STAGES").ok().map(|s| s.split(',').map(|x| x.parse().unwrap()).collect());
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../results");
+        let (mut trials, mut csv) = (vec![], vec!["revision,stage,trial,endpoint,measured,scheduled_ms,start_lag_ms,request_ms,scheduled_to_completion_ms,status,bytes".to_string()]);
+        for stage in STAGES.iter().copied().filter(|s| only.as_ref().is_none_or(|o| o.contains(s))) {
+            let mut seen = std::collections::HashMap::<&str, usize>::new();
+            for rev in ORDER {
+                let Some((_, bin)) = bins.iter().find(|(r, _)| *r == rev) else { continue };
+                let n = seen.entry(rev).or_default();
+                *n += 1;
+                let mut t = trial(bin, rev, stage, *n, &mut csv).await;
+                if t["valid"] != true {
+                    eprintln!("invalid trial: rerunning once in place");
+                    let again = trial(bin, rev, stage, *n, &mut csv).await;
+                    t = json!({"invalid_first_attempt": t, "rerun": again});
+                }
+                trials.push(t);
+            }
+        }
+        let get = |t: &Value| if t.get("rerun").is_some() { t["rerun"].clone() } else { t.clone() };
+        let mut summary = vec![];
+        for stage in STAGES {
+            for (rev, _) in &bins {
+                let ts: Vec<Value> = trials.iter().map(get).filter(|t| t["stage"] == stage && t["revision"] == *rev).collect();
+                if ts.is_empty() {
+                    continue;
+                }
+                let mut eps = serde_json::Map::new();
+                for ep in std::iter::once(WEBHOOK).chain(READS) {
+                    let m = |p: &str| r2(median(ts.iter().filter_map(|t| t["endpoints"][ep]["request_ms"][p].as_f64()).collect()));
+                    eps.insert(ep.into(), json!({"median_trial_p50_ms": m("p50"), "median_trial_p99_ms": m("p99"),
+                        "trial_p50_ms": ts.iter().map(|t| t["endpoints"][ep]["request_ms"]["p50"].clone()).collect::<Vec<_>>(),
+                        "trial_p99_ms": ts.iter().map(|t| t["endpoints"][ep]["request_ms"]["p99"].clone()).collect::<Vec<_>>()}));
+                }
+                summary.push(json!({"stage": stage, "revision": rev, "trials": ts.len(), "valid_trials": ts.iter().filter(|t| t["valid"] == true).count(),
+                    "durable_alerts_at_start": ts.iter().map(|t| t["start"]["durable_alerts"].clone()).collect::<Vec<_>>(),
+                    "server_peak_rss_mb": ts.iter().map(|t| t["server_peak_rss_mb"].clone()).collect::<Vec<_>>(), "endpoints": eps}));
+            }
+        }
+        let rev_of = |k: &str| std::env::var(k).ok();
+        let out = json!({"what": "ReviewDesk read-endpoint benchmark (docs/decision.md 8ar; protocol by Codex)",
+            "generated_by": "crates/rusetect-server/examples/e2e_bench.rs (e2e_bench read)",
+            "generated_at": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(), "harness_head": cmd_out("git", &["describe", "--always", "--dirty"]),
+            "revisions": {"main": rev_of("RUSETECT_BENCH_REV_MAIN"), "baseline": rev_of("RUSETECT_BENCH_REV_BASELINE")},
+            "binaries_sha256": bins.iter().map(|(r, b)| (r.to_string(), json!(cmd_out("sha256sum", &[b]).and_then(|s| s.split_whitespace().next().map(String::from))))).collect::<serde_json::Map<_, _>>(),
+            "machine": machine(),
+            "scope": "One shared 4-CPU container, loopback, no TLS: load generator, server and redis-server share the CPUs. Not a production capacity figure.",
+            "design": {"stages_durable_alerts": STAGES, "order_per_stage": ORDER, "warmup_s": WARM_S, "window_s": WINDOW_S, "webhooks_per_s": HOOK_RATE,
+                       "reads_per_s": 4, "webhook_in_flight_limit": HOOK_LIMIT, "read_in_flight_limit": READ_LIMIT, "staging_concurrency": STAGE_CONC,
+                       "evidence_ids": "75 oldest durable alerts, one per second", "desk_eviction_threshold": 10_000, "redis": "fresh per trial, AOF everysec",
+                       "percentiles": "nearest rank over the measured window; with 60 reads per endpoint p99 is the maximum"},
+            "summary": summary, "trials": trials});
+        std::fs::write(root.join("read_bench.json"), serde_json::to_string_pretty(&out).unwrap() + "\n").unwrap();
+        let mut gz = flate2::write::GzEncoder::new(std::fs::File::create(root.join("read_bench_offers.csv.gz")).unwrap(), flate2::Compression::best());
+        gz.write_all((csv.join("\n") + "\n").as_bytes()).unwrap();
+        gz.finish().unwrap();
+        eprintln!("wrote results/read_bench.json and results/read_bench_offers.csv.gz");
     }
 }

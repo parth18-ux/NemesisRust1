@@ -1110,6 +1110,52 @@ draft; after it, both return the stored result. Fix: the pair-score script also 
 attempt rescores from them. That costs one more round trip only on the losing path; the common path keeps its
 round trips.
 
+**8ar. ReviewDesk read-endpoint benchmark (pre-registered; written before any run).** Protocol by Codex (GPT),
+"PLAN ReviewDesk read-endpoint benchmark" (2026-11-22, shared Drive log), run by Claude. Deviations from it are
+listed below and were fixed before the first trial. Harness: `e2e_bench read` (crates/rusetect-server/examples/e2e_bench.rs).
+Output: `results/read_bench.json` (per trial and summaries) and `results/read_bench_offers.csv.gz` (one row per
+offer).
+
+- Revisions: main `2597c5b` (current origin/main) and baseline `015bd0e` (the drafting baseline, before the
+  ReviewDesk eviction index). Both are built with the same locked release toolchain and served from the same
+  repository models, which are identical in both. The pair is 41 commits apart, so it is a whole-branch
+  comparison: deltas are not attributed to eviction. The eviction-only pair (`015bd0e` and `c211043`, 8ak) is not
+  run here. If the baseline cannot be built, main is run alone with the same schedule.
+- Fixture: one Linux host (the 4-CPU container), loopback. Each trial starts a fresh server and a fresh redis-server
+  (AOF on, appendfsync everysec, data directory deleted after the trial). The server runs with configured synthetic
+  keys (analyst, viewer), not demo mode, and with synthetic signing, consortium and salt values. No CPU affinity.
+- Stages: 200, 2,000, 10,000 and 50,000 durable alerts (`HLEN` of the live alert hash), in ascending order. The
+  desk evicts above `MAX_ALERTS` = 10,000 on both revisions; 2,000 is below it and 50,000 above it, so no stage is
+  added. Expected residency is min(durable alerts, 10,000); resident desk counts are not exposed, so residency is
+  recorded as unavailable. Each stage is ingested through the signed webhook (the F1 payment generator,
+  concurrency 32) until the durable count reaches the stage; the overshoot is recorded.
+- Schedule per stage: main, baseline, baseline, main, main, baseline, baseline, main: four trials per revision.
+  After staging, a 15 s unmeasured warm-up, then a 60 s measured window. Webhooks are offered open loop at 60/s
+  (offer k at k/60 s) with at most 32 in flight; reads at 4/s with at most 4 in flight, each second in the order
+  `GET /api/v2/alerts?limit=20` (0 ms), `GET /api/v2/alerts/summary` (250 ms), `GET /api/v2/live` (500 ms),
+  `GET /api/v2/alerts/{id}/evidence` (750 ms), all with one analyst key. The evidence ids are the 75 oldest
+  durable alerts, one per second over warm-up and window, none requested before its slot. Deviation: the ids come
+  from Redis (`HKEYS`, ordered by sequence) rather than from staging receipts.
+- Per offer: revision, stage, trial, endpoint, scheduled offset, start lag, request latency, scheduled-to-completion
+  latency, status, bytes. Per endpoint and trial: counts, statuses, and nearest-rank p50/p95/p99/max of request
+  and scheduled-to-completion latency (with 60 reads per endpoint p99 is the maximum); achieved webhook rate; offers
+  still open at the end of the window and the time to drain them. Before and after the window, and every 10 s:
+  server and Redis CPU and RSS; server peak RSS (VmHWM). Redis alert, ledger and sequence counts at start and end, and
+  `INFO commandstats` deltas over the window for HGETALL, HGET, HKEYS, WATCH, EXEC, EVAL, EVALSHA and INFO. Pool
+  acquisition and contention counters are not exposed: unavailable.
+- Checks before and after the window: anonymous `GET /api/v2/alerts` returns 401; a viewer `POST .../review`
+  returns 403; the analyst can hold a reserved alert (one of the newest staged alerts, never in the evidence
+  sequence; a different one before and after) and its evidence `pack_hash` is stable across the window; the live
+  sequence advanced by the accepted webhooks. Not done (time): restart and replay of accepted inputs, signature
+  verification with the signing identity, response-contract comparison.
+- Validity: a trial is invalid if a staging webhook fails, a check fails, or the open offers do not drain within
+  120 s after the window; it is kept in the output and rerun once in place. Application errors and timeouts during
+  the window are outcomes, not invalidations.
+- Report: per revision and stage, the median over its four trials of each endpoint's p50 and p99 request latency,
+  with every trial shown, and per-order paired differences (main minus baseline) without pooling. The primary
+  reading is how each read endpoint's latency on main changes from 200 to 50,000 durable alerts. The result is for
+  this topology and workload only.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
