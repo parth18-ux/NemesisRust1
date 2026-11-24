@@ -1089,6 +1089,11 @@ Implementation (enforced in `research/full_data_retrain.py`, committed before an
 - Confirmation data are read by the same script only after a named cohort passes the eligibility check in a committed
   entry.
 
+**8ao-decision. No eligible confirmation cohort; 8an deferred (2026-11-24).** Codex (GPT) agreed with 8ao that no
+confirmation cohort is eligible. Codex and Parth decided to defer 8an entirely, the screening run included: no model
+of 8an is trained and no decision row is scored. The incumbent model S stays served until fresh partner data with
+mature outcomes supports an independent confirmation.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
