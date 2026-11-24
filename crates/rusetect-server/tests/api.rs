@@ -148,6 +148,100 @@ async fn oversized_body_is_refused_before_the_handler() {
 }
 
 #[tokio::test]
+async fn bad_list_items_cannot_blow_up_the_error_answer() {
+    // before the fix 2 MiB of `{}` items built a 431 MB 422 and took the server to 12 GB
+    let t = T::new();
+    let (s, _, text) = t.req("POST", "/api/v2/payments/batch", Some(Value::Array(vec![json!({}); 20_001])), &[]).await;
+    assert_eq!((s, text.len() < 200), (StatusCode::PAYLOAD_TOO_LARGE, true), "{}", &text[..text.len().min(200)]);
+    let (s, v, _) = t.req("POST", "/api/v2/payments/batch", Some(Value::Array(vec![json!({}); 20_000])), &[]).await;
+    let d = v["detail"].as_array().unwrap();
+    assert!(s == StatusCode::UNPROCESSABLE_ENTITY && d.len() <= rusetect_server::validate::MAX_ERRORS + 1 && v["truncated"] == true);
+    assert_eq!(d.last().unwrap(), &rusetect_server::validate::truncated_marker());
+    assert!(d.iter().all(|e| e.as_object().is_some_and(|o| o.keys().eq(["type", "loc", "msg", "input"].iter()))), "error objects, not text");
+    let body = json!({"account": "x", "normal_pin": "1234", "duress_pin": "9999", "trusted_contacts": vec![1; 50_000]});
+    let (s, v, _) = t.req("POST", "/api/v2/duress/register", Some(body), &[]).await;
+    assert!(s == StatusCode::UNPROCESSABLE_ENTITY && v["detail"].as_array().unwrap().len() <= rusetect_server::validate::MAX_ERRORS + 1);
+    assert_eq!(v["truncated"], true);
+}
+
+#[tokio::test]
+async fn error_answers_that_echo_input_stay_under_the_byte_cap() {
+    // each error echoes what was sent; worst cases near the 2 MiB body limit: one huge value, a huge nested value, a
+    // huge field name (it goes into `loc`), 100 bad batch items of ~20 KB each, and a huge action echoed in a 403
+    let t = T::new();
+    let big = "x".repeat(150_000);
+    let nested = json!([[[[big.clone()]]], {"k": vec![big.clone(); 3]}]);
+    let k = "k".repeat(400_000);
+    type Case<'a> = (&'a str, Value, &'a [(&'a str, &'a str)]);
+    let cases: Vec<Case> = vec![
+        ("/api/v2/payment", json!({"timestamp": big, "from_bank": nested, "from_account": 1, "amount_paid": big}), &[]),
+        ("/api/v2/behaviour/check", json!({"account": "a", "digraphs": {k.as_str(): "x"}}), &[]),
+        ("/api/v2/payments/batch", Value::Array(vec![json!({"amount_paid": "y".repeat(20_000)}); 100]), &[]),
+        ("/api/v2/onboard", json!({"customer_age": big}), &[]),
+        ("/api/v2/alerts/A00001/review", json!({"action": "z".repeat(1_000_000)}), &[("X-Analyst-Key", "demo-analyst-1"), ("X-Nonce", "nonce-123456")]),
+    ];
+    for (path, body, h) in cases {
+        let (s, v, text) = t.req("POST", path, Some(body), h).await;
+        assert!(s.is_client_error(), "{path}: {s}");
+        assert!(text.len() <= rusetect_server::MAX_ERROR_BYTES, "{path}: {} bytes", text.len());
+        assert_eq!(v["truncated"], true, "{path}: {}", &text[..text.len().min(300)]);
+        if s == StatusCode::UNPROCESSABLE_ENTITY {
+            assert!(v["detail"].is_array(), "{path}: validation detail stays a list");
+        }
+    }
+    // a small error keeps the FastAPI shape exactly, with no marker
+    let (_, v, _) = t.req("POST", "/api/v2/payment", Some(json!({"timestamp": "x"})), &[]).await;
+    assert!(v.get("truncated").is_none() && v["detail"].is_array());
+}
+
+#[tokio::test]
+async fn errors_built_outside_the_body_reader_are_bounded_too() {
+    // the hand-built errors (query integers and booleans, timestamps, digraph values, the review action) go through
+    // the same collector: each echo is cut to MAX_INPUT_BYTES and the answer says it was cut
+    use rusetect_server::validate::MAX_INPUT_BYTES;
+    let t = T::new();
+    let x = "x".repeat(20_000);
+    let ts = format!("2022-09-09 10:00{}", "x".repeat(4_000));
+    let pay = json!({"timestamp": ts, "from_bank": "1", "from_account": "a", "to_bank": "2", "to_account": "b", "amount_paid": 1, "payment_format": "ACH"});
+    for (m, path, body) in [("GET", format!("/api/v2/alerts?limit={x}"), None), ("POST", format!("/api/v2/demo/reset?warm={x}"), None),
+                            ("POST", "/api/v2/payment".into(), Some(pay)),
+                            ("POST", "/api/v2/behaviour/check".into(), Some(json!({"account": "a", "digraphs": {x.as_str(): x}})))] {
+        let (s, v, text) = t.req(m, &path, body, &[("X-Analyst-Key", "demo-supervisor")]).await;
+        let e = &v["detail"][0];
+        assert_eq!((s, v["truncated"].clone()), (StatusCode::UNPROCESSABLE_ENTITY, json!(true)), "{path}: {}", &text[..text.len().min(300)]);
+        assert!(e["input"].to_string().len() <= MAX_INPUT_BYTES && e["loc"].to_string().len() < 300, "{path}: {e}");
+    }
+    let (s, v, _) = t.req("POST", "/api/v2/alerts/A1/review", Some(json!({"action": "z".repeat(4_000)})), &[("X-Analyst-Key", "demo-analyst-1"), ("X-Nonce", "nonce-123456")]).await;
+    assert!(s == StatusCode::FORBIDDEN && v["detail"].as_str().unwrap().len() < 120, "{v}");
+}
+
+/// Abort the whole test process if the guard is still alive after `secs`: a regression to an endless regex loop would
+/// otherwise hang the runner, since the blocking task holding the loop keeps the runtime from shutting down.
+fn deadline(secs: u64) -> std::sync::mpsc::Sender<()> {
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        if rx.recv_timeout(std::time::Duration::from_secs(secs)) == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
+            eprintln!("test deadline of {secs} s passed: aborting");
+            std::process::abort();
+        }
+    });
+    tx
+}
+
+#[tokio::test]
+async fn a_message_past_the_regex_backtracking_limit_is_answered() {
+    let _deadline = deadline(60);
+    // "a." x 2,300 made the e-mail redaction pattern loop forever while holding the state lock: the server hung
+    let t = T::new();
+    for text in ["a-".repeat(2_500), "a.".repeat(2_300)] {
+        let r = tokio::time::timeout(std::time::Duration::from_secs(30), t.req("POST", "/api/v2/message", Some(json!({"text": text})), &[])).await;
+        assert_eq!(r.expect("answered within 30 s").0, StatusCode::OK);
+    }
+    let m = &t.get("/api/v2/messages").await["messages"][0];
+    assert!(m["text"].as_str().unwrap().ends_with("[REDACTED]"), "unsearched text is withheld: {m}");
+}
+
+#[tokio::test]
 async fn validation_errors_look_like_fastapi() {
     let t = T::new();
     let (s, v, _) = t.req("POST", "/api/v2/payment", Some(json!({"timestamp": "2022-09-09 10:00", "from_bank": 7, "amount_paid": -1})), &[]).await;

@@ -1,0 +1,55 @@
+{
+ "before_2bbb062": {
+  "peak_rss_mb_at_start": 146,
+  "batch_2mib_of_empty_items": {
+   "status": 422,
+   "answer_bytes": 431233288,
+   "seconds": 22.14
+  },
+  "peak_rss_mb_after_batch": 12057,
+  "duress_2mib_of_bad_contacts": {
+   "status": 422,
+   "answer_bytes": 118420866,
+   "seconds": 8.19
+  },
+  "batch_8000_valid_payments_state_lock": {
+   "status": 200,
+   "answer_bytes": 198973,
+   "seconds": 9.66
+  },
+  "message_a_dot_x2300": {
+   "status": "no answer",
+   "seconds": 30.03
+  },
+  "health_after": "not tried: server hung"
+ },
+ "after": {
+  "peak_rss_mb_at_start": 146,
+  "batch_2mib_of_empty_items": {
+   "status": 413,
+   "answer_bytes": 40,
+   "seconds": 0.07
+  },
+  "peak_rss_mb_after_batch": 200,
+  "duress_2mib_of_bad_contacts": {
+   "status": 422,
+   "answer_bytes": 10902,
+   "seconds": 0.16
+  },
+  "batch_8000_valid_payments_state_lock": {
+   "status": 200,
+   "answer_bytes": 198973,
+   "seconds": 9.47
+  },
+  "message_a_dot_x2300": {
+   "status": 200,
+   "answer_bytes": 313,
+   "seconds": 0.44
+  },
+  "health_after": {
+   "status": 200,
+   "answer_bytes": 388,
+   "seconds": 0.0
+  }
+ }
+}

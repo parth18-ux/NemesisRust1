@@ -232,13 +232,93 @@ impl ApiError {
         ApiError { status, detail: Value::String(detail.into()) }
     }
     fn invalid(errs: Errors) -> Self {
-        ApiError { status: 422, detail: Value::Array(errs.0) }
+        ApiError { status: 422, detail: Value::Array(errs.into_list()) }
     }
+    /// One validation error built outside a body reader (`root` is `body` or `query`), through the same bounded
+    /// collector as the rest, so what it echoes is cut before it is copied.
+    pub(crate) fn validation(root: &str, kind: &str, loc: &[&str], msg: &str, input: &Value, ctx: Option<&Value>) -> Self {
+        let mut e = Errors::default();
+        e.push_in(root, kind, loc, msg, input, ctx);
+        ApiError::invalid(e)
+    }
+}
+
+/// Largest error body, wrapper included. Errors echo what the caller sent (inputs, field names, actions), so the
+/// detail is copied only up to this many bytes (`validate::bounded`, whose cost does not grow with the request) and
+/// the finished body is checked against the cap. Validation errors are already bounded as they are collected.
+pub const MAX_ERROR_BYTES: usize = 16 * 1024;
+
+/// The JSON body of an error: `{"detail": ...}`, plus `"truncated": true` when anything was left out to stay within
+/// MAX_ERROR_BYTES. A list detail stays a list (validation errors), ending in `validate::truncated_marker()`.
+pub fn error_body(detail: &Value) -> String {
+    let wrap = |d: Value, cut: bool| dumps(&if cut { json!({"detail": d, "truncated": true}) } else { json!({"detail": d}) }, RESPONSE_STYLE);
+    if let Value::Array(items) = detail {
+        return error_list_body(items, &wrap);
+    }
+    let (mut d, mut cut) = validate::bounded(detail, MAX_ERROR_BYTES);
+    loop {
+        let body = wrap(d.clone(), cut);
+        if body.len() <= MAX_ERROR_BYTES {
+            return body;
+        }
+        // over the cap (only by the wrapper or by estimation): shorten a text detail
+        cut = true;
+        d = match d {
+            Value::String(t) => Value::String(t.chars().take(t.chars().count().saturating_sub(64)).collect()),
+            _ => json!("error detail too large to show"),
+        };
+    }
+}
+
+/// Bytes one error object of a list may take (a collected error holds at most about 1.7 KiB, so this never cuts one).
+const ERROR_ITEM_BYTES: usize = 4 * 1024;
+
+/// A list of validation errors within MAX_ERROR_BYTES: whole error objects are kept from the start or dropped from the
+/// end, never flattened into text, and a cut list ends with `validate::truncated_marker()` next to `"truncated": true`.
+/// Each item is copied through `validate::bounded`, and the walk stops once the cap is passed.
+fn error_list_body(items: &[Value], wrap: &dyn Fn(Value, bool) -> String) -> String {
+    let (mut kept, mut total, mut cut) = (Vec::new(), 0, false);
+    for e in items {
+        if e["type"] == "truncated" {
+            cut = true;
+            continue;
+        }
+        let (b, c) = validate::bounded(e, ERROR_ITEM_BYTES);
+        cut |= c;
+        if !b.is_object() {
+            cut = true; // not an error object: left out rather than shown as text
+            continue;
+        }
+        let n = validate::size(&b) + 1; // and its comma
+        total += n;
+        kept.push((n, b));
+        if total > MAX_ERROR_BYTES {
+            cut = true;
+            break;
+        }
+    }
+    if !cut {
+        let body = wrap(Value::Array(kept.iter().map(|x| x.1.clone()).collect()), false);
+        if body.len() <= MAX_ERROR_BYTES {
+            return body;
+        }
+    }
+    let marker = validate::truncated_marker();
+    let room = MAX_ERROR_BYTES - wrap(json!([marker]), true).len();
+    let mut used = 0;
+    let mut list: Vec<Value> = kept.into_iter().take_while(|(n, _)| {
+        used += n;
+        used <= room
+    }).map(|x| x.1).collect();
+    list.push(marker);
+    wrap(Value::Array(list), true)
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let mut r = PyJson(StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), json!({"detail": self.detail})).into_response();
+        let mut r = Response::new(Body::from(error_body(&self.detail)));
+        *r.status_mut() = StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        r.headers_mut().insert("content-type", HeaderValue::from_static("application/json"));
         // every 503 is temporary: tell senders when to retry. Usually nothing was committed; when a commit's reply was
         // lost and its outcome is unknown, the retry replays the stored result or is processed (docs/live.md section 4)
         if self.status == 503 {
@@ -253,11 +333,10 @@ pub(crate) type ApiResult = Result<PyJson, ApiError>;
 /// Parse a JSON body; FastAPI's errors for invalid JSON.
 fn body_json(b: &Bytes) -> Result<Value, ApiError> {
     if b.is_empty() {
-        return Err(ApiError { status: 422, detail: json!([{"type": "missing", "loc": ["body"], "msg": "Field required", "input": null}]) });
+        return Err(ApiError::validation("body", "missing", &[], "Field required", &Value::Null, None));
     }
-    serde_json::from_slice(b).map_err(|e| ApiError {
-        status: 422,
-        detail: json!([{"type": "json_invalid", "loc": ["body", e.column()], "msg": "JSON decode error", "input": {}, "ctx": {"error": e.to_string()}}]),
+    serde_json::from_slice(b).map_err(|e| {
+        ApiError::validation("body", "json_invalid", &[&e.column().to_string()], "JSON decode error", &json!({}), Some(&json!({"error": e.to_string()})))
     })
 }
 
@@ -272,8 +351,13 @@ fn parse_obj<T>(b: &Bytes, f: impl FnOnce(&Obj, &mut Errors) -> T) -> Result<T, 
     }
 }
 
+/// A caller's text as an error's `input`, copied only up to what an error keeps.
+fn echo(s: &str) -> Value {
+    Value::String(validate::clip(s, validate::MAX_INPUT_BYTES))
+}
+
 fn bad_timestamp(field: &str, value: &str) -> ApiError {
-    ApiError { status: 422, detail: json!([{"type": "value_error", "loc": ["body", field], "msg": "Value error, expected YYYY-MM-DD HH:MM (UTC)", "input": value}]) }
+    ApiError::validation("body", "value_error", &[field], "Value error, expected YYYY-MM-DD HH:MM (UTC)", &echo(value), None)
 }
 
 /// Run a handler body on the blocking pool with the state locked (requests are serialised, as in Python).
@@ -913,7 +997,7 @@ async fn v2_review(State(app): State<AppRef>, Path(alert_id): Path<String>, h: H
     blocking(move || {
         let who = analyst_for(key.as_deref()).ok_or_else(|| ApiError::new(401, "missing or unknown X-Analyst-Key"))?;
         if !allowed(&who.role, &action) {
-            return Err(ApiError::new(403, format!("role {} cannot {}", who.role, action)));
+            return Err(ApiError::new(403, format!("role {} cannot {}", who.role, validate::clip(&action, 64))));
         }
         let nonce_ok = |s: &mut AppState| if s.nonces.use_nonce(nonce.as_deref()) { Ok(()) } else { Err(ApiError::new(409, "X-Nonce missing or already used")) };
         live::act_on_alert(&app, &alert_id, nonce_ok, |s| {
@@ -1125,10 +1209,8 @@ async fn v2_confirm(State(app): State<AppRef>, b: Bytes) -> ApiResult {
 
 fn digraphs_of(m: &Map<String, Value>) -> Result<IndexMap<String, f64>, ApiError> {
     m.iter().map(|(k, v)| {
-        rusetect::pyfmt::py_float_value(v).filter(|x| x.is_finite()).map(|x| (k.clone(), x)).ok_or_else(|| ApiError {
-            status: 422,
-            detail: json!([{"type": "float_parsing", "loc": ["body", "digraphs", k], "msg": "Input should be a valid number", "input": v}]),
-        })
+        rusetect::pyfmt::py_float_value(v).filter(|x| x.is_finite()).map(|x| (k.clone(), x))
+            .ok_or_else(|| ApiError::validation("body", "float_parsing", &["digraphs", k], "Input should be a valid number", v, None))
     }).collect()
 }
 
@@ -1375,12 +1457,12 @@ async fn v2_batch(State(app): State<AppRef>, b: Bytes) -> ApiResult {
         e.push("list_type", &[], "Input should be a valid list", &v);
         return Err(ApiError::invalid(e));
     };
+    if arr.len() > 20000 {
+        return Err(ApiError::new(413, "Batch too large (max 20000)"));
+    }
     let items: Vec<PaymentIn> = arr.iter().enumerate().filter_map(|(i, x)| Obj::new(x, vec![i.to_string()], &mut e).map(|o| PaymentIn::parse(&o, &mut e))).collect();
     if !e.is_empty() {
         return Err(ApiError::invalid(e));
-    }
-    if items.len() > 20000 {
-        return Err(ApiError::new(413, "Batch too large (max 20000)"));
     }
     // in time order by the parsed minute (sorting the raw strings misorders mixed separators or unpadded months)
     let mut pays: Vec<Payment> = items.iter().map(payment_of).collect::<Result<_, _>>()?;
@@ -1413,9 +1495,8 @@ struct LimitQ {
 pub(crate) fn int_query(v: &Option<String>, name: &str, default: i64) -> Result<i64, ApiError> {
     match v {
         None => Ok(default),
-        Some(s) => s.trim().parse::<i64>().map_err(|_| ApiError {
-            status: 422,
-            detail: json!([{"type": "int_parsing", "loc": ["query", name], "msg": "Input should be a valid integer, unable to parse string as an integer", "input": s}]),
+        Some(s) => s.trim().parse::<i64>().map_err(|_| {
+            ApiError::validation("query", "int_parsing", &[name], "Input should be a valid integer, unable to parse string as an integer", &echo(s), None)
         }),
     }
 }
@@ -1511,9 +1592,8 @@ struct WarmQ {
 async fn demo_reset(State(app): State<AppRef>, Query(q): Query<WarmQ>) -> ApiResult {
     let warm = match &q.warm {
         None => true,
-        Some(v) => validate::parse_bool_str(v).ok_or_else(|| ApiError {
-            status: 422,
-            detail: json!([{"type": "bool_parsing", "loc": ["query", "warm"], "msg": "Input should be a valid boolean, unable to interpret input", "input": v}]),
+        Some(v) => validate::parse_bool_str(v).ok_or_else(|| {
+            ApiError::validation("query", "bool_parsing", &["warm"], "Input should be a valid boolean, unable to interpret input", &echo(v), None)
         })?,
     };
     with_state(app, move |s| {
@@ -1690,6 +1770,52 @@ mod tests {
         release.send(()).unwrap();
         assert!(slot_was_held);
         assert!(timeout(wait, LIMIT.acquire()).await.unwrap().is_ok());
+    }
+
+    #[test]
+    fn error_body_is_exact_at_the_cap_and_cut_one_byte_over() {
+        use super::{error_body, MAX_ERROR_BYTES};
+        use serde_json::json;
+        // {"detail":"<n x>"} is n + 13 bytes; {"detail":["<n x>"]} is n + 15
+        let at = error_body(&json!("x".repeat(MAX_ERROR_BYTES - 13)));
+        assert_eq!(at.len(), MAX_ERROR_BYTES);
+        assert!(!at.contains("truncated"), "a body at the cap is unchanged");
+        let over = error_body(&json!("x".repeat(MAX_ERROR_BYTES - 12)));
+        let v: serde_json::Value = serde_json::from_str(&over).unwrap();
+        assert!(over.len() <= MAX_ERROR_BYTES && v["truncated"] == true && v["detail"].is_string(), "{}", over.len());
+        // a list of validation errors, built to land exactly on the cap, then one byte over
+        let err = |pad: usize| json!({"type": "string_type", "loc": ["body", "f"], "msg": "Input should be a valid string", "input": "p".repeat(pad)});
+        let body_len = |d: &serde_json::Value| serde_json::to_string(&json!({"detail": d})).unwrap().len();
+        let mut list: Vec<serde_json::Value> = (0..12).map(|_| err(1_200)).collect();
+        let short = MAX_ERROR_BYTES - body_len(&json!(list));
+        list[11] = err(1_200 + short);
+        assert_eq!(body_len(&json!(list)), MAX_ERROR_BYTES);
+        let check = |body: &str, cut: bool| {
+            let v: serde_json::Value = serde_json::from_str(body).unwrap();
+            let d = v["detail"].as_array().unwrap();
+            assert!(body.len() <= MAX_ERROR_BYTES, "{}", body.len());
+            for e in d {
+                let keys: Vec<&str> = e.as_object().expect("every item is an error object").keys().map(|k| k.as_str()).collect();
+                assert_eq!(keys, ["type", "loc", "msg", "input"], "{e}");
+            }
+            assert_eq!(v["truncated"] == true, cut);
+            assert_eq!(d.last().unwrap()["type"] == "truncated", cut, "a cut list ends with the marker");
+            d.len()
+        };
+        let at = error_body(&json!(list));
+        assert_eq!(at.len(), MAX_ERROR_BYTES);
+        assert_eq!(check(&at, false), 12, "a list at the cap is unchanged");
+        list[11] = err(1_200 + short + 1);
+        let n = check(&error_body(&json!(list)), true);
+        assert!((2..=12).contains(&n), "whole errors dropped from the end, the rest kept: {n}");
+        // a list that arrives with its marker keeps it; a stray text item is left out, not shown
+        let d = check(&error_body(&json!([err(10), "text", crate::validate::truncated_marker()])), true);
+        assert_eq!(d, 2);
+        // far over: the copy stops at the budget instead of walking the whole value
+        let huge = json!({"detail": vec!["y".repeat(100_000); 200]});
+        assert!(error_body(&huge).len() <= MAX_ERROR_BYTES);
+        let many = json!(vec![err(1_000); 10_000]);
+        assert!(check(&error_body(&many), true) > 1);
     }
 
     #[test]

@@ -96,7 +96,8 @@ static files, which need no key.
 
 * Bodies: capped at `MAX_BODY_BYTES` (2 MiB) by `DefaultBodyLimit`, answered `413` before a handler runs. JSON bodies are
   parsed by `parse_obj` with typed field readers (`crates/rusetect-server/src/validate.rs`, `inputs.rs`); a wrong type,
-  a missing field or an out-of-range value is a `422` listing every bad field, never a panic.
+  a missing field or an out-of-range value is a `422` listing every bad field, never a panic. An error keeps at most 1 KiB of the input it echoes, a 422 lists at most 100 errors
+  (12 KiB), and an error body is at most `MAX_ERROR_BYTES` (16 KiB); anything left out is marked `"truncated": true` (F7).
 * Queries: integers through `int_query` (`422` when not a number). Paging is clamped: `/v2/transactions` at most 200 a
   page with a bounded offset; `/v2/graph` depth 1 to 3 and at most 300 accounts; `/v2/cases` and `/v2/alerts` take a
   bounded `limit`.
@@ -231,10 +232,87 @@ anyone. A pilot runs the binary inside the bank with keys set and no demo mode (
 | F3 | Medium | `/docs` loaded a floating Swagger UI release without integrity on the same origin | Fixed: pinned, SRI, `DOCS_CSP`, no inline script | `tests/assets.rs` |
 | F4 | Low | This document's route table had drifted from the handler checks in the code (four routes' handler checks missing) | Fixed: the table is generated and checked by a test | `tests/routes.rs` |
 | F5 | Medium | The dashboard, transaction search, graph and alert list each build a full copy of every stored alert; with a large store, concurrent requests (by any reader, or anyone on the demo) grew the server until the kernel killed it (`results/perf_f1.json`, run `f1_before`) | `HEAVY_READS` in `lib.rs` caps concurrent blocking reads at the logical CPU count (minimum two). Each task holds its permit until the read ends, including after request cancellation. Each read still costs time in proportion to the stored alerts (residual). | Read-limit and cancellation tests in `lib.rs`, and run `f1_after` |
+| F6 | High | A message that drove a redaction or scam-text pattern past the regex backtracking limit made the search loop forever while holding the state lock: one anonymous request hung the whole server (section 14) | Fixed: every regex loop stops at the first error; redaction withholds text it could not search; limit 10M to 1M steps | `a_search_over_the_backtracking_limit_ends_instead_of_looping` (`pyre.rs`), `redaction_ends_and_withholds_text_it_cannot_search` (`context_rules.rs`), `a_message_past_the_regex_backtracking_limit_is_answered` (`tests/api.rs`) |
+| F7 | High | A 422 listed one error per bad list item, each echoing its input: a 2 MiB body of `{}` items to `/v2/payments/batch` built an answer of hundreds of MB and took the server to over 10 GB (section 14) | Fixed: the batch length is checked before any item is parsed; echoed inputs and field names are bounded as errors are collected, at most 100 errors or 12 KiB; every error body is at most `MAX_ERROR_BYTES` (16 KiB) and marked `truncated` when anything was left out | `bad_list_items_cannot_blow_up_the_error_answer`, `error_answers_that_echo_input_stay_under_the_byte_cap` (`tests/api.rs`), `errors_built_outside_the_body_reader_are_bounded_too` (`tests/api.rs`), `errors_are_bounded_while_they_are_collected` (`validate.rs`), `error_body_is_exact_at_the_cap_and_cut_one_byte_over` (`lib.rs`) |
 
-Residual risks, none fixed in this step: read endpoints whose cost grows with every stored alert, so a large store
+Residual risks, none fixed in that step: read endpoints whose cost grows with every stored alert, so a large store
 makes them slow (Medium, `docs/PERFORMANCE_REPORT.md`); static keys without expiry or SSO (Medium for a pilot); per-instance rate limit
 and nonce cache (Low on one instance, Medium on several); CORS `*` by default (Low: keys are not cookies); unsigned audit
 chain (Medium against an insider with store access); webhook secret is symmetric with no mTLS (Low); `style-src-attr
 'unsafe-inline'` (Low); Redis error text in a `503` (Low); two unmaintained crates (Low); single tenant (section 8); the
 public demo (section 12, by design). No external penetration test has been done.
+
+## 14. Review of 2026-11-23: external scanner follow-up
+
+An external AI scanner (Hinoki) reported that `/api/health` on production shows an in-memory store, an ephemeral
+signing key and demo keys, and that about 50 endpoints are exposed. This review checked that report against the code
+and tested locally (`RUSETECT_DEMO=1`, release build). Production could not be probed from the review environment (its
+network does not allow the host), so every production statement below is from the code plus the scanner's report.
+Measured values are in `results/security_repro.json` (`tools/security_repro.py`, run on a local server before and after
+the fixes).
+
+### Production exposure
+
+* **The scanner is right, and it is the configuration, not a bypass.** `"auth": "demo keys ..."` in `/api/health` means
+  `RUSETECT_ANALYST_KEYS` is not set, so `KEYS.demo_mode` is true and `security::gate` lets every `/api` request through
+  (section 1). `require_reader` and the handlers' `analyst_for` checks pass too, because the demo keys, including the
+  supervisor key, are published at `/api/v2/demo/analysts`. An anonymous visitor can therefore read alerts, evidence
+  packs, STR drafts, cases, the audit log and the consortium ledger; review and triage alerts (both analysts of a
+  four-eyes block); open and close investigations; publish to the ledger as any member bank; register a duress PIN for
+  any account id (first come, never overwritten); reset the instance's demo state; and run `/v2/payments/batch` and
+  `/v2/demo/next`. All of it is synthetic data in one instance's memory, so confidentiality impact is low; integrity
+  and availability of the public demo are not protected at all. Outside demo mode the gate and the route table of
+  section 1 apply, and `check_config` refuses to start without the signing key, consortium secret and hash salt.
+* **`/api/health`** shows the auth mode, the signing key id and whether it is ephemeral, the store kind and whether it
+  is reachable, and the drift status. None of it is a secret (the key id is also at `/v2/keys/public`), and it is what
+  the website's status chips and `tools/pilot_rehearsal.py` read. Accepted (Info). With Redis, `store.note` can hold a
+  Redis client error; section 4 covers that text.
+* **`api/rusetect.rs`** reads no secret itself: it runs the same `check_config`, `ensure_root` and `build_app` as the
+  binary. The signing key, consortium secret and hash salt are read once at start-up from the environment; on Vercel
+  `VERCEL` is set, so the rate limiter takes the client from the right-most `X-Forwarded-For` entry. State is per
+  function instance and lost on a cold start, as the health report says.
+
+### Findings of this review
+
+| # | Severity (CVSS 3.1) | Finding | Evidence | Status |
+|---|---|---|---|---|
+| F6 | High, 7.5 (AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H; PR:L outside demo mode) | fancy-regex's `find_iter` and `captures_iter` return the same "backtrack limit exceeded" error forever instead of ending; `PyRegex` skipped errors with `filter_map(..ok())`, so the loop never ended. The e-mail redaction pattern is quadratic on text such as `"a." x 2300` (4.6 KB, under the 5,000-character message limit). The request held the state lock, so every later request waited. Reached by `/v2/message`, `/v2/assess` with a consented message, and the webhook | `crates/rusetect/src/pyre.rs` (`sub_with`, `find_*`), `context_rules::redact`; local repro: `message_a_dot_x2300` never answered, a thread stuck in `fancy_regex::vm::run` under `redact`, the server hung | Fixed: `map_while` stops at the first error; `sub_parts` reports where the search stopped and `redact` replaces the unsearched rest with `[REDACTED]` (fail closed, so an unsearched identifier is never stored); the limit is 1M steps instead of 10M, so a pathological message costs a fraction of a second instead of seconds. Tests listed in section 13 |
+| F7 | High, 7.5 (same vector) | Validation errors were unbounded and each echoed its input: 2 MiB of `{}` items to `/v2/payments/batch`, or of numbers in `trusted_contacts` on `/v2/duress/register`, built a 422 of hundreds of MB. The batch size (20,000) was checked only after every item was parsed | `validate.rs` `Errors::push`, `lib.rs` `v2_batch`; `results/security_repro.json`: answer bytes and peak memory before and after | Fixed: `MAX_ERRORS` = 100 per answer; batch length checked first (`413`). Review of the fix (Codex, two rounds): a count cap alone still let 100 large echoes build a large answer, and clipping after serializing still paid for the full detail. Now each error keeps at most `MAX_INPUT_BYTES` (1 KiB) of its echoed input and 128 characters per field name, copied by a walk that stops when its budget is spent (`validate::bounded`), and collection stops at 100 errors or `MAX_ERRORS_BYTES` (12 KiB). Every error body, wrapper included, is at most `MAX_ERROR_BYTES` (16 KiB) (`error_body`, the one path for all routes). Anything left out ends the list with an error of type `truncated` and sets `"truncated": true`; a validation `detail` stays a list. The validation errors built by hand outside the body reader (invalid or empty JSON, query integers and booleans, timestamps, digraph values) go through the same collector (`ApiError::validation`), and a caller's text in a message (the review action) is cut to 64 characters before it is formatted (third round). Over the cap, a list of errors keeps whole error objects from the start and drops the rest, never turning them into text, and ends with the `truncated` error object next to `"truncated": true` (fourth round). Small errors keep their exact shape |
+| F8 | High as deployed (no code defect) | Production runs in demo mode on the public internet: every route is open, the supervisor key is published, state is in memory per instance, the signing key is ephemeral (signatures fail after a cold start or on another instance) | `/api/health` per the scanner; `security::gate`, `load_keys` | Parth action P1 to P3 |
+| F9 | Medium, 5.3 (AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L) | Costly requests hold the single state lock while they run: a batch of 8,000 payments held it for about 9 s, and `/v2/demo/next?n=20000` for seconds, so a few requests from one client stall every other visitor of that instance. The per-client limit (240 requests per 10 s) counts requests, not their cost | `with_state` in `v2_batch`, `demo_next`; `batch_8000_valid_payments_state_lock` in `results/security_repro.json` | Not fixed in code: batches are the channel role's job outside demo mode, and the console replays `demo/next` back to back, so a cost limit in the server would break both. Parth action P4 |
+| F10 | Low, 3.7 | `/v2/duress/register` and `/v2/payments/confirm` run PBKDF2 (120,000 rounds) per request outside the lock, so they cost CPU per call | `intervention::pin_hash` | Accepted: the per-client limit bounds it; fronted by P4 |
+| F11 | Low, 3.1 | CORS answers `*` unless `CORS_ORIGINS` is set. Keys are headers, not cookies, so another site cannot act as a visitor, but nothing needs cross-origin access to this API | `build_app` | Parth action P5 |
+
+Checked with no finding: **SSRF**: the server has no outbound HTTP client (dependencies: no `reqwest`, `hyper` client
+or `TcpStream` outside the bench example); links in messages are only matched and redacted, never fetched. **Path
+traversal**: `/assets/{*path}` serves only names in the embedded list (`tests/assets.rs`). **Unsafe deserialisation**:
+`serde_json` only, with its recursion limit; no `unsafe` code. **XSS**: the app builds HTML with the auto-escaping
+`html` tag (`util.js`; six `raw()` uses, all on escaped text or fixed markup); the legacy pages pass every
+caller-set field through `esc` and insert only server-minted ids raw (alert ids `A00001`, case and campaign ids);
+`script-src 'self'` everywhere. **Webhook HMAC**: constant-time `verify_slice`, 5 minute window, idempotent `event_id`;
+memory mode refuses new events (`503`) rather than forget old ids. **Panics**: 3,000 random bodies over every POST
+route and odd GET queries (non-ASCII ids, huge and negative limits) against a local server gave no `5xx` other than
+`503` and no panic. **Secrets**: no key, token or private key in the tree or anywhere in the git history (pattern
+search of `git log --all -p`); the demo salt and consortium secret in the code are demo values that `check_config`
+forbids outside demo mode. **`cargo audit`**: no vulnerability; the two unmaintained warnings of section 6 remain.
+
+### Parth actions (not changed by this review)
+
+* **P1. Decide what the public site is.** If it stays a public demo, keep demo mode but treat it as untrusted and
+  disposable (section 12). If it should be protected: in Vercel, Project, Settings, Deployment Protection, turn on
+  Vercel Authentication (or Password Protection) for Production, so anonymous visitors cannot reach `/api` at all.
+* **P2. To turn demo mode off on Vercel**, in Project, Settings, Environment Variables (Production): remove
+  `RUSETECT_DEMO`; add `RUSETECT_ANALYST_KEYS` (JSON `{"<key of 16+ random characters>": {"analyst": "...", "role":
+  "analyst|supervisor|viewer|channel"}}`), `RUSETECT_SIGNING_KEY` (`openssl rand -base64 32`),
+  `RUSETECT_CONSORTIUM_SECRET` and `RUSETECT_HASH_SALT` (`openssl rand -hex 32` each); redeploy. The function refuses
+  to start if one is missing (`check_config`), which is the check that it worked. The website then needs a key typed
+  in; the public console stops working for anonymous visitors.
+* **P3. For a demo that should survive cold starts**: set `RUSETECT_SIGNING_KEY` to a demo-only seed (signatures then
+  verify across instances; never reuse it for a pilot), and connect a Redis store (Vercel Marketplace, Upstash), which
+  sets `REDIS_URL`/`KV_URL`. Do not do this with real data on a demo deployment (section 12).
+* **P4. Cost limits at the edge**: in Vercel, Project, Firewall, add rate-limit rules per IP, for example
+  `POST /api/v2/payments/batch` 5 per minute, `POST /api/v2/demo/*` 30 per minute and `POST /api/v2/message`,
+  `/api/v2/assess` 60 per minute; consider Attack Challenge Mode during abuse. This also covers the per-instance limit
+  of section 7.
+* **P5. CORS**: set `CORS_ORIGINS=https://nemesis-rust1.vercel.app` (Production) and redeploy.
+

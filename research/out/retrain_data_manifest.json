@@ -1,0 +1,110 @@
+{
+ "entry": "docs/decision.md 8an, step 0 (data preparation only; no model trained, scored or evaluated)",
+ "checked": "2026-11-23",
+ "hi_medium": {
+  "source": "https://huggingface.co/datasets/OsamaMIT/IBM-AML-HI (main)",
+  "raw_trans": {
+   "remote": "HI-Medium_Trans.csv",
+   "bytes_uncompressed": 3031783420,
+   "sha256_uncompressed": "3126afb8155e7c8815d62bc5370549a7b5ae6bf7dfe872b3cd7813e66a3d7ff5",
+   "sha256_matches_hf_lfs_oid": true,
+   "stored_as": "/tmp/claude-0/-home-user/69fda7e6-df6e-5fd3-9680-358e74c73345/scratchpad/data-hi-medium/HI-Medium_Trans.csv.gz",
+   "stored_bytes": 715344393,
+   "stored_sha256": "557d92a75e3c1314914ddf63a57a7c2215b927721166365e547352efce6c94a8",
+   "note": "streamed into gzip -1; never written uncompressed",
+   "header": "Timestamp,From Bank,Account,To Bank,Account,Amount Received,Receiving Currency,Amount Paid,Payment Currency,Payment Format,Is Laundering",
+   "rows": 31898238,
+   "label_1": 35230,
+   "ts_min": "2022/09/01 00:00",
+   "ts_max": "2022/09/28 15:58",
+   "sorted_by_ts": false
+  },
+  "sorted": {
+   "path": "/tmp/claude-0/-home-user/69fda7e6-df6e-5fd3-9680-358e74c73345/scratchpad/data-hi-medium/hi_medium_sorted.csv.gz",
+   "bytes": 892206499,
+   "sha256": "7d00dc6efc0c1db15f5114ee6fbb58e62060dc94f411beb42dc766449cca7c29",
+   "made_by": "header renamed as the HI-Small sorted file; body = LC_ALL=C sort -s -t, -k1,1 -S 6G --parallel=4 --compress-program=gzip, then gzip -1",
+   "header": "ts,fb,fa,tb,ta,amt_recv,cur_recv,amt_paid,cur_paid,fmt,y",
+   "rows": 31898238,
+   "label_1": 35230,
+   "ts_min": "2022/09/01 00:00",
+   "ts_max": "2022/09/28 15:58",
+   "sorted_by_ts": true
+  },
+  "patterns": {
+   "remote": "HI-Medium_Patterns.txt",
+   "path": "/tmp/claude-0/-home-user/69fda7e6-df6e-5fd3-9680-358e74c73345/scratchpad/data-hi-medium/HI-Medium_Patterns.txt",
+   "bytes": 2279574,
+   "sha256": "d612cd7ed6f7761c0e36f3b788dfbae68aa0842c77145b192c777c22daba5c9f",
+   "attempts": 2756,
+   "rows": 22743,
+   "rows_found_in_trans_labelled_1": 22743
+  },
+  "checks": {
+   "rows_and_label_1_vs_old_dump_v2_himed.csv.gz.json": {
+    "expected_rows": 31898238,
+    "expected_positives": 35230,
+    "match": true
+   },
+   "last_20pct_vs_research/out/hardened_transfer.json_himed": {
+    "first_test_row": 25518590,
+    "test_rows": 6379648,
+    "test_label_1": 10642,
+    "expected_test_positives": 10642,
+    "positives_match": true,
+    "note": "hardened_transfer test_rows (6,378,562) is a weighted estimate from the 0.05-sampled dump, so only positives are an exact check"
+   },
+   "all_pattern_rows_in_trans": true
+  }
+ },
+ "hi_small": {
+  "source": "https://huggingface.co/datasets/OsamaMIT/IBM-AML-HI-Small (time-sorted earlier, research/full_hi_eval.py)",
+  "sorted": {
+   "path": "/tmp/claude-0/-home-user-NemesisRust1/69fda7e6-df6e-5fd3-9680-358e74c73345/scratchpad/hismall/hi_small_sorted.csv.gz",
+   "bytes": 118570154,
+   "sha256": "5e849e9259bcc71a0f1bee5acdfce3ee7d7cf157fac210024fd50a2d5276a7f9",
+   "header": "ts,fb,fa,tb,ta,amt_recv,cur_recv,amt_paid,cur_paid,fmt,y",
+   "rows": 5078345,
+   "label_1": 5177,
+   "ts_min": "2022/09/01 00:00",
+   "ts_max": "2022/09/18 16:18",
+   "sorted_by_ts": true,
+   "matches_full_hi_eval_docstring": true
+  },
+  "patterns": {
+   "path": "/tmp/claude-0/-home-user-NemesisRust1/69fda7e6-df6e-5fd3-9680-358e74c73345/scratchpad/hismall/HI-Small_Patterns.txt",
+   "bytes": 323844,
+   "sha256": "2c546b5ce6009e73851f0139af053cf845f08bf92f3bc82fe1eb937dec2ef39b",
+   "attempts": 370,
+   "rows": 3209
+  }
+ },
+ "saml_d": {
+  "source": "Kaggle SAML-D, converted by research/samld_convert.py (raw file not local)",
+  "converted": {
+   "path": "/tmp/claude-0/-home-user-NemesisRust1/69fda7e6-df6e-5fd3-9680-358e74c73345/scratchpad/samld/samld_aml.csv.gz",
+   "bytes": 197886859,
+   "sha256": "c24edfe279c43839f13768b57e19818f37d6d6a01778df2cd888b3060f740869",
+   "header": "ts,fb,fa,tb,ta,amt_recv,cur_recv,amt_paid,cur_paid,fmt,y",
+   "rows": 9504852,
+   "label_1": 9873,
+   "ts_min": "2022/10/07 10:35",
+   "ts_max": "2023/08/23 10:57",
+   "sorted_by_ts": true,
+   "rows_match_research/out/transfer_samld.json": true
+  },
+  "types_sidecar": {
+   "path": "/tmp/claude-0/-home-user-NemesisRust1/69fda7e6-df6e-5fd3-9680-358e74c73345/scratchpad/samld/samld_aml.csv.gz.types",
+   "bytes": 165233029,
+   "sha256": "b4bf17e512642b2d949e7fb26c388dd160af2ba3307bef1f9455bb0fdd151691",
+   "lines": 9504852,
+   "note": "plain text despite the .gz in its name"
+  }
+ },
+ "resources": {
+  "new_disk_bytes": 1609830556,
+  "df_avail_after": "7.7G on /",
+  "sort_rss_one_sample_gb": 5.1, "sort_memory_cap": "-S 6G"
+ },
+ "not_done": "research_dump re-dumps of step 0 wait for the reviewed script research/full_data_retrain.py"
+}

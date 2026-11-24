@@ -7,20 +7,172 @@ use rusetect::pyfmt::{jf, py_float_str, py_strip};
 use serde_json::{json, Map, Value};
 
 #[derive(Default)]
-pub struct Errors(pub Vec<Value>);
+/// Validation errors: the list, its serialized bytes so far, and whether an echoed input or name was cut.
+pub struct Errors(pub Vec<Value>, usize, bool);
+
+/// Most errors one 422 lists. Each echoes its input, so without a cap a 2 MiB body of bad list items (`[{},{},...]` to
+/// /v2/payments/batch) built a 431 MB answer and took the server to 12 GB.
+pub const MAX_ERRORS: usize = 100;
+/// Serialized bytes of the echoed `input` kept per error, and of all errors of one answer. Both are enforced while the
+/// errors are collected, so an error never holds more than this of the request, however large the request is.
+pub const MAX_INPUT_BYTES: usize = 1024;
+pub const MAX_ERRORS_BYTES: usize = 12 * 1024;
+/// Room for the "…" markers a cut copy adds after its budget is spent (at most one per nesting level, 8 levels).
+const SLACK: usize = 64;
+
+/// The last item of a list cut short by MAX_ERRORS or MAX_ERRORS_BYTES (an error in the same shape as the others).
+pub fn truncated_marker() -> Value {
+    json!({"type": "truncated", "loc": ["body"], "msg": "more errors not shown", "input": null})
+}
+
+/// JSON-escaped length of one character (a quote or backslash takes 2 bytes, a control character 6).
+fn esc_len(c: char) -> usize {
+    match c {
+        '"' | '\\' => 2,
+        c if (c as u32) < 0x20 => 6,
+        c => c.len_utf8(),
+    }
+}
+
+/// `s` cut to fit `budget` bytes once escaped (ending in "…" when cut); the bytes used are taken from `budget`.
+fn clip_str(s: &str, budget: &mut usize, cut: &mut bool) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        let n = esc_len(c);
+        if n > *budget {
+            *cut = true;
+            out.push('…');
+            *budget = 0;
+            return out;
+        }
+        *budget -= n;
+        out.push(c);
+    }
+    out
+}
+
+/// A copy of `v` that holds at most about `budget` bytes once serialized: the walk stops when the budget is spent, so
+/// its cost does not grow with `v`. Returns the copy and whether anything was left out.
+pub fn bounded(v: &Value, budget: usize) -> (Value, bool) {
+    let (mut b, mut cut) = (budget, false);
+    let out = walk(v, &mut b, 0, &mut cut);
+    (out, cut)
+}
+
+fn walk(v: &Value, b: &mut usize, depth: usize, cut: &mut bool) -> Value {
+    if *b < 4 || depth > 8 {
+        *cut = true;
+        *b = 0;
+        return json!("…");
+    }
+    *b -= 2; // quotes, brackets or the separator
+    match v {
+        Value::String(s) => Value::String(clip_str(s, b, cut)),
+        Value::Array(a) => {
+            let mut out = Vec::new();
+            for x in a {
+                if *b < 4 {
+                    *cut = true;
+                    out.push(json!("…"));
+                    break;
+                }
+                out.push(walk(x, b, depth + 1, cut));
+            }
+            Value::Array(out)
+        }
+        Value::Object(m) => Value::Object(walk_map(m, b, depth, cut)),
+        x => {
+            *b = b.saturating_sub(x.to_string().len());
+            x.clone()
+        }
+    }
+}
+
+fn walk_map(m: &Map<String, Value>, b: &mut usize, depth: usize, cut: &mut bool) -> Map<String, Value> {
+    let mut out = Map::new();
+    for (k, x) in m {
+        if *b < 8 {
+            *cut = true;
+            out.insert("…".into(), Value::Null);
+            break;
+        }
+        *b -= 3; // quotes and colon
+        let k = clip_str(k, b, cut);
+        out.insert(k, walk(x, b, depth + 1, cut));
+    }
+    out
+}
 
 impl Errors {
     pub fn push(&mut self, kind: &str, loc: &[&str], msg: &str, input: &Value) {
-        let mut l = vec![json!("body")];
+        self.push_in("body", kind, loc, msg, input, None);
+    }
+
+    /// `push` under another root (`query`) or with pydantic's `ctx`; every error, also one built outside `Obj`, comes
+    /// through here, so its echoes are bounded before they are copied.
+    pub fn push_in(&mut self, root: &str, kind: &str, loc: &[&str], msg: &str, input: &Value, ctx: Option<&Value>) {
+        if !self.full() {
+            let (input, cut) = bounded(input, MAX_INPUT_BYTES - SLACK);
+            let ctx = ctx.map(|c| bounded(c, MAX_INPUT_BYTES - SLACK));
+            self.2 |= cut || ctx.as_ref().is_some_and(|c| c.1);
+            self.add(root, kind, loc, msg, input, ctx.map(|c| c.0));
+        }
+    }
+
+    /// `push` with an object as the input, copying only the part of it within the budget.
+    fn push_map(&mut self, kind: &str, loc: &[&str], msg: &str, input: &Map<String, Value>) {
+        if !self.full() {
+            let input = walk_map(input, &mut (MAX_INPUT_BYTES - SLACK - 2), 0, &mut self.2);
+            self.add("body", kind, loc, msg, Value::Object(input), None);
+        }
+    }
+
+    fn full(&self) -> bool {
+        self.0.last().is_some_and(|e| e["type"] == "truncated")
+    }
+
+    fn add(&mut self, root: &str, kind: &str, loc: &[&str], msg: &str, input: Value, ctx: Option<Value>) {
+        let mut l = vec![json!(root)];
         l.extend(loc.iter().map(|s| match s.parse::<i64>() {
             Ok(i) => json!(i),
-            Err(_) => json!(s),
+            Err(_) => json!(clip_str(s, &mut 128, &mut self.2)), // a field name can be any key the caller sent
         }));
-        self.0.push(json!({"type": kind, "loc": l, "msg": msg, "input": input}));
+        let mut e = json!({"type": kind, "loc": l, "msg": clip_str(msg, &mut 512, &mut false), "input": input});
+        if let Some(c) = ctx {
+            e["ctx"] = c;
+        }
+        let n = size(&e) + 1;
+        if self.0.len() >= MAX_ERRORS || self.1 + n > MAX_ERRORS_BYTES {
+            self.0.push(truncated_marker());
+            return;
+        }
+        self.1 += n;
+        self.0.push(e);
     }
+
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+
+    /// The list for a 422, ending in `truncated_marker()` when anything was left out.
+    pub fn into_list(mut self) -> Vec<Value> {
+        if self.2 && !self.full() {
+            self.0.push(truncated_marker());
+        }
+        self.0
+    }
+}
+
+/// The first `max` characters of a caller's text for an error message, ending in "…" when cut; copies no more.
+pub fn clip(s: &str, max: usize) -> String {
+    let mut it = s.chars();
+    let out: String = it.by_ref().take(max).collect();
+    if it.next().is_some() { out + "…" } else { out }
+}
+
+/// Serialized size of a value that is already bounded.
+pub fn size(v: &Value) -> usize {
+    rusetect::pyfmt::dumps(v, rusetect::pyfmt::RESPONSE_STYLE).len()
 }
 
 /// Field reader over one JSON object.
@@ -58,8 +210,9 @@ impl<'a> Obj<'a> {
     }
 
     fn missing(&self, errs: &mut Errors, f: &str) {
-        let input = Value::Object(self.m.clone());
-        self.err(errs, "missing", f, "Field required", &input);
+        let l = self.loc(f);
+        let r: Vec<&str> = l.iter().map(|s| s.as_str()).collect();
+        errs.push_map("missing", &r, "Field required", self.m);
     }
 
     pub fn get(&self, f: &str) -> Option<&'a Value> {
@@ -292,4 +445,35 @@ pub fn parse_bool_str(s: &str) -> Option<bool> {
 /// A float as stored by pydantic for a `float` field.
 pub fn fval(x: f64) -> Value {
     jf(x)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn errors_are_bounded_while_they_are_collected() {
+        // 100 errors each over a 1 MB input and a 100 KB field name: what is kept never grows with the request
+        let (input, key) = (json!({"a": "x".repeat(1_000_000), "b": ["y".repeat(1_000_000)]}), "k".repeat(100_000));
+        let mut e = Errors::default();
+        for i in 0..MAX_ERRORS {
+            e.push("string_type", &[&key, &i.to_string()], "Input should be a valid string", &input);
+        }
+        assert!(e.0.iter().map(|x| size(x) + 1).sum::<usize>() <= MAX_ERRORS_BYTES + size(&truncated_marker()) + 1);
+        let most = e.0.iter().filter(|x| x["type"] != "truncated").map(|x| size(&x["input"])).max().unwrap();
+        assert!(most <= MAX_INPUT_BYTES, "{most}");
+        assert_eq!(e.0.last().unwrap(), &truncated_marker(), "the cut list says so");
+        let n = e.0.len();
+        e.push("string_type", &["x"], "m", &json!(1));
+        assert_eq!(e.0.len(), n, "nothing is added after the marker");
+        // an object missing fields is echoed in part, without copying it whole
+        let big: Map<String, Value> = (0..10_000).map(|i| (format!("f{i}"), json!("z".repeat(100)))).collect();
+        let mut e = Errors::default();
+        e.push_map("missing", &["f"], "Field required", &big);
+        assert!(size(&e.0[0]["input"]) <= MAX_INPUT_BYTES, "{}", size(&e.0[0]["input"]));
+        // small inputs are echoed exactly
+        let mut e = Errors::default();
+        e.push("string_type", &["f"], "m", &json!({"a": [1, "b"]}));
+        assert_eq!(e.0[0]["input"], json!({"a": [1, "b"]}));
+    }
 }
