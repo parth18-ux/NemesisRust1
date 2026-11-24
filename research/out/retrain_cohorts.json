@@ -1,0 +1,185 @@
+{
+ "entry": "docs/decision.md 8ao (amendment to 8an)",
+ "source": "research/out/retrain_data_manifest.json; timestamps read from the files it names (sha256 checked)",
+ "row_id": "0-based data-line index of the time-sorted file (research_dump `row`)",
+ "hi_small": {
+  "rows": 5078345,
+  "ts_first": "2022/09/01 00:00",
+  "ts_last": "2022/09/18 16:18",
+  "train": {
+   "rows": [
+    0,
+    3047007
+   ],
+   "count": 3047007,
+   "ts_first": "2022/09/01 00:00",
+   "ts_last": "2022/09/06 13:36"
+  },
+  "half1_freeze": {
+   "rows": [
+    3047007,
+    3554841
+   ],
+   "count": 507834,
+   "ts_first": "2022/09/06 13:36",
+   "ts_last": "2022/09/07 14:55"
+  },
+  "half2_screen": {
+   "rows": [
+    3554841,
+    4062676
+   ],
+   "count": 507835,
+   "ts_first": "2022/09/07 14:55",
+   "ts_last": "2022/09/08 16:12"
+  },
+  "test_descriptive_locked": {
+   "rows": [
+    4062676,
+    5078345
+   ],
+   "count": 1015669,
+   "ts_first": "2022/09/08 16:12",
+   "ts_last": "2022/09/18 16:18"
+  }
+ },
+ "confirmation_candidates": {
+  "hi_medium": {
+   "rows": 31898238,
+   "parts": {
+    "train_60": {
+     "rows": [
+      0,
+      19138942
+     ],
+     "count": 19138942,
+     "ts_first": "2022/09/01 00:00",
+     "ts_last": "2022/09/09 20:43",
+     "prior_use": [
+      "aml_hardening.json trained_on (training part, research/aml_hardening.py)",
+      "unified_train.json datasets (training part of the pooled model served as service/models/hardening.json via research/pooled_hardening.py)"
+     ]
+    },
+    "val_60_80": {
+     "rows": [
+      19138942,
+      25518590
+     ],
+     "count": 6379648,
+     "ts_first": "2022/09/09 20:43",
+     "ts_last": "2022/09/14 05:46",
+     "prior_use": [
+      "aml_hardening.json validation (scored; decided B1/B2)",
+      "pooled_hardening.json validation (scored; decided G3, adopted)"
+     ]
+    },
+    "test_80_100": {
+     "rows": [
+      25518590,
+      31898238
+     ],
+     "count": 6379648,
+     "ts_first": "2022/09/14 05:46",
+     "ts_last": "2022/09/28 15:58",
+     "prior_use": [
+      "aml_hardening.json test",
+      "pooled_hardening.json test",
+      "unified_train.json test",
+      "hardened_transfer.json himed (test_positives 10642)"
+     ]
+    }
+   },
+   "rows_with_ts_le_hi_small_end": 31894479,
+   "time_later_than_hi_small": {
+    "rows": [
+     31894479,
+     31898238
+    ],
+    "count": 3759,
+    "ts_first": "2022/09/18 16:20",
+    "ts_last": "2022/09/28 15:58",
+    "overlaps_used_parts": [
+     "test_80_100"
+    ],
+    "eligible": false
+   },
+   "row_overlap_with_hi_small": "none: a separate file with its own row ids",
+   "eligible_interval": false,
+   "positives_kept_in_scored_test": {
+    "first_test_row": 25518590,
+    "test_rows": 6379648,
+    "test_label_1": 10642,
+    "expected_test_positives": 10642,
+    "positives_match": true,
+    "note": "hardened_transfer test_rows (6,378,562) is a weighted estimate from the 0.05-sampled dump, so only positives are an exact check"
+   }
+  },
+  "saml_d": {
+   "rows": 9504852,
+   "parts": {
+    "train_60": {
+     "rows": [
+      0,
+      5702911
+     ],
+     "count": 5702911,
+     "ts_first": "2022/10/07 10:35",
+     "ts_last": "2023/04/16 21:10",
+     "prior_use": [
+      "aml_hardening.json trained_on (training part, research/aml_hardening.py)",
+      "unified_train.json datasets (training part of the pooled model served as service/models/hardening.json via research/pooled_hardening.py)"
+     ]
+    },
+    "val_60_80": {
+     "rows": [
+      5702911,
+      7603881
+     ],
+     "count": 1900970,
+     "ts_first": "2023/04/16 21:10",
+     "ts_last": "2023/06/19 22:08",
+     "prior_use": [
+      "aml_hardening.json validation (scored; decided B1/B2)",
+      "pooled_hardening.json validation (scored; decided G3, adopted)"
+     ]
+    },
+    "test_80_100": {
+     "rows": [
+      7603881,
+      9504852
+     ],
+     "count": 1900971,
+     "ts_first": "2023/06/19 22:08",
+     "ts_last": "2023/08/23 10:57",
+     "prior_use": [
+      "aml_hardening.json test",
+      "pooled_hardening.json test",
+      "unified_train.json test",
+      "hardened_transfer.json samld (test_positives 2143)"
+     ]
+    }
+   },
+   "rows_with_ts_le_hi_small_end": 0,
+   "time_later_than_hi_small": {
+    "rows": [
+     0,
+     9504852
+    ],
+    "count": 9504852,
+    "ts_first": "2022/10/07 10:35",
+    "ts_last": "2023/08/23 10:57",
+    "overlaps_used_parts": [
+     "train_60",
+     "val_60_80",
+     "test_80_100"
+    ],
+    "eligible": false
+   },
+   "row_overlap_with_hi_small": "none: a separate file with its own row ids",
+   "eligible_interval": false
+  }
+ },
+ "confirmation_cohort": null,
+ "confirmation_reason": "none eligible: every row of HI-Medium and SAML-D lies in a part already used for training the served hardening model or scored by an earlier study (see prior_use); HI-Small has no rows after its own test part. The incumbent S is kept.",
+ "li_small": "unmeasured; outside the replacement claim"
+}
