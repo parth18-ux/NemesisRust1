@@ -158,6 +158,13 @@ impl RedisState {
     /// The read half of `features` (one pipelined round trip) and the account-state write it implies, as a command the
     /// caller sends (alone, or in one round trip with the pair window).
     pub fn features_read(&mut self, p: &Payment) -> redis::RedisResult<(Features, redis::Cmd)> {
+        self.features_read_after(p, None, &mut None)
+    }
+
+    /// As `features_read`, with `pre` sent first in the same round trip. Its reply goes to `pre_reply` as soon as it is
+    /// read, so the caller has it even when a read after it fails. `pre` runs before the reads (one connection, in
+    /// order), so it must not depend on them.
+    pub fn features_read_after(&mut self, p: &Payment, pre: Option<&redis::Cmd>, pre_reply: &mut Option<redis::Value>) -> redis::RedisResult<(Features, redis::Cmd)> {
         let s = format!("{}|{}", p.from_bank, p.from_account);
         let d = format!("{}|{}", p.to_bank, p.to_account);
         let t = p.tmin;
@@ -172,8 +179,11 @@ impl RedisState {
         let (seen, recip, bp_seen): (bool, bool, bool);
         let (wo, wi, wi_s): (Vec<String>, Vec<String>, Vec<String>);
         let first: Option<String>;
-        (sa, da, seen, recip, bp_seen, wo, wi, wi_s, first) = redis::pipe()
-            .cmd("HMGET").arg(self.k("a", &s)).arg(&A_S[..])
+        let mut pl = redis::pipe();
+        if let Some(c) = pre {
+            pl.add_command(c.clone());
+        }
+        pl.cmd("HMGET").arg(self.k("a", &s)).arg(&A_S[..])
             .cmd("HMGET").arg(self.k("a", &d)).arg(&A_D[..])
             .cmd("SISMEMBER").arg(self.k("p", &s)).arg(&d)
             .cmd("SISMEMBER").arg(self.k("p", &d)).arg(&s)
@@ -181,8 +191,20 @@ impl RedisState {
             .cmd("ZRANGEBYSCORE").arg(self.k("wo", &s)).arg(&lo).arg("+inf")
             .cmd("ZRANGEBYSCORE").arg(self.k("wi", &d)).arg(&lo).arg("+inf")
             .cmd("ZRANGEBYSCORE").arg(self.k("wi", &s)).arg(&lo).arg("+inf")
-            .cmd("GET").arg(&seen_key)
-            .query(&mut self.con)?;
+            .cmd("GET").arg(&seen_key);
+        let replies: Vec<redis::Value> = if pre.is_some() {
+            // read reply by reply, not as one pipeline result, which would drop `pre`'s reply when a read fails
+            self.con.send_packed_command(&pl.get_packed_pipeline())?;
+            *pre_reply = Some(self.con.recv_response()?);
+            let rest = (0..9).map(|_| self.con.recv_response()).collect::<redis::RedisResult<Vec<_>>>()?;
+            if let Some(redis::Value::ServerError(e)) = rest.iter().find(|v| matches!(v, redis::Value::ServerError(_))) {
+                return Err(e.clone().into());
+            }
+            rest
+        } else {
+            pl.query(&mut self.con)?
+        };
+        (sa, da, seen, recip, bp_seen, wo, wi, wi_s, first) = redis::from_redis_value(&redis::Value::Array(replies))?;
         self.last_sender_fan_in = wi_s.iter().map(|m| cp(m).0).collect::<HashSet<_>>().len();
         let nan = f64::NAN;
         let on = int(&sa[0]).unwrap_or(0);

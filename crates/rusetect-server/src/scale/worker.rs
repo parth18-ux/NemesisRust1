@@ -3,7 +3,7 @@
 use super::redis_state::RedisState;
 use crate::inputs::{CURRENCIES, PAYMENT_FORMATS};
 use rusetect::context_rules::{assess, combine, from_engine_features};
-use rusetect::engine::DECISIONS;
+use rusetect::engine::{Features, DECISIONS};
 use rusetect::payment::Payment;
 use rusetect::pyfmt::{dumps, py_round, DEFAULT_STYLE};
 use rusetect::{paths, Engine};
@@ -31,11 +31,17 @@ impl Scorer {
 /// A payment with an eid (live or from the stream) is scored with the pair score saved by its first scoring, so a retry
 /// or redelivery decides as its first attempt did.
 pub fn score_one(eng: &Engine, state: &mut RedisState, p: &Payment) -> redis::RedisResult<Value> {
-    let m = eng.models.as_ref().unwrap();
-    let cfg = &eng.cfg;
     let (f, write) = state.features_read(p)?;
     let sf = state.last_sender_fan_in;
-    let x = eng.vec(&f);
+    score_read(eng, state, p, &f, write, sf)
+}
+
+/// The rest of `score_one` once the account state is read: `f`, the account-state `write` and the sender fan-in `sf`
+/// as `RedisState::features_read` returned them.
+pub fn score_read(eng: &Engine, state: &mut RedisState, p: &Payment, f: &Features, write: redis::Cmd, sf: usize) -> redis::RedisResult<Value> {
+    let m = eng.models.as_ref().unwrap();
+    let cfg = &eng.cfg;
+    let x = eng.vec(f);
     let s1 = m.l1.predict(&x) as f64;
     let mut esc = s1 >= cfg.l1_threshold;
     let mut risk = if esc { m.l2(&x) } else { s1 };
@@ -64,7 +70,7 @@ pub fn score_one(eng: &Engine, state: &mut RedisState, p: &Payment) -> redis::Re
     }
     let (vt, ht, bt) = eng.thresholds();
     let rank = if !esc { 0 } else if risk >= bt { 3 } else if risk >= ht { 2 } else if risk >= vt { 1 } else { 0 };
-    let ctx = assess(None, &from_engine_features(&f, sf), true, None, true, None, None);
+    let ctx = assess(None, &from_engine_features(f, sf), true, None, true, None, None);
     let c = combine(DECISIONS[rank], &ctx);
     Ok(json!({"eid": p.eid, "payment_decision": DECISIONS[rank], "risk": if esc { json!(py_round(risk, 5)) } else { Value::Null },
               "context_band": ctx.band, "final_decision": c["final_decision"], "raised_by_context": c["raised_by_context"]}))

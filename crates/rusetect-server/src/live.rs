@@ -28,10 +28,12 @@
 //! (account stripes for both, taken in ascending order, held across the account-state read, write and pair window); the
 //! state mutex is held only for the in-process part (drift, PRAMAAN, desk alert and chain); a decision that is not
 //! `allow` holds `ledger_order` from before that lock through the commit, so live:ledger receives the desk's hash chain in
-//! order. Lock order: ledger_order, then state; alert_io, then state. Per event: four Redis round trips (claim and seq,
-//! account-state read, account-state write with pair window, commit). Memory mode stays one locked call.
+//! order. Lock order: ledger_order, then state; alert_io, then state. Per event: three Redis round trips (claim and seq
+//! with the account-state read, account-state write with pair window, commit; docs/decision.md 8ap). Memory mode stays
+//! one locked call.
 use crate::inputs::AssessIn;
-use crate::scale::{redis_state::RedisState, worker::score_one};
+use crate::scale::{redis_state::RedisState, worker::score_read};
+use rusetect::engine::Features;
 use crate::{assess, check_auth_request, header, parse_obj, payment_of, require_reader, AppRef, AppState, ApiError, PyJson};
 use axum::body::Bytes;
 use axum::extract::State;
@@ -67,7 +69,8 @@ pub const CLAIM_TTL_S: u64 = 60;
 /// Entries kept in `live:ledger` (oldest trimmed first).
 pub const LEDGER_MAX: usize = 100_000;
 pub const ACTIONS: [&str; 4] = ["allow", "verify", "hold", "block"];
-const STRIPES: usize = 64;
+/// account stripes: more stripes, fewer unrelated payments waiting on each other (8ap)
+const STRIPES: usize = 1024;
 /// Claim the event id and take its sequence number in one round trip; the claim is `pending:<seq>`, unique to this
 /// request. A known id returns what is stored (a result, or another request's `pending:` claim).
 const CLAIM_AND_SEQ: &str = "local v = redis.call('GET', KEYS[1]) if v then return {0, v} end \
@@ -249,16 +252,49 @@ impl Durable {
         (first, (a != b).then(|| lock(&self.stripes[a.max(b)])))
     }
 
-    /// Claim ev:{id} (`key`) and take a sequence number: Ok((seq, token)), or Err(what ev:{id} already holds).
-    fn claim(&self, key: &str) -> redis::RedisResult<Result<(u64, String), Option<String>>> {
-        let seq_key = self.key("seq");
-        let c = |st: &mut RedisState| redis::cmd("EVAL").arg(CLAIM_AND_SEQ).arg(2).arg(key).arg(&seq_key).arg(CLAIM_TTL_S).query(&mut st.con);
-        let (claimed, v): (i64, Option<String>) = self.run(true, c)?;
-        if claimed == 0 {
-            return Ok(Err(v));
+    /// Claim ev:{id} (`key`), take a sequence number and read `p`'s account state, in one round trip (call it with the
+    /// account stripes held): Ok((seq, token, features, account-state write, sender fan-in)), or Err(what ev:{id}
+    /// already holds). A read that fails after our claim releases the claim, so the sender's retry is processed.
+    #[allow(clippy::type_complexity)]
+    fn claim_and_read(&self, key: &str, p: &rusetect::payment::Payment) -> redis::RedisResult<Result<(u64, String, Features, redis::Cmd, usize), Option<String>>> {
+        let mut c = redis::cmd("EVAL");
+        c.arg(CLAIM_AND_SEQ).arg(2).arg(key).arg(self.key("seq")).arg(CLAIM_TTL_S);
+        // our claim's token, kept across a reconnect-and-retry: the retry finds it in ev:{id} and it is still ours
+        let mut ours: Option<String> = None;
+        let mut claim: Option<(i64, Option<String>)> = None;
+        let read = self.run(true, |st| {
+            let mut reply = None;
+            let r = st.features_read_after(p, Some(&c), &mut reply);
+            if let Some(v) = reply {
+                let (n, v): (i64, Option<String>) = redis::from_redis_value(&v)?;
+                if n == 1 {
+                    ours = v.as_ref().map(|s| format!("pending:{s}"));
+                }
+                claim = Some((n, v));
+            }
+            r.map(|(f, w)| (f, w, st.last_sender_fan_in))
+        });
+        let token = match claim {
+            Some((1, _)) => ours.clone(),
+            Some((_, v)) if v.is_some() && v == ours => ours.clone(),
+            Some((_, v)) => return Ok(Err(v)),
+            None => {
+                if let Some(t) = &ours {
+                    self.release(key, t);
+                }
+                return Err(read.err().unwrap_or_else(|| (redis::ErrorKind::ResponseError, "no claim reply").into()));
+            }
+        }.unwrap_or_default();
+        match read {
+            Ok((f, w, sf)) => {
+                let seq: u64 = token.strip_prefix("pending:").and_then(|n| n.parse().ok()).unwrap_or(0);
+                Ok(Ok((seq, token, f, w, sf)))
+            }
+            Err(e) => {
+                self.release(key, &token);
+                Err(e)
+            }
         }
-        let seq: u64 = v.and_then(|n| n.parse().ok()).unwrap_or(0);
-        Ok(Ok((seq, format!("pending:{seq}"))))
     }
 
     /// KEYS of COMMIT and REPAIR for the event whose ev: key is `key`.
@@ -499,20 +535,23 @@ fn ingest_redis(app: &crate::Shared, du: &Durable, ev: &Event, ready: Result<(),
     let d = payment_of(&ev.a.payment)?;
     ready?;
     let eng = du.engine().map_err(store_err)?;
-    // 1. idempotency: a known event id returns what was stored; a new one is claimed (and numbered) before any work
+    // P1, no state lock, one payment at a time per payer and per payee (account stripes):
+    // 1. idempotency: a known event id returns what was stored; a new one is claimed (and numbered) before any write,
+    // in the same round trip as the account-state read
     let key = du.key(&format!("ev:{}", ev.id));
-    let (seq, token) = match du.claim(&key).map_err(store_err)? {
-        Ok(x) => x,
-        Err(v) => return replay(du, &key, v),
-    };
-    // P1, no state lock: 2. score on the bank-scale path, account state and pair window in Redis (one at a time per
-    // payer and per payee)
     let mut p = d.clone();
     p.eid = Some(eid_of(&ev.id));
-    let scored = {
-        let _accounts = du.account_stripes(&d);
-        du.run(true, |st| score_one(&eng, st, &p))
+    let accounts = du.account_stripes(&d);
+    let (seq, token, f, write, sf) = match du.claim_and_read(&key, &p).map_err(store_err)? {
+        Ok(x) => x,
+        Err(v) => {
+            drop(accounts);
+            return replay(du, &key, v);
+        }
     };
+    // 2. score on the bank-scale path: account-state write and pair window in Redis
+    let scored = du.run(true, |st| score_read(&eng, st, &p, &f, write.clone(), sf));
+    drop(accounts);
     let r = match scored {
         Ok(r) => r,
         Err(e) => {
@@ -960,6 +999,39 @@ mod tests {
         redis::cmd("GET").arg(k).query(con).unwrap()
     }
 
+    fn pay(i: usize, payee: &str) -> rusetect::payment::Payment {
+        rusetect::payment::Payment {
+            from_bank: "070".into(), from_account: format!("KP{i}"), to_bank: "011".into(), to_account: payee.into(),
+            amount_paid: 100.0, payment_currency: "US Dollar".into(), receiving_currency: "US Dollar".into(),
+            payment_format: "ACH".into(), tmin: 27_000_000, eid: Some(i as i64 + 1),
+        }
+    }
+
+    fn claim(du: &Durable, key: &str) -> (u64, String) {
+        let (seq, token, ..) = du.claim_and_read(key, &pay(0, "CLAIMPAYEE")).unwrap().unwrap();
+        (seq, token)
+    }
+
+    /// 8ap: the claim shares its round trip with the account-state read, which reads what a read on its own reads; a
+    /// known event id gets what ev:{id} holds and takes no sequence number.
+    #[test]
+    fn the_claim_and_the_account_read_share_one_round_trip() {
+        let Some(r) = server() else { return };
+        let du = Durable::new(redis::Client::open(r.1.as_str()).unwrap(), "m:");
+        let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
+        let p = pay(1, "MPAYEE");
+        let (seq, token, f, w, _) = du.claim_and_read(&du.key("ev:m1"), &p).unwrap().unwrap();
+        assert_eq!((seq, token.as_str()), (1, "pending:1"));
+        let (alone, _) = du.run(true, |st| st.features_read(&p)).unwrap();
+        assert_eq!(f.0.map(f64::to_bits), alone.0.map(f64::to_bits));
+        du.run(true, |st| w.query::<i64>(&mut st.con)).unwrap();
+        let p2 = pay(1, "MPAYEE2");
+        let (seq2, _, f2, ..) = du.claim_and_read(&du.key("ev:m2"), &rusetect::payment::Payment { eid: Some(99), ..p2 }).unwrap().unwrap();
+        assert_eq!((seq2, f2.0[rusetect::engine::fx::S_OUT_N]), (2, 1.0), "the next payment of the payer reads the write");
+        assert!(matches!(du.claim_and_read(&du.key("ev:m1"), &p).unwrap(), Err(Some(v)) if v == token));
+        assert_eq!(get(&mut con, &du.key("seq")).as_deref(), Some("2"));
+    }
+
     /// A request whose claim expired and was taken by a retry neither commits over, nor deletes, the retry's claim or
     /// result: it gets a 409 while the retry works and the retry's result afterwards.
     #[test]
@@ -968,9 +1040,9 @@ mod tests {
         let du = Durable::new(redis::Client::open(r.1.as_str()).unwrap(), "s:");
         let mut con = redis::Client::open(r.1.as_str()).unwrap().get_connection().unwrap();
         let key = du.key("ev:e1");
-        let (seq_a, a) = du.claim(&key).unwrap().unwrap();
+        let (seq_a, a) = claim(&du, &key);
         redis::cmd("DEL").arg(&key).query::<()>(&mut con).unwrap(); // A's claim expires (CLAIM_TTL_S)
-        let (seq_b, b) = du.claim(&key).unwrap().unwrap();
+        let (seq_b, b) = claim(&du, &key);
         assert_ne!(a, b);
         let rec = |seq| json!({"event_id": "e1", "seq": seq});
         // A, still working, fails: its release leaves B's claim
@@ -992,7 +1064,7 @@ mod tests {
         assert_eq!(redis::cmd("LLEN").arg(du.key("feed")).query::<i64>(&mut con).unwrap(), 1);
         // a claim that expired with no retry: A's commit writes nothing (a 503: nothing committed)
         let key2 = du.key("ev:e2");
-        let (_, c) = du.claim(&key2).unwrap().unwrap();
+        let (_, c) = claim(&du, &key2);
         redis::cmd("DEL").arg(&key2).query::<()>(&mut con).unwrap();
         let (applied, held) = du.commit(&key2, &c, &rec(9), &json!({}), None).unwrap();
         assert_eq!((applied, &held), (0, &None));
@@ -1011,11 +1083,7 @@ mod tests {
         let threads: Vec<_> = (0..K).map(|i| {
             let (du, barrier) = (du.clone(), barrier.clone());
             std::thread::spawn(move || {
-                let p = rusetect::payment::Payment {
-                    from_bank: "070".into(), from_account: format!("KP{i}"), to_bank: "011".into(), to_account: "ONEPAYEE".into(),
-                    amount_paid: 100.0, payment_currency: "US Dollar".into(), receiving_currency: "US Dollar".into(),
-                    payment_format: "ACH".into(), tmin: 27_000_000, eid: Some(i as i64 + 1),
-                };
+                let p = pay(i, "ONEPAYEE");
                 barrier.wait();
                 let _accounts = du.account_stripes(&p);
                 du.run(true, |st| {
