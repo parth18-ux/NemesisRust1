@@ -12,6 +12,11 @@
 //!   window expects at least [`MIN_EXPECTED`] payments in that band.
 //! Below [`MIN_N`] payments the window is warming up and the status stays ok. Counts are updated on push and evict, so
 //! an observation is O(bins). The window is this process's memory only.
+//! Demo replay (the Live Console) is kept in a window of its own ([`DriftMonitor::observe_demo_result`]); the report
+//! shows it only until real traffic (webhook and API) fills [`MIN_N`] payments, and `traffic` says which one is shown.
+//! Every [`CHECK_EVERY`] observations the status is re-read; a change is logged to stderr as one JSON line
+//! (`"event": "drift_status"`, for a log drain to alert on) and kept as `status_since` and `previous_status`.
+//! `reference_sha256` pins the reference file the window is compared with. Docs: docs/DRIFT.md.
 use serde_json::{json, Map, Value};
 use std::collections::VecDeque;
 
@@ -29,11 +34,13 @@ pub const RATIO_WARN: f64 = 2.0;
 pub const RATIO_ALERT: f64 = 3.0;
 pub const MIN_EXPECTED: f64 = 10.0;
 pub const EPS: f64 = 1e-4;
+pub const CHECK_EVERY: u64 = 1_000;
 pub const BANDS: [&str; 3] = ["verify", "hold", "block"];
 const STATUS: [&str; 3] = ["ok", "warn", "alert"];
 const NONE: u16 = u16::MAX;
 
 /// Bins of one tracked quantity: interior edges, expected shares (the last one for missing values) and live counts.
+#[derive(Clone)]
 struct Hist {
     name: String,
     edges: Vec<f64>,
@@ -75,6 +82,7 @@ impl Hist {
     }
 }
 
+#[derive(Clone)]
 struct Entry {
     score: u16,
     band: u16,
@@ -86,6 +94,7 @@ pub fn window_from_env() -> usize {
     std::env::var("RUSETECT_DRIFT_WINDOW").ok().and_then(|v| v.trim().parse::<usize>().ok()).map(|n| n.clamp(MIN_N, MAX_WINDOW)).unwrap_or(WINDOW)
 }
 
+#[derive(Clone)]
 pub struct DriftMonitor {
     cap: usize,
     score: Hist,
@@ -94,6 +103,13 @@ pub struct DriftMonitor {
     band_n: [u32; 3],
     window: VecDeque<Entry>,
     pub source: String,
+    /// sha256 of the reference file (set by [`DriftMonitor::load`])
+    pub reference_sha256: String,
+    /// demo replay's own window (empty reference copy; None inside it)
+    demo: Option<Box<DriftMonitor>>,
+    seen: u64,
+    /// last status read, the one before it, and when it changed (RFC 3339)
+    last: (&'static str, &'static str, Option<String>),
 }
 
 fn level(psi: f64) -> usize {
@@ -116,14 +132,20 @@ impl DriftMonitor {
             return None;
         }
         let b = |k: &str| r["bands"][k].as_f64();
-        Some(DriftMonitor { cap: cap.max(1), score: Hist::from_ref("score", &r["score"])?, feats, band_ref: [b("verify")?, b("hold")?, b("block")?],
-                            band_n: [0; 3], window: VecDeque::new(), source: r["split"].as_str().unwrap_or("").into() })
+        let mut m = DriftMonitor { cap: cap.max(1), score: Hist::from_ref("score", &r["score"])?, feats, band_ref: [b("verify")?, b("hold")?, b("block")?],
+                                   band_n: [0; 3], window: VecDeque::new(), source: r["split"].as_str().unwrap_or("").into(),
+                                   reference_sha256: String::new(), demo: None, seen: 0, last: ("ok", "ok", None) };
+        m.demo = Some(Box::new(m.clone()));
+        Some(m)
     }
 
     /// Read `path` (service/models/drift_reference.json); None if absent or malformed.
     pub fn load(path: &std::path::Path) -> Option<Self> {
-        let v: Value = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
-        Self::from_reference(&v, window_from_env())
+        use sha2::{Digest, Sha256};
+        let bytes = std::fs::read(path).ok()?;
+        let mut m = Self::from_reference(&serde_json::from_slice(&bytes).ok()?, window_from_env())?;
+        m.reference_sha256 = hex::encode(Sha256::digest(&bytes));
+        Some(m)
     }
 
     pub fn capacity(&self) -> usize {
@@ -138,8 +160,46 @@ impl DriftMonitor {
         self.window.is_empty()
     }
 
+    /// Empty both windows (the demo reset).
     pub fn reset(&mut self) {
         while self.evict() {}
+        if let Some(d) = self.demo.as_mut() {
+            d.reset();
+        }
+    }
+
+    /// One demo replay result (`observe_result` shape): goes to the demo window only, never to the real one.
+    pub fn observe_demo_result(&mut self, res: &Map<String, Value>) {
+        if let Some(d) = self.demo.as_mut() {
+            d.observe_result(res);
+        }
+        self.tick();
+    }
+
+    /// The window the report shows: the real one once it is past warm-up or while no demo replay ran, else the demo one.
+    fn served(&self) -> (&DriftMonitor, &'static str) {
+        match self.demo.as_deref() {
+            Some(d) if self.window.len() < MIN_N && !d.is_empty() => (d, "demo_stream"),
+            _ => (self, "live_and_api"),
+        }
+    }
+
+    /// Every [`CHECK_EVERY`] observations: re-read the status and log a change.
+    fn tick(&mut self) {
+        if self.demo.is_none() {
+            return; // the demo window itself: the outer monitor reads and logs
+        }
+        self.seen += 1;
+        if !self.seen.is_multiple_of(CHECK_EVERY) {
+            return;
+        }
+        let (now, traffic) = (self.status(), self.served().1);
+        if now != self.last.0 {
+            let at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+            eprintln!("{}", json!({"event": "drift_status", "from": self.last.0, "to": now, "at": at, "traffic": traffic,
+                                    "reasons": self.served().0.report_window()["reasons"], "reference_sha256": self.reference_sha256}));
+            self.last = (now, self.last.0, Some(at));
+        }
     }
 
     fn evict(&mut self) -> bool {
@@ -181,6 +241,7 @@ impl DriftMonitor {
             h.add(*b, 1);
         }
         self.window.push_back(Entry { score, band, feats });
+        self.tick();
     }
 
     /// One observation from an engine result object (`risk`, `decision`, `features`).
@@ -198,8 +259,18 @@ impl DriftMonitor {
         }
     }
 
-    /// The /api/v2/drift body.
+    /// The /api/v2/drift body: the served window's report, which traffic it holds, the last status change and the reference.
     pub fn report(&self) -> Value {
+        let (m, traffic) = self.served();
+        let mut r = m.report_window();
+        r["traffic"] = json!(traffic);
+        r["previous_status"] = json!(self.last.1);
+        r["status_since"] = json!(self.last.2);
+        r["reference_sha256"] = json!(self.reference_sha256);
+        r
+    }
+
+    fn report_window(&self) -> Value {
         let n = self.window.len();
         let warming = n < MIN_N;
         let mut worst = 0usize;
@@ -231,12 +302,15 @@ impl DriftMonitor {
             bands.insert(b.to_string(), json!({"rate": r4(rate), "reference": re, "ratio": if ratio.is_finite() { json!(r4(ratio)) } else { Value::Null },
                                                 "checked": checked, "status": STATUS[l]}));
         }
-        let top = std::iter::once(("score", &score)).chain(feats.iter().map(|(k, v)| (k.as_str(), v)))
-            .filter_map(|(k, v)| v["psi"].as_f64().map(|p| (k, p))).max_by(|a, b| a.1.total_cmp(&b.1));
+        let mut ranking: Vec<(&str, f64)> = std::iter::once(("score", &score)).chain(feats.iter().map(|(k, v)| (k.as_str(), v)))
+            .filter_map(|(k, v)| v["psi"].as_f64().map(|p| (k, p))).collect();
+        ranking.sort_by(|a, b| b.1.total_cmp(&a.1));
+        let top = ranking.first().copied();
         json!({"status": STATUS[worst], "warming_up": warming, "reasons": reasons,
                "window": {"size": n, "capacity": self.cap, "min_size": MIN_N},
                "score_psi": score["psi"], "score": score, "features": feats, "bands": bands,
                "top_psi": top.map(|(k, p)| json!({"name": k, "psi": p})).unwrap_or(Value::Null),
+               "ranking": ranking.iter().map(|(k, p)| json!({"name": k, "psi": p, "status": STATUS[level(*p)]})).collect::<Vec<_>>(),
                "thresholds": {"psi_warn": PSI_WARN, "psi_alert": PSI_ALERT, "rate_ratio_warn": RATIO_WARN, "rate_ratio_alert": RATIO_ALERT,
                               "min_expected_band_count": MIN_EXPECTED},
                "reference": self.source})
@@ -320,6 +394,58 @@ mod tests {
         let rep = m.report();
         assert_eq!(rep["status"], "ok", "{rep}");
         assert!(rep["score_psi"].as_f64().unwrap() < 0.01, "{rep}");
+    }
+
+    fn demo_result(r: f64) -> Map<String, Value> {
+        json!({"risk": r, "decision": if r >= 0.98 { "Block + STR draft" } else { "Approve" }}).as_object().unwrap().clone()
+    }
+
+    /// K3: demo replay has its own window, shown only until real traffic is past warm-up, and never moves the real one.
+    #[test]
+    fn demo_replay_is_kept_apart_from_real_traffic() {
+        let mut m = DriftMonitor::from_reference(&reference(), 5_000).unwrap();
+        for _ in 0..2_000 {
+            m.observe_demo_result(&demo_result(0.99)); // shifted replay
+        }
+        let r = m.report();
+        assert_eq!((r["traffic"].as_str(), r["status"].as_str()), (Some("demo_stream"), Some("alert")), "{r}");
+        assert!(m.is_empty());
+        feed(&mut m, 5_000, 0.0);
+        let before = m.report();
+        assert_eq!((before["traffic"].as_str(), before["status"].as_str()), (Some("live_and_api"), Some("ok")), "{before}");
+        for _ in 0..3_000 {
+            m.observe_demo_result(&demo_result(0.99));
+        }
+        let after = m.report();
+        assert_eq!(before["score"], after["score"]);
+        assert_eq!(before["bands"], after["bands"]);
+        m.reset();
+        assert!(m.is_empty() && m.demo.as_ref().unwrap().is_empty());
+    }
+
+    #[test]
+    fn ranking_lists_checked_quantities_by_psi_and_status_changes_are_kept() {
+        let mut m = DriftMonitor::from_reference(&reference(), 5_000).unwrap();
+        feed(&mut m, 5_000, 0.0);
+        let r = m.report();
+        assert_eq!((r["status"].as_str(), r["status_since"].is_null()), (Some("ok"), true), "{r}");
+        feed(&mut m, 5_000, 0.8);
+        let r = m.report();
+        let psis: Vec<f64> = r["ranking"].as_array().unwrap().iter().map(|e| e["psi"].as_f64().unwrap()).collect();
+        assert_eq!(psis.len(), 2);
+        assert!(psis.windows(2).all(|w| w[0] >= w[1]), "{r}");
+        assert_eq!(r["ranking"][0]["name"], r["top_psi"]["name"]);
+        assert_eq!(r["ranking"][0]["status"], "alert");
+        assert_eq!(r["status"], "alert");
+        assert!(matches!(r["previous_status"].as_str(), Some("ok" | "warn")), "{r}"); // the shift passes through warn
+        assert!(r["status_since"].is_string());
+    }
+
+    #[test]
+    fn load_pins_the_reference_by_hash() {
+        let m = DriftMonitor::load(&crate::paths::models_dir().join("drift_reference.json")).unwrap();
+        assert_eq!(m.reference_sha256.len(), 64);
+        assert_eq!(m.report()["reference_sha256"], m.reference_sha256.as_str());
     }
 
     #[test]

@@ -101,7 +101,7 @@ pattern `str_report.rs` already uses ("every sentence is traceable to a field in
 | W8 | Website end-to-end tests and screenshots | Opus |
 | K1 | Known limit: orphan alert after a commit failure | Fable (hard bug), Opus |
 | K2 | Known limit: 24 h pair-window double count on a re-scored retry | Fable, Opus |
-| K3 | Known limit: drift monitor fed by demo traffic | Opus |
+| K3 | Done: demo replay has its own drift window (`docs/DRIFT.md`) | Opus |
 | K4 | Known limit: two engines in memory with Redis | Fable design, Opus |
 | P1 | Port the fixes to the Python repo `/home/user/nemesis1` | Opus |
 | D1 | Evasion: `timing_jitter` and `new_payee` | Fable design, Opus |

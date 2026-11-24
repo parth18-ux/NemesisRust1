@@ -127,7 +127,9 @@ Steps:
 ## 7. Drift alert
 
 Signals: `/api/health` shows `"drift": "warn"` or `"alert"` (`ready` is not affected); `GET /api/v2/drift` lists the
-checks that fired in `reasons`; the console's Drift panel turns amber or red.
+checks that fired in `reasons` and ranks the score and inputs by PSI in `ranking`; a change of status is logged as a
+`drift_status` JSON line (wiring, `traffic`, `status_since` and the pinned reference: [DRIFT.md](DRIFT.md)); the
+console's Drift panel turns amber or red.
 
 What it measures (`crates/rusetect/src/drift.rs`, thresholds as constants there and in `docs/decision.md` 8ag): over
 the last N payments this instance scored (N in `window.capacity`; `RUSETECT_DRIFT_WINDOW` overrides the default), the

@@ -199,8 +199,8 @@ the alert from `live:alerts`, and a review action writes the updated alert back.
 - Known limits, left as they are: when a commit's outcome is unknown and the retry lands on another instance, the
   first instance's desk-chain entries for the attempt stay unvoided there (its alert copy is dropped; live alerts are
   read from Redis); a retry rescored after `seen:` expired (26 h) is scored from current state; PRAMAAN's per-user
-  history and the drift monitor see each scored attempt; the drift monitor is fed by demo replay
-  traffic as well as live events; with Redis an instance holds two engines in memory (the desk's and the stateless one
+  history and the drift monitor see each scored attempt (demo replay has a drift window of its own and never enters the
+  live one, `docs/DRIFT.md`); with Redis an instance holds two engines in memory (the desk's and the stateless one
   the Redis path scores with).
 - The per-client rate limit (`RUSETECT_RATE_LIMIT`, requests per 10 s) applies to the webhook too and the webhook is not
   exempt; a high-volume sender needs it raised (`docs/RUNBOOK.md` section 8).
