@@ -5,6 +5,7 @@
 //!   cargo build --release -p rusetect-server --bins --examples
 //!   target/release/examples/e2e_bench [requests per level, default 5000]
 //!   target/release/examples/e2e_bench s1 baseline|after   (S1 protocol, results/e2e_bench_s1_protocol.json)
+//!   target/release/examples/e2e_bench scale <variant> <rep>  (8ap protocol, docs/decision.md; results/scale_<variant>.json)
 //!
 //! One machine: client, server and redis-server share its CPUs. This is not a measurement of the Vercel deployment.
 use hmac::{Hmac, Mac};
@@ -238,6 +239,10 @@ async fn main() {
     if std::env::args().nth(1).as_deref() == Some("s1") {
         return s1::main(&std::env::args().nth(2).expect("s1 baseline|after")).await;
     }
+    if std::env::args().nth(1).as_deref() == Some("scale") {
+        let rep = std::env::args().nth(3).and_then(|r| r.parse().ok()).expect("scale <variant> <rep>");
+        return s1::scale(&std::env::args().nth(2).expect("scale <variant> <rep>"), rep).await;
+    }
     let n: usize = std::env::args().nth(1).and_then(|a| a.parse().ok()).unwrap_or(5000);
     let mut results = serde_json::Map::new();
     let both = [("POST /api/v2/payment", false), ("POST /api/v2/events/payment", true)];
@@ -286,6 +291,11 @@ mod s1 {
 
     /// One repetition of the Redis-mode webhook on a fresh redis-server and server, gate checked after each level.
     async fn redis_rep(rep: usize) -> Vec<Value> {
+        redis_rep_until(rep, false).await
+    }
+
+    /// As `redis_rep`; with `stop`, a level with p99 above STOP_P99_MS or more than 1% errors ends the repetition (8ap).
+    async fn redis_rep_until(rep: usize, stop: bool) -> Vec<Value> {
         let (_redis, url) = redis_server().await;
         let (_srv, port) = server(Some(&url)).await;
         let mut con = redis::Client::open(url.as_str()).unwrap().get_connection().unwrap();
@@ -313,9 +323,88 @@ mod s1 {
             row["gate"] = json!({"green": green, "ledger_growth": grew, "seq_advance": advanced, "replays_sent": kept.len(),
                                  "replays_not_identical": bad, "ledger_growth_on_replay": replay_growth});
             eprintln!("  {} rps, p99 {} ms, gate {}", row["throughput_rps"], row["latency_ms"]["p99"], if green { "green" } else { "RED" });
+            let over = row["latency_ms"]["p99"].as_f64().unwrap_or(f64::MAX) > STOP_P99_MS || row["errors"].as_u64().unwrap_or(0) * 100 > N as u64;
             rows.push(row);
+            if stop && over {
+                eprintln!("  stop rule: the remaining levels of this repetition are not run");
+                break;
+            }
         }
         rows
+    }
+
+    /// 8ap: a level whose p99 is above this (ms), or with more than 1% errors, ends its repetition
+    const STOP_P99_MS: f64 = 1000.0;
+    /// 8ap primary metric: the best level median throughput whose median p99 is under this (ms)
+    const P99_BOUND_MS: f64 = 25.0;
+    const SCALE_REPS: usize = 3;
+
+    /// `e2e_bench scale <variant> <rep>` (docs/decision.md 8ap): one Redis webhook repetition on fresh processes, against
+    /// the rusetect-server next to this binary's directory, added to results/scale_<variant>.json; once `main` and
+    /// `candidate` both hold every repetition, results/scale_compare.json applies the pre-registered rule.
+    pub async fn scale(variant: &str, rep: usize) {
+        use sha2::Digest;
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../results");
+        let path = root.join(format!("scale_{variant}.json"));
+        let mut out: Value = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_else(|| json!({
+            "what": format!("8ap: the signed Redis webhook on one node, variant {variant} (protocol: docs/decision.md 8ap)"),
+            "generated_by": "crates/rusetect-server/examples/e2e_bench.rs (e2e_bench scale <variant> <rep>)",
+            "scope": "One shared 4-CPU container: load generator, server and redis-server share the same cores, over loopback. Not the Vercel deployment and not a production capacity figure.",
+            "design": {"levels": LEVELS, "requests_per_level": N, "warmup_per_level": WARM, "replay_samples": SAMPLES, "stop_p99_ms": STOP_P99_MS,
+                       "p99_bound_ms": P99_BOUND_MS, "workload": "400 payers, 300 payees, unique HMAC-signed event ids (as S1 and F1)"},
+            "repetitions": {}}));
+        let exe = std::env::current_exe().unwrap();
+        let bin = exe.parent().unwrap().parent().unwrap().join("rusetect-server");
+        let rows = redis_rep_until(rep, true).await;
+        out["repetitions"][rep.to_string()] = json!({"generated_at": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            "server_revision": std::env::var("RUSETECT_BENCH_SERVER_REVISION").ok(), "harness_git_head": cmd_out("git", &["describe", "--always", "--dirty"]),
+            "server_sha256": std::fs::read(&bin).ok().map(|b| hex::encode(sha2::Sha256::digest(b))),
+            "harness_sha256": std::fs::read(&exe).ok().map(|b| hex::encode(sha2::Sha256::digest(b))),
+            "rusetect_live_pool": std::env::var("RUSETECT_LIVE_POOL").ok(), "machine": machine(), "levels": rows});
+        out["summary"] = scale_summary(&out["repetitions"]);
+        std::fs::write(&path, serde_json::to_string_pretty(&out).unwrap() + "\n").unwrap();
+        eprintln!("wrote {}", path.display());
+        let read = |v: &str| std::fs::read_to_string(root.join(format!("scale_{v}.json"))).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
+        if let (Some(b), Some(c)) = (read("main"), read("candidate")) {
+            let full = |v: &Value| v["repetitions"].as_object().is_some_and(|r| r.len() == SCALE_REPS);
+            if full(&b) && full(&c) {
+                let (pb, pc) = (&b["summary"]["primary"], &c["summary"]["primary"]);
+                let (rb, rc) = (pb["throughput_rps"].as_f64(), pc["throughput_rps"].as_f64());
+                let gates = c["summary"]["gate_green"] == true;
+                let change = rb.zip(rc).map(|(b, c)| (c / b - 1.0) * 100.0);
+                let verdict = match change {
+                    _ if !gates => "fail: a candidate correctness gate is red",
+                    Some(x) if x >= 10.0 => "improvement",
+                    Some(x) if x <= -10.0 => "regression",
+                    Some(_) => "no material change",
+                    None => "not decidable: no level meets the p99 bound in one variant",
+                };
+                let cmp = json!({"what": "8ap: main against candidate, rule of docs/decision.md 8ap", "main": pb, "candidate": pc,
+                                 "primary_change_pct": change.map(|x| (x * 100.0).round() / 100.0), "candidate_gates_green": gates, "verdict": verdict});
+                std::fs::write(root.join("scale_compare.json"), serde_json::to_string_pretty(&cmp).unwrap() + "\n").unwrap();
+                eprintln!("8ap verdict: {verdict} ({change:?} %)");
+            }
+        }
+    }
+
+    /// Per level: median throughput and latency over the repetitions that ran it (a level is complete only when every
+    /// repetition ran it); the primary metric is the best complete, gate-green level median under P99_BOUND_MS.
+    fn scale_summary(reps: &Value) -> Value {
+        let reps: Vec<&Value> = reps.as_object().map(|m| m.values().collect()).unwrap_or_default();
+        let levels: Vec<Value> = LEVELS.iter().map(|&c| {
+            let rows: Vec<&Value> = reps.iter().filter_map(|r| r["levels"].as_array()?.iter().find(|l| l["concurrency"] == c)).collect();
+            let m = |f: &dyn Fn(&Value) -> f64| if rows.is_empty() { Value::Null } else { json!(median(&rows.iter().map(|r| f(r)).collect::<Vec<_>>())) };
+            let lat = |k: &'static str| move |r: &Value| r["latency_ms"][k].as_f64().unwrap();
+            json!({"concurrency": c, "repetitions_run": rows.len(), "complete": !rows.is_empty() && rows.len() == reps.len(),
+                   "gate_green": rows.iter().all(|r| r["gate"]["green"] == true),
+                   "throughput_rps": m(&|r| r["throughput_rps"].as_f64().unwrap()), "p50": m(&lat("p50")), "p95": m(&lat("p95")),
+                   "p99": m(&lat("p99")), "max": m(&lat("max")), "throughput_by_repetition": rows.iter().map(|r| r["throughput_rps"].clone()).collect::<Vec<_>>()})
+        }).collect();
+        let primary = levels.iter().filter(|l| l["complete"] == true && l["gate_green"] == true && l["p99"].as_f64().is_some_and(|p| p < P99_BOUND_MS))
+            .max_by(|a, b| a["throughput_rps"].as_f64().unwrap().total_cmp(&b["throughput_rps"].as_f64().unwrap()));
+        json!({"repetitions": reps.len(), "gate_green": levels.iter().all(|l| l["gate_green"] == true),
+               "primary": primary.map(|l| json!({"concurrency": l["concurrency"], "throughput_rps": l["throughput_rps"], "p99": l["p99"]})).unwrap_or(Value::Null),
+               "levels": levels})
     }
 
     /// One repetition of both memory-mode endpoints on a fresh server.

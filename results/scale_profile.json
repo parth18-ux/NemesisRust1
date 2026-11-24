@@ -1,0 +1,26 @@
+{
+  "what": "8ap: exploratory profile of the signed Redis webhook at concurrency 32 on main (5b041b5 plus the drift change of PR 48, which does not touch the webhook path), before the 8ap protocol was written",
+  "how": "e2e_bench f1 hold (fresh redis-server and server) plus e2e_bench f1 load 32 <n>; perf record -e cpu-clock -F 999 on the server and on redis-server; redis-cli INFO commandstats; top; per-phase wall times from temporary Instant timers in live::ingest_redis (not committed), averaged per event over 20,000 events. Figures copied from the run output of this session; single runs, not repeated, so treat them as indicative.",
+  "scope": "One shared 4-CPU container (load generator, server and redis-server on the same cores), loopback.",
+  "server_cpu_top_symbols_pct": {"finish_task_switch (kernel)": 16.92, "XgbBooster::margin": 13.94, "_raw_spin_unlock_irqrestore (kernel)": 8.31,
+                                 "LiteBooster::raw": 5.81, "_int_malloc": 3.36, "malloc": 3.13, "irqentry_exit_to_user_mode (kernel)": 2.89},
+  "server_off_cpu_note": "of finish_task_switch, 7.25% under futex waits and 5.94% under Redis socket reads (redis::Connection::read)",
+  "process_cpu_pct_during_load": {"rusetect-server": 199.7, "redis-server": 79.4},
+  "redis_commandstats": {"eval_calls": 128731, "eval_usec_per_call": 22.39, "live_seq_incr_calls": 32186, "eval_per_event": 4},
+  "redis_cpu_pct": {"kernel": 28.5, "redis code": 53.32, "libc": 8.54, "jemalloc": 7.41, "SHA1Transform (EVAL hashes the script body)": 3.29, "dictFind": 6.07},
+  "per_event_wall_us_64_stripes": {"state_lock_wait_before": 37.0, "claim_round_trip": 251.0, "account_stripe_wait": 97.4,
+                                   "score_two_round_trips_and_models": 740.4, "ledger_order_wait": 12.9, "state_lock_wait": 40.6,
+                                   "state_lock_hold": 48.3, "commit_round_trip": 306.9},
+  "per_event_wall_us_1024_stripes": {"state_lock_wait_before": 38.1, "claim_round_trip": 248.2, "account_stripe_wait": 4.8,
+                                     "score_two_round_trips_and_models": 760.1, "ledger_order_wait": 13.4, "state_lock_wait": 41.8,
+                                     "state_lock_hold": 47.2, "commit_round_trip": 313.3},
+  "throughput_rps_two_runs": {"64_stripes": [5033.46, 4740.96], "1024_stripes": [4873.73, 5056.27]},
+  "pool_size_rps_two_runs": {"RUSETECT_LIVE_POOL=8": [5437.82, 5439.31], "RUSETECT_LIVE_POOL=16": [4567.75, 4978.92], "RUSETECT_LIVE_POOL=32": [3893.22, 5551.42]},
+  "reading": [
+    "Lock contention on global state is small: the state mutex costs about 40 us of wait and 48 us of hold per event, ledger_order about 13 us.",
+    "The account stripes cost about 97 us of wait per event with 64 stripes; 1024 stripes cut it to about 5 us, with no throughput change in two runs.",
+    "Each event waits on four Redis round trips (claim, account-state read, write with pair window, commit), each a few hundred microseconds under load; together they are most of the time an event holds a pool slot.",
+    "redis-server, single threaded, runs at about 80% of a core, a good part of it in the kernel (socket I/O per round trip); a larger pool does not raise throughput.",
+    "Serialization and malloc are a few percent each; the models are the largest user-space cost in the server."
+  ]
+}

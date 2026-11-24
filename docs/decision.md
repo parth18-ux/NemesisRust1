@@ -1094,6 +1094,46 @@ confirmation cohort is eligible. Codex and Parth decided to defer 8an entirely, 
 of 8an is trained and no decision row is scored. The incumbent model S stays served until fresh partner data with
 mature outcomes supports an independent confirmation.
 
+**8ap. Single-node throughput of the signed Redis webhook (pre-registered; written before any benchmark run).**
+Goal: move the webhook toward 1,000 to 10,000 events per second on one node without changing what is stored or
+decided. A profile of main at concurrency 32 came first (`results/scale_profile.json`, single exploratory runs, not
+part of this test): lock waits on the global state are small; the account stripes add a measurable wait; each event
+waits on four Redis round trips (claim, account-state read, account-state write with pair window, commit); and the
+single-threaded `redis-server` runs near a full core, much of it in socket I/O. A larger connection pool did not help.
+
+Fixes under test (one candidate, both together): (1) the claim and the account-state read go to Redis in one
+pipelined round trip, with the payer and payee stripes taken before the claim, so an event costs three round trips
+instead of four; (2) 1,024 account stripes instead of 64. Not built: `EVALSHA` in place of `EVAL` (hashing the script
+bodies is a few percent of Redis CPU in the profile) and group commit across events.
+
+Correctness, required before the run: the full test suite green on the candidate, including the idempotency, ledger
+chain and retry pair-score tests (`crates/rusetect-server/tests/live.rs`, `tests/scale.rs`), and new tests for the
+merged round trip.
+
+Protocol. Variants: `main` is the server built from `main` (`5b041b5`); `candidate` is the server built from the
+branch head carrying the fixes (its commit and binary sha256 are recorded). One harness binary, built from the
+candidate tree, drives both: `e2e_bench scale <variant> <rep>`. Each repetition starts a fresh `redis-server` (no
+persistence) and server, both on loopback on the shared 4-CPU container, `RUSETECT_LIVE_POOL` unset. Stages:
+concurrency 1, 8, 32, 64 and 128 in that order, each 1,000 warm-up then 20,000 signed unique events (the S1 and F1
+workload: 400 payers, 300 payees), closed loop over keep-alive HTTP/1.1. Three repetitions per variant, run in the
+order main, candidate, candidate, main, main, candidate. Correctness gate at every stage (as S1): no request errors,
+`live:ledger` grows by exactly 20,000, `live:seq` advances by exactly 20,000, and 100 sampled events resent come back
+`Idempotent-Replayed: true` with identical bodies and no ledger growth.
+
+Primary metric: sustained events per second at p99 under 25 ms, that is the highest stage median throughput (over the
+three repetitions) among stages run in every repetition whose median p99 is under 25 ms and whose gate is green in
+every repetition. Rule (`results/scale_compare.json`): a red gate at any candidate stage is a fail whatever the
+throughput; otherwise the candidate's primary at least 10% above main's is an improvement, at least 10% below is a
+regression, and anything between is no material change. Reported without a rule: every stage's median throughput,
+p50, p95, p99 and max, and all three repetitions.
+
+Stop rule: within a repetition, a stage with p99 above 1,000 ms or more than 1% request errors ends that repetition
+(the remaining stages are recorded as not run). Exactly three repetitions per variant; no extra runs after any result
+is seen. A repetition lost to an infrastructure fault (a process killed by the host, a full disk) is rerun once in
+its slot and reported as such. Outputs: `results/scale_main.json`, `results/scale_candidate.json`,
+`results/scale_compare.json`. Scope: one shared container where the load generator, server and Redis compete for four
+CPUs; not a production capacity figure. 10,000 events per second is not expected on this box (`docs/SCALING.md` 3c).
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
