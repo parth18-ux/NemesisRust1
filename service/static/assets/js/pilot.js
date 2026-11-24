@@ -33,7 +33,9 @@ function driftCard(r) {
         <tbody>${Object.entries(d.bands || {}).map(([b, v]) => html`<tr><td>${b}</td><td class="num r">${pct(v.rate, 2)}</td><td class="num r">${pct(v.reference, 2)}</td>
           <td class="num r">${v.ratio === null ? "n/a" : fixed(v.ratio, 2) + "x"}</td><td>${v.checked ? status(v.status) : html`<span class="muted">not checked</span>`}</td></tr>`)}</tbody></table></div></div>
     <p class="src">Source: GET /api/v2/drift, ${d.scope ?? ""}; window ${num(d.window?.size)} of ${num(d.window?.capacity)} payments (minimum ${num(d.window?.min_size)});
-      PSI warn ${t.psi_warn}, alert ${t.psi_alert}; band ratio warn ${t.rate_ratio_warn}x, alert ${t.rate_ratio_alert}x; reference ${d.reference ?? ""}.
+      PSI warn ${t.psi_warn}, alert ${t.psi_alert}; band ratio warn ${t.rate_ratio_warn}x, alert ${t.rate_ratio_alert}x; reference ${d.reference ?? ""}
+      (sha256 ${(d.reference_sha256 || "").slice(0, 12)}); traffic ${d.traffic === "demo_stream" ? "demo replay (no real traffic past warm-up yet)" : "live and API"};
+      ${d.status_since ? `${d.status} since ${d.status_since} (was ${d.previous_status})` : "no status change yet"}.
       Against the shipped synthetic reference a bank's traffic alerts from day one: rebuild it from your own validation period (PILOT_ONBOARDING.md section 9).</p>
   </article>`;
 }

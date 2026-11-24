@@ -115,6 +115,8 @@ async fn drift_sees_demo_inputs_in_distribution_and_alerts_on_a_shifted_stream()
     }
     let d = t.get("/api/v2/drift").await;
     assert_eq!(d["window"]["size"], 10_000, "the window stays at its cap: {d}");
+    assert_eq!(d["traffic"], "demo_stream", "no real traffic yet, so the demo window is shown");
+    assert_eq!(d["reference_sha256"].as_str().map(str::len), Some(64));
     // the demo's payments are drawn like validation's, so the inputs are in distribution; its account state holds about
     // five hours of history, so its scores are not, and only score and band checks may fire (docs/decision.md 8ag)
     for (k, f) in d["features"].as_object().unwrap() {
@@ -129,10 +131,15 @@ async fn drift_sees_demo_inputs_in_distribution_and_alerts_on_a_shifted_stream()
     let (st, _, _) = t.req("POST", "/api/v2/payments/batch", Some(Value::Array(shifted)), &[]).await;
     assert_eq!(st, StatusCode::OK);
     let d = t.get("/api/v2/drift").await;
-    assert_eq!(d["window"]["size"], 10_000);
+    assert_eq!((d["traffic"].as_str(), d["window"]["size"].as_u64()), (Some("live_and_api"), Some(3_000)), "real traffic past warm-up is shown: {d}");
     assert_eq!(d["status"], "alert", "{d}");
+    assert_eq!(d["ranking"][0]["name"], d["top_psi"]["name"]);
     assert_eq!(t.get("/api/health").await["drift"], "alert");
     assert_eq!(t.get("/api/health").await["ready"], true, "drift never changes ready");
+    // K3: a demo replay never moves the real window
+    t.post("/api/v2/demo/next?n=2000", json!({})).await;
+    let after = t.get("/api/v2/drift").await;
+    assert_eq!((after["window"].clone(), after["score"].clone()), (d["window"].clone(), d["score"].clone()));
 }
 
 #[tokio::test]

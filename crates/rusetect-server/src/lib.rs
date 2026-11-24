@@ -1674,7 +1674,7 @@ async fn demo_next(State(app): State<AppRef>, Query(q): Query<NQ>) -> ApiResult 
             let Some(p) = Payment::from_demo_row(r) else { continue };
             let res = s.engine.as_mut().unwrap().score_payment(&p);
             if let Some(d) = s.drift.as_mut() {
-                d.observe_result(&res);
+                d.observe_demo_result(&res); // its own window: replay never enters the real one (K3)
             }
             let y = r.y == "1";
             let band = res["band"].as_str().unwrap_or("safe").to_string();
