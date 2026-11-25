@@ -1161,6 +1161,25 @@ offer).
   reading is how each read endpoint's latency on main changes from 200 to 50,000 durable alerts. The result is for
   this topology and workload only.
 
+**8ar-result. ReviewDesk read endpoints: latency tracks the durable store, and 50,000 alerts saturates both
+revisions.** One run of the amended 8ar schedule, harness at `0bce0a1`. Every number is in `results/read_bench.json`
+(one row per offer in `results/read_bench_offers.csv.gz`, binary checksums in the JSON). An earlier run of the same
+schedule was cut off by a container restart before it wrote any output; it was discarded and the whole schedule rerun.
+- 200, 2,000 and 10,000 durable alerts: all 24 trials valid, none rerun. On main, the median trial p50 of
+  `GET /api/v2/alerts?limit=20` was 10.02, 39.0 and 378.2 ms; evidence 2.8, 6.5 and 23.63 ms; summary 0.42, 0.45 and
+  33.42 ms; live 1.51, 1.57 and 1.56 ms. The webhook p50 stayed at 1.75 to 2.02 ms, and its median trial p99 rose to
+  218.36 ms at 10,000.
+- 50,000: no valid trial on either revision. All 16 attempts (each trial and its rerun) left offers unanswered 120 s
+  after the window (main 210 to 1,731, baseline 1,034 to 2,664), so the pre-registered validity rule fails. The
+  latencies recorded there describe an overloaded server: on main, list p50 6,907.54 ms (p99 10,558.33), evidence p50
+  96.23 ms, live p50 75.21 ms; webhooks accepted 31.93 to 57.42/s of the 60/s offered (baseline 16.38 to 43.57/s).
+  Server peak RSS was 6,916.95 to 7,803.53 MB on main, against 2,037.09 to 2,238.71 MB at 10,000.
+- Main against baseline: at 200 to 10,000 the medians are close (list p50 at 10,000: 378.2 ms against 373.78 ms) and
+  no difference is claimed; the pair is a whole-branch comparison in any case.
+- Reading: the desk evicts above 10,000 resident alerts, yet list latency and server memory keep growing with the
+  durable count, so on this topology the read path does not stay bounded by eviction. 50,000 durable alerts is beyond
+  what this single node serves under this workload. Result for this topology and workload only.
+
 **9. What was not done, and why.**
 - No GNN: no evidence it beats trees with graph features here, and it would complicate serving and explanations.
 - New indicators not served: they did not pass their pre-registered rule (`research/out/unified_train.json`).
