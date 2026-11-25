@@ -11,6 +11,10 @@
 //!   seen:{eid}  string  set once per payment eid (26 h), holding the features it was first scored with: a redelivered
 //!               payment does not write account state twice and is scored again from the same features
 //!   pair-score:{eid}  string  the pair count and noisy-OR of the payment's first scoring (26 h); a retry or redelivery reuses it
+//! Two attempts at one eid can overlap (two workers on one stream message, or a webhook retry after its claim expired).
+//! Both may read before either claims seen:{eid}; the one whose claim lands first wins. The pair-score script only saves
+//! a score computed from the features in seen:{eid}, and otherwise hands those features back, so the loser rescores from
+//! them (one more round trip, on that path only) and every attempt converges on one stored feature set and pair score.
 //! Per payment: one pipelined read round trip, features computed exactly as Engine::features, then one Lua script that
 //! claims seen:{eid} and applies the writes atomically (a crash cannot leave the claim without the writes). score_one
 //! sends that script and the pair window in one round trip.
@@ -53,7 +57,7 @@ fn window(members: &[String], new_key: &str, usd: f64) -> (usize, usize, f64) {
 }
 
 /// `seen:{eid}`'s value, "f {sender fan-in} {31 features}" (NaN kept), back to (fan-in, features); None for anything else.
-fn decode_features(v: &str) -> Option<(usize, [f64; 31])> {
+pub(crate) fn decode_features(v: &str) -> Option<(usize, [f64; 31])> {
     let mut it = v.strip_prefix("f ")?.split(' ');
     let sf = it.next()?.parse().ok()?;
     let xs: Vec<f64> = it.map(|x| x.parse().ok()).collect::<Option<_>>()?;
@@ -65,11 +69,13 @@ pub struct RedisState {
     pub cfg: CascadeConfig,
     pub px: String,
     pub last_sender_fan_in: usize,
+    /// seen:{eid}'s value for the features `features_read` last returned (what the pair-score script checks against)
+    pub last_stored: String,
 }
 
 impl RedisState {
     pub fn new(con: redis::Connection, cfg: CascadeConfig, prefix: &str) -> Self {
-        RedisState { con, cfg, px: prefix.to_string(), last_sender_fan_in: 0 }
+        RedisState { con, cfg, px: prefix.to_string(), last_sender_fan_in: 0, last_stored: String::new() }
     }
 
     /// The structuring window of Engine::finish_risk (engine::PairWindow) kept in Redis, so a restarted or rebalanced
@@ -90,12 +96,15 @@ impl RedisState {
         self.append_pair_window(pl, p, payee, risk, None);
     }
 
-    /// Append a pair window update that returns the (count, noisy-OR) of this eid's first scoring.
-    pub(crate) fn pair_score_cmds(&self, pl: &mut redis::Pipeline, p: &Payment, payee: &str, risk: f64, eid: i64) {
-        self.append_pair_window(pl, p, payee, risk, Some(self.k("pair-score", &eid.to_string())));
+    /// Append a pair window update that returns the (count, noisy-OR) of this eid's first scoring, as two strings. When
+    /// seen:{eid} holds other features than `stored` (an overlapping attempt claimed it first), nothing is written and
+    /// the reply is ["lost", seen:{eid}'s value].
+    pub(crate) fn pair_score_cmds(&self, pl: &mut redis::Pipeline, p: &Payment, payee: &str, risk: f64, eid: i64, stored: &str) {
+        let e = eid.to_string();
+        self.append_pair_window(pl, p, payee, risk, Some((self.k("pair-score", &e), self.k("seen", &e), stored)));
     }
 
-    fn append_pair_window(&self, pl: &mut redis::Pipeline, p: &Payment, payee: &str, risk: f64, snapshot: Option<String>) {
+    fn append_pair_window(&self, pl: &mut redis::Pipeline, p: &Payment, payee: &str, risk: f64, snapshot: Option<(String, String, &str)>) {
         let key = format!("{}>{}", self.k("pr", &format!("{}|{}", p.from_bank, p.from_account)), payee);
         let eid = p.eid.map(|e| e.to_string()).unwrap_or_else(|| format!("{}.{}", p.tmin, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         // Save the aggregate in the same script as the first pair update. A retry can then avoid touching the
@@ -103,6 +112,8 @@ impl RedisState {
         // order, as pair_window_of does for legacy members. Redis rounds Lua numeric replies to integers.
         const PAIR: &str = r#"
             if KEYS[2] then
+                local seen = redis.call('GET', KEYS[3])
+                if seen and seen ~= ARGV[7] then return {'lost', seen} end
                 local score = redis.call('GET', KEYS[2])
                 if score then return {string.match(score, '^(%d+) (.+)$')} end
             end
@@ -128,8 +139,12 @@ impl RedisState {
             redis.call('SET', KEYS[2], count .. ' ' .. score, 'EX', ARGV[6])
             return {count, score}
         "#;
-        pl.cmd("EVAL").arg(PAIR).arg(1 + usize::from(snapshot.is_some())).arg(&key).arg(&snapshot)
-            .arg(p.tmin - MIN24).arg(p.tmin).arg(format!("{eid}|")).arg(risk.to_string()).arg(MIN24 * 60 + 3600).arg(SEEN_TTL_S);
+        let (keys, stored) = match snapshot {
+            Some((score, seen, stored)) => (vec![key, score, seen], stored),
+            None => (vec![key], ""),
+        };
+        pl.cmd("EVAL").arg(PAIR).arg(keys.len()).arg(&keys)
+            .arg(p.tmin - MIN24).arg(p.tmin).arg(format!("{eid}|")).arg(risk.to_string()).arg(MIN24 * 60 + 3600).arg(SEEN_TTL_S).arg(stored);
     }
 
     /// (payments, noisy-OR) of the window's members. Members written before the window kept one per eid may repeat an
@@ -216,9 +231,11 @@ impl RedisState {
         let stored = format!("f {} {}", self.last_sender_fan_in, f.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(" "));
         // a redelivered payment: its own write is in the state read above, so score it from the features it was first
         // scored with (the write below is then skipped by the claim)
+        self.last_stored = stored.clone();
         if let Some((sf, f0)) = first.as_deref().and_then(decode_features) {
             self.last_sender_fan_in = sf;
             f = f0;
+            self.last_stored = first.unwrap();
         }
         // ---- writes, as one script: claim seen:{eid} with SET NX, then apply every write, or nothing when the claim
         // exists. At-least-once delivery replays a payment scored before a crash: it is rescored from the current state

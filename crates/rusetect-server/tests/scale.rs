@@ -218,3 +218,68 @@ fn claim_and_writes_are_atomic() {
     rs.features(&q).unwrap();
     assert_eq!(state(7), (true, Some(1)));
 }
+
+/// Forward one Redis connection on a local port, holding the first client write that carries an EVAL (score_one's claim
+/// and pair-score round trip) until `release` fires: the racer has read state but not yet claimed seen:{eid}.
+fn holding_proxy(redis_url: &str) -> (String, std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>) {
+    use std::io::{Read, Write};
+    let up = redis_url.trim_start_matches("redis://").trim_end_matches("/0").to_string();
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("redis://{}/0", l.local_addr().unwrap());
+    let (release, wait) = std::sync::mpsc::channel::<()>();
+    let (held_tx, held) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        let (mut c, _) = l.accept().unwrap();
+        let mut s = std::net::TcpStream::connect(&up).unwrap();
+        let (mut c2, mut s2) = (c.try_clone().unwrap(), s.try_clone().unwrap());
+        std::thread::spawn(move || { let _ = std::io::copy(&mut s2, &mut c2); });
+        let (mut buf, mut holding) = (vec![0u8; 1 << 16], true);
+        while let Ok(n) = c.read(&mut buf) {
+            if n == 0 { break }
+            if holding && buf[..n].windows(4).any(|w| w == b"EVAL") {
+                holding = false;
+                let _ = held_tx.send(());
+                let _ = wait.recv();
+            }
+            if s.write_all(&buf[..n]).is_err() { break }
+        }
+    });
+    (url, release, held)
+}
+
+/// Two workers score the same eid at once, and another payment to the same payee lands between their reads, so they
+/// compute different features. Racer A reads, then is held before its claim; the other payment and racer B run in
+/// full (B claims seen:{eid}); then A continues. A must score from B's stored features and pair score, so both return
+/// what a later redelivery (stored result only) returns.
+#[test]
+fn concurrent_first_deliveries_converge_on_one_stored_score() {
+    let Some(r) = start() else { return };
+    let scorer = |url: &str| rusetect_server::scale::worker::Scorer::new(redis::Client::open(url).unwrap().get_connection().unwrap(), "").unwrap();
+    // a demo payment the cascade rates well above its floor, so a change in its features moves its risk
+    let mut direct = scorer(&r.url);
+    let history = rows(4000);
+    let scored = direct.score(&history).unwrap();
+    let pick = scored.iter().enumerate().filter_map(|(i, d)| d["risk"].as_f64().map(|x| (i, x))).filter(|&(_, x)| x < 0.9)
+        .max_by(|a, b| a.1.total_cmp(&b.1)).unwrap().0;
+    let last = history.last().unwrap().tmin;
+    // to a fresh payee, so the pair window holds only this payment and its risk is its own
+    let target = Payment { to_account: "RACEPAYEE".into(), tmin: last + 1, eid: Some(1_000_000), ..history[pick].clone() };
+    // in between: other payers pay the target's payee and the target's payer pays other payees
+    let between: Vec<Payment> = (0..10).map(|i| Payment { from_account: format!("MULE{i}"), eid: Some(1_000_100 + i), ..target.clone() })
+        .chain((0..10).map(|i| Payment { to_account: format!("FAN{i}"), eid: Some(1_000_200 + i), ..target.clone() })).collect();
+    let (url, release, held) = holding_proxy(&r.url);
+    let mut a = scorer(&url);
+    let ta = { let p = target.clone(); std::thread::spawn(move || a.score(&[p]).unwrap().remove(0)) };
+    held.recv().unwrap();
+    direct.score(&between).unwrap();
+    let b = direct.score(std::slice::from_ref(&target)).unwrap().remove(0);
+    release.send(()).unwrap();
+    let a = ta.join().unwrap();
+    let again = direct.score(&[target]).unwrap().remove(0);
+    assert!(!again["risk"].is_null(), "the fixture must escalate so the risk is compared: {again}");
+    for (who, g) in [("A (lost the claim)", &a), ("B (won it)", &b)] {
+        for k in ["payment_decision", "risk", "context_band", "final_decision"] {
+            assert_eq!(g[k], again[k], "{who} {k}: every attempt returns the one stored result");
+        }
+    }
+}
